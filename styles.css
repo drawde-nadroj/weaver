@@ -1,0 +1,1646 @@
+/* Weaver — base custom properties.
+ *
+ * The per-level colors (`--weaver-h1` … `--weaver-h{maxDepth}`) and the
+ * `--h1-color` … `--h6-color` mappings are injected at runtime into a single
+ * `<style id="weaver-palette">` element by `src/ui/palette.ts`, because the
+ * level count depends on the `maxDepth` setting. The values below are the
+ * fallbacks used before the palette is applied.
+ */
+
+body {
+  --weaver-dimension-size: 1em;
+  --weaver-dimension-weight: 600;
+  --weaver-dimension-line-height: 1.35;
+  --weaver-indent-step: 18px;
+  --weaver-indent-step-mobile: 12px;
+  --weaver-indent-max-level: 8;
+  --weaver-palette-transition: 200ms;
+}
+
+/* ── Insert preview modal ───────────────────────────────────────────────── */
+
+.weaver-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.weaver-modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+}
+
+.weaver-modal-heading {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+}
+
+.weaver-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-modal-depth {
+  font-family: var(--font-monospace);
+  color: var(--text-faint);
+}
+
+.weaver-modal-clock {
+  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.weaver-modal-session {
+  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.weaver-modal-preview {
+  display: flex;
+  align-items: center;
+  min-height: 3.4em;
+  padding: var(--size-4-3);
+  overflow-x: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-secondary);
+}
+
+.weaver-modal-rendered {
+  width: 100%;
+}
+
+.weaver-modal-rendered h1,
+.weaver-modal-rendered h2,
+.weaver-modal-rendered h3,
+.weaver-modal-rendered h4,
+.weaver-modal-rendered h5,
+.weaver-modal-rendered h6 {
+  margin: 0;
+}
+
+.weaver-modal-title {
+  width: 100%;
+  font-size: var(--font-ui-medium);
+}
+
+.weaver-modal-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--size-4-2);
+}
+
+.weaver-stepper-button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  font-size: var(--font-ui-medium);
+  line-height: 1;
+}
+
+.weaver-stepper-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+/* ── Phone: full-screen insert preview ─────────────────────────────────── */
+
+.weaver-modal-phone {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
+.weaver-modal-phone .modal-content {
+  height: 100%;
+  padding: var(--size-4-4);
+  padding-bottom: calc(var(--size-4-4) + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+}
+
+.weaver-modal-phone .weaver-modal-title {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.weaver-modal-phone .weaver-stepper-button,
+.weaver-modal-phone .weaver-modal-footer button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.weaver-modal-phone .weaver-modal-footer {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--size-4-2);
+  background: var(--background-primary);
+}
+
+/* ── Equal heading sizes ───────────────────────────────────────────────── */
+/* Gated on `weaver-equal-sizes` so turning the setting off restores
+ * Obsidian's own hierarchy while colors and indentation keep working.
+ * `--h1-size` is never overridden, which protects the inline title. */
+
+body.weaver-equal-sizes .markdown-rendered h1,
+body.weaver-equal-sizes .markdown-rendered h2,
+body.weaver-equal-sizes .markdown-rendered h3,
+body.weaver-equal-sizes .markdown-rendered h4,
+body.weaver-equal-sizes .markdown-rendered h5,
+body.weaver-equal-sizes .markdown-rendered h6,
+body.weaver-equal-sizes .HyperMD-header-1,
+body.weaver-equal-sizes .HyperMD-header-2,
+body.weaver-equal-sizes .HyperMD-header-3,
+body.weaver-equal-sizes .HyperMD-header-4,
+body.weaver-equal-sizes .HyperMD-header-5,
+body.weaver-equal-sizes .HyperMD-header-6,
+body.weaver-equal-sizes .weaver-dimension-line {
+  font-size: var(--weaver-dimension-size);
+  font-weight: var(--weaver-dimension-weight);
+  line-height: var(--weaver-dimension-line-height);
+}
+
+/* ── Deep headings ─────────────────────────────────────────────────────── */
+/* Obsidian has no default size for H7+, so these are always styled. */
+
+body .weaver-deep {
+  font-size: var(--weaver-dimension-size);
+  font-weight: var(--weaver-dimension-weight);
+  line-height: var(--weaver-dimension-line-height);
+}
+
+.weaver-dimension {
+  display: block;
+  margin: 0.6em 0 0.2em;
+  font-size: var(--weaver-dimension-size);
+  font-weight: var(--weaver-dimension-weight);
+  line-height: var(--weaver-dimension-line-height);
+  scroll-margin-top: 40px;
+}
+
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4,
+.markdown-rendered h5,
+.markdown-rendered h6,
+.weaver-dimension {
+  scroll-margin-top: 40px;
+}
+
+/* ── Travel mode ───────────────────────────────────────────────────────── */
+
+body .weaver-travel-level {
+  background-color: var(--background-modifier-hover);
+  border-radius: var(--radius-s, 4px);
+}
+
+body .weaver-travel-target {
+  background-color: var(--background-modifier-active-hover);
+  box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.weaver-travel-hud {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--size-4-4) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--layer-popover, 30);
+  display: flex;
+  max-width: min(680px, 90vw);
+  padding: var(--size-4-2) var(--size-4-3);
+  gap: var(--size-4-2);
+  align-items: baseline;
+  transform: translateX(-50%);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 12px);
+  background-color: var(--background-secondary);
+  box-shadow: var(--shadow-s, 0 2px 8px rgb(0 0 0 / 15%));
+  font-size: var(--font-ui-smaller);
+  pointer-events: none;
+}
+
+.weaver-hud-kicker {
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.weaver-hud-state {
+  overflow: hidden;
+  color: var(--text-normal);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weaver-hud-keys {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.weaver-travel-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--layer-popover, 30);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  padding-bottom: calc(var(--size-4-2) + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 -2px 8px rgb(0 0 0 / 15%));
+}
+
+.weaver-travel-levels {
+  display: flex;
+  gap: var(--size-2-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.weaver-travel-levels::-webkit-scrollbar {
+  display: none;
+}
+
+.weaver-travel-chip {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background-color: var(--background-secondary);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-travel-chip.is-active {
+  border-color: var(--interactive-accent);
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 700;
+}
+
+.weaver-travel-label {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weaver-travel-controls {
+  display: flex;
+  gap: var(--size-2-2);
+}
+
+.weaver-travel-kind {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0 var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+}
+
+.weaver-travel-kind.is-drafts {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.weaver-travel-button {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0 var(--size-4-2);
+}
+
+/* ── Weave composer ────────────────────────────────────────────────────── */
+
+.weaver-composer .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.weaver-composer-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.weaver-composer-title {
+  margin: 0;
+  font-size: var(--font-ui-medium);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.weaver-composer-meta {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: baseline;
+}
+
+.weaver-composer-clock {
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-session {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.weaver-composer-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  padding: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--weaver-row-color, var(--background-modifier-border));
+  border-radius: var(--radius-m, 8px);
+  background-color: var(--background-secondary);
+}
+
+.weaver-composer-row-head {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+.weaver-composer-stepper {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--size-2-1);
+  align-items: center;
+}
+
+.weaver-composer-level {
+  min-width: 2.2em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+}
+
+/* The title input *is* the rendered heading line, so what you type is what
+ * lands in the note: same colour, size and weight, no chrome. */
+.weaver-composer-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--weaver-row-color, var(--text-normal));
+  font-size: var(--weaver-dimension-size);
+  font-weight: var(--weaver-dimension-weight);
+  line-height: var(--weaver-dimension-line-height);
+}
+
+.weaver-composer-title-input:focus {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.weaver-composer-footer .mod-cta {
+  background-color: var(--weaver-weave-color, var(--interactive-accent));
+}
+
+.weaver-composer-row-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+.weaver-composer-time {
+  min-width: 5.5em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-pin,
+.weaver-composer-body-toggle,
+.weaver-composer-move,
+.weaver-composer-remove {
+  padding: var(--size-2-1) var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-composer-pin.is-pinned {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.weaver-composer-body {
+  display: flex;
+}
+
+.weaver-composer-body.is-hidden {
+  display: none;
+}
+
+.weaver-composer-body-input {
+  width: 100%;
+  min-height: 4.5em;
+  resize: vertical;
+}
+
+.weaver-composer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+/* Phone: full-screen composer with a sticky footer above the keyboard. */
+.weaver-composer-phone {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border-radius: 0;
+}
+
+.weaver-composer-phone .modal-content {
+  height: 100%;
+  padding: var(--size-4-4);
+  padding-bottom: calc(var(--size-4-4) + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+}
+
+.weaver-composer-phone .weaver-composer-rows {
+  max-height: none;
+}
+
+.weaver-composer-phone .weaver-composer-footer {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--size-4-2);
+  background: var(--background-primary);
+}
+
+.weaver-composer-phone button,
+.weaver-composer-phone .weaver-stepper-button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.weaver-composer-phone .weaver-composer-title-input,
+.weaver-composer-phone .weaver-composer-body-input {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+/* ── Dimension list ──────────────────────────────────────────────────────── */
+
+.weaver-dimension-list-file {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.weaver-dimension-list {
+  display: flex;
+  flex-direction: column;
+  padding: var(--size-2-1) 0 var(--size-4-4);
+}
+
+.weaver-dimension-list-empty {
+  padding: var(--size-4-3);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-dimension-row {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: baseline;
+  width: 100%;
+  min-height: 32px;
+  padding: var(--size-2-1) var(--size-4-2);
+  padding-left: calc(var(--size-4-2) + var(--weaver-dimension-indent, 0) * 12px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: left;
+}
+
+.weaver-dimension-row:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.weaver-dimension-row.is-active {
+  background-color: var(--background-modifier-active-hover);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.weaver-dimension-bar {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 1em;
+  border-radius: 2px;
+  background-color: currentcolor;
+  opacity: 0.8;
+}
+
+.weaver-dimension-time {
+  flex: 0 0 auto;
+  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-dimension-title {
+  flex: 1 1 auto;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+}
+
+.weaver-dimension-level {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+}
+
+body.is-phone .weaver-dimension-row,
+body.weaver-platform-mobile .weaver-dimension-row {
+  min-height: 44px;
+  align-items: center;
+}
+
+.weaver-dimension-sheet .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3);
+  padding-bottom: calc(var(--size-4-3) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── In-page drafts ────────────────────────────────────────────────────── */
+/* A draft is real note text: the badge replaces the open marker line, the
+ * title line is the rendered heading line, and the body is ordinary text. */
+
+.weaver-draft-marker {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-draft-end {
+  display: none;
+}
+
+/* Reading view card, and the Live Preview badge host. */
+.weaver-draft,
+.weaver-draft-host {
+  margin: var(--size-4-2) 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-left: 3px solid var(--weaver-draft-color, var(--interactive-accent));
+  border-radius: var(--radius-s, 4px);
+  background-color: var(--background-secondary);
+}
+
+.weaver-draft-badge {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--size-2-2);
+  align-items: center;
+  margin-bottom: var(--size-2-2);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-draft-id {
+  padding: 0 var(--size-2-2);
+  border: 1px solid var(--weaver-draft-color, var(--background-modifier-border));
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  box-shadow: none;
+  color: var(--weaver-draft-color, var(--text-normal));
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.weaver-draft-opened {
+  color: var(--text-faint);
+}
+
+.weaver-draft-elapsed {
+  color: var(--text-faint);
+}
+
+.weaver-draft-actions {
+  display: flex;
+  gap: var(--size-2-1);
+  align-items: center;
+  margin-left: auto;
+}
+
+.weaver-draft-stepper {
+  display: flex;
+  gap: var(--size-2-1);
+  align-items: center;
+}
+
+.weaver-draft-level {
+  color: var(--weaver-draft-color, var(--text-muted));
+  font-family: var(--font-monospace);
+  font-weight: 700;
+}
+
+.weaver-draft-weave {
+  padding: 0 var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-draft-discard {
+  padding: 0 var(--size-2-2);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.weaver-draft-discard:hover {
+  color: var(--text-error, #ef4444);
+}
+
+/* The draft's title reads like the heading it will become. */
+.weaver-draft .weaver-draft-title {
+  margin: 0;
+  color: var(--weaver-draft-color, var(--text-normal));
+  font-size: var(--weaver-dimension-size);
+  font-weight: var(--weaver-dimension-weight);
+}
+
+.weaver-draft .weaver-draft-body {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Phones: two rows of controls, every target at least 44px. */
+body.is-phone .weaver-draft-badge {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+body.is-phone .weaver-draft-head {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+body.is-phone .weaver-draft-actions {
+  width: 100%;
+  margin-left: 0;
+}
+
+body.is-phone .weaver-draft-badge button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── Draft search ──────────────────────────────────────────────────────── */
+
+.weaver-draft-search .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.weaver-draft-search-input {
+  width: 100%;
+  min-height: 36px;
+}
+
+.weaver-draft-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-1);
+}
+
+.weaver-draft-scope {
+  padding: var(--size-2-1) var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-draft-scope.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.weaver-draft-search-status {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-draft-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.weaver-draft-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  padding: var(--size-4-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-m, 8px);
+  background-color: var(--background-secondary);
+  text-align: left;
+}
+
+.weaver-draft-result.is-selected {
+  border-color: var(--interactive-accent);
+}
+
+.weaver-draft-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  align-items: baseline;
+}
+
+.weaver-draft-result-id {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+}
+
+.weaver-draft-result-title {
+  flex: 1 1 auto;
+  color: var(--text-normal);
+}
+
+.weaver-draft-result-elapsed,
+.weaver-draft-result-file {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-draft-result-body {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+body.is-phone .weaver-draft-result {
+  min-height: 44px;
+}
+
+/* ── Weaver control panel ──────────────────────────────────────────────── */
+
+.weaver-panel {
+  padding: 0;
+}
+
+.weaver-panel-header {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.weaver-panel-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+}
+
+.weaver-panel-refresh {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 var(--size-2-2);
+}
+
+.weaver-panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  padding: var(--size-4-2) var(--size-4-2) 0;
+}
+
+.weaver-panel-section-head {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+  padding: 0 var(--size-2-1);
+}
+
+.weaver-panel-section-title {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.weaver-panel-note {
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weaver-panel-filter {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-panel-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  overflow-y: auto;
+}
+
+.weaver-panel-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+}
+
+.weaver-panel-file {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: baseline;
+  padding: 0 var(--size-4-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.weaver-panel-file-count {
+  font-family: var(--font-monospace);
+}
+
+.weaver-panel-group.is-current-note .weaver-panel-file {
+  color: var(--text-normal);
+}
+
+.weaver-panel-dimensions {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Rows are addressed by the list's own cursor, so a focus ring is the only
+   signal that the arrow keys currently belong to this list. */
+.weaver-panel-groups.is-focused,
+.weaver-panel-dimensions.is-focused {
+  border-radius: var(--radius-s, 4px);
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.weaver-panel-empty {
+  padding: var(--size-4-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ── Phone sheets ──────────────────────────────────────────────────────── */
+
+/* The Tapestry and the draft search arrive as bottom sheets on a phone; both
+   share this chrome, so neither grows a second one. */
+.weaver-sheet .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3);
+  padding-bottom: calc(var(--size-4-3) + env(safe-area-inset-bottom, 0px));
+}
+
+.weaver-sheet-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Settings tab ──────────────────────────────────────────────────────── */
+
+.weaver-settings h3 {
+  margin-top: var(--size-4-5);
+}
+
+.weaver-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-1);
+}
+
+.weaver-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 26px;
+  border-radius: var(--radius-s, 4px);
+  color: #fff;
+  font-size: 0.72em;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+}
+
+/* Per-level heading size controls */
+.weaver-level-sizes {
+  margin: var(--size-4-3) 0;
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+}
+
+.weaver-level-sizes-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: 700;
+}
+
+.weaver-level-sizes-hint {
+  margin-bottom: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-level-sizes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--size-2-2);
+}
+
+.weaver-level-size-row {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+.weaver-level-size-label {
+  min-width: 2.2em;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-level-size-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── Marks ─────────────────────────────────────────────────────────────── */
+
+/* A `✦` line records where a spark came from; it is an event, not a dimension,
+   so it reads as a chip rather than as structure. */
+.weaver-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  margin: var(--size-2-2) 0;
+  padding: 1px var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-mark a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+/* A `✓` line closes the day. Muted, never a heading. */
+.weaver-close-mark {
+  margin: var(--size-2-2) 0;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  letter-spacing: 0.04em;
+}
+
+/* Live Preview: the mark line keeps its own text — the glyph, the link and the
+   note all stay typable — and gains a band, so a recorded spark is legible
+   where it is written. */
+.weaver-mark-line {
+  background: var(--background-secondary);
+  border-left: 2px solid var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-close-mark-line {
+  color: var(--text-faint);
+}
+
+/* ── Tapestry ──────────────────────────────────────────────────────────── */
+
+.weaver-tapestry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.weaver-tapestry-scopes {
+  display: flex;
+  gap: var(--size-2-1);
+  flex-wrap: wrap;
+}
+
+.weaver-tapestry-scope {
+  padding: 2px var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.weaver-tapestry-scope.is-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.weaver-tapestry-target {
+  padding: 2px var(--size-2-2);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.weaver-tapestry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--size-4-3);
+  align-items: start;
+}
+
+.weaver-threads,
+.weaver-day-list,
+.weaver-horizon {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weaver-thread,
+.weaver-day-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  width: 100%;
+  padding: 2px var(--size-2-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.weaver-thread.is-selected,
+.weaver-day-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.weaver-thread-level,
+.weaver-day-label {
+  min-width: 2.4em;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-thread-time {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-thread-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weaver-thread-mark {
+  color: var(--text-faint);
+}
+
+.weaver-thread-count {
+  min-width: 1.4em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.weaver-census {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.weaver-census-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-census-level {
+  font-family: var(--font-monospace);
+}
+
+.weaver-census-total {
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.weaver-review {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weaver-review-row {
+  padding: 1px var(--size-2-2);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: left;
+}
+
+button.weaver-review-row {
+  cursor: pointer;
+}
+
+button.weaver-review-row:hover {
+  color: var(--text-normal);
+}
+
+.weaver-review-close {
+  align-self: flex-start;
+  margin-top: var(--size-2-2);
+  padding: 2px var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.weaver-review-close:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.weaver-cal {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 0 is a missing reading, not a failure: the scale stays quiet at the bottom. */
+.weaver-cal-cell {
+  fill: var(--text-faint);
+  opacity: 0.18;
+}
+
+.weaver-cal-cell.is-future {
+  opacity: 0.08;
+}
+
+.weaver-cal-cell.weaver-cal-1 {
+  fill: var(--interactive-accent);
+  opacity: 0.3;
+}
+
+.weaver-cal-cell.weaver-cal-2 {
+  fill: var(--interactive-accent);
+  opacity: 0.5;
+}
+
+.weaver-cal-cell.weaver-cal-3 {
+  fill: var(--interactive-accent);
+  opacity: 0.72;
+}
+
+.weaver-cal-cell.weaver-cal-4 {
+  fill: var(--interactive-accent);
+  opacity: 1;
+}
+
+.weaver-cal-cell:focus-visible {
+  stroke: var(--interactive-accent-hover);
+  stroke-width: 1.5;
+}
+
+.weaver-horizon-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px var(--size-2-2);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-horizon-month {
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+}
+
+.weaver-horizon-count {
+  color: var(--text-faint);
+}
+
+/* ── Status strip ──────────────────────────────────────────────────────── */
+
+.weaver-strip-host {
+  display: flex;
+  flex-direction: column;
+}
+
+.weaver-strip {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex: 0 0 auto;
+  padding: var(--size-2-1) var(--size-4-4);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.weaver-strip:hover {
+  color: var(--text-normal);
+}
+
+.weaver-strip.is-hidden {
+  display: none;
+}
+
+/* ── Shuttle ───────────────────────────────────────────────────────────── */
+
+.weaver-shuttle {
+  position: fixed;
+  right: var(--size-4-4);
+  bottom: var(--size-4-8);
+  z-index: var(--layer-modal, 50);
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 2 * var(--size-4-4)));
+  max-height: 60vh;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-l);
+  overflow: hidden;
+}
+
+.weaver-shuttle-head {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  padding: var(--size-2-2) var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.weaver-shuttle-title {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.weaver-shuttle-filter {
+  flex: 1;
+  min-width: 0;
+  height: var(--input-height);
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+}
+
+.weaver-shuttle-filter:focus {
+  outline: none;
+}
+
+.weaver-shuttle-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--size-2-1);
+}
+
+.weaver-shuttle-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  width: 100%;
+  padding: var(--size-2-1) var(--size-2-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.weaver-shuttle-row.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.weaver-shuttle-glyph {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+}
+
+.weaver-shuttle-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weaver-shuttle-used {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-shuttle-day {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-shuttle-unload {
+  align-self: flex-end;
+  padding: 0 var(--size-2-2);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.weaver-shuttle-hint {
+  padding: var(--size-2-1) var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-shuttle-empty {
+  padding: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-shuttle.weaver-shuttle-phone {
+  left: var(--size-4-4);
+  right: var(--size-4-4);
+  bottom: 0;
+  width: auto;
+  max-height: 50vh;
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
+}
+
+/* ── Inline insert ─────────────────────────────────────────────────────── */
+
+/* The control row sits above the insertion line and never shifts it: the
+   padding is inside the widget's own box. */
+.weaver-inline-insert {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0;
+  padding: var(--size-2-1) var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-size: var(--font-text-size);
+}
+
+.weaver-inline-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--size-2-1) var(--size-2-2);
+  align-items: center;
+}
+
+.weaver-inline-row.is-active {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-s);
+}
+
+.weaver-inline-level {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.weaver-inline-step {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.weaver-inline-step:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.weaver-inline-level-label {
+  min-width: 2.2em;
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+}
+
+.weaver-inline-title {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+}
+
+.weaver-inline-title:focus {
+  outline: none;
+}
+
+.weaver-inline-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  padding-top: 2px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-inline-commit {
+  padding: 1px var(--size-2-2);
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.weaver-inline-hint {
+  margin-left: auto;
+  color: var(--text-faint);
+}
+
+/* ── Phone ─────────────────────────────────────────────────────────────── */
+
+/* Touch targets only: every rule here is a size or an overflow behaviour, so a
+   phone never trades information for space. */
+body.is-phone .weaver-shuttle-row,
+body.is-phone .weaver-tapestry-scope,
+body.is-phone .weaver-census-row,
+body.is-phone .weaver-strip,
+body.is-phone .weaver-review-row,
+body.is-phone .weaver-day-row,
+body.is-phone .weaver-thread {
+  min-height: 44px;
+  align-items: center;
+}
+
+body.is-phone .weaver-shuttle-row {
+  padding: var(--size-2-2) var(--size-4-2);
+}
+
+body.is-phone .weaver-tapestry-scope {
+  padding: var(--size-2-2) var(--size-4-2);
+}
+
+body.is-phone .weaver-strip {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--size-4-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.is-phone .weaver-inline-step,
+body.is-phone .weaver-inline-title,
+body.is-phone .weaver-inline-commit,
+body.is-phone .weaver-inline-level-label {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+body.is-phone .weaver-inline-footer {
+  min-height: 44px;
+}
+
+body.is-phone .weaver-cal-cell {
+  /* 10px cells with 2px gaps, unchanged: the label carries the detail. */
+  min-width: 10px;
+  min-height: 10px;
+}
+
+body.is-phone .weaver-tapestry-sheet .weaver-panel-count {
+  display: none;
+}
+
+body.is-phone .weaver-tapestry-touch .weaver-panel-filter {
+  display: none;
+}

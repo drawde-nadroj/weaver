@@ -1,0 +1,9 @@
+{
+  "id": "weaver",
+  "name": "Weaver",
+  "version": "0.3.0",
+  "minAppVersion": "1.9.0",
+  "description": "Time-stamped, depth-aware dimensions for Obsidian.",
+  "author": "Jordan",
+  "isDesktopOnly": false
+}
