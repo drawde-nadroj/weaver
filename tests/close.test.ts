@@ -1,86 +1,63 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { Platform } from "obsidian";
+import { describe, expect, it } from "vitest";
 
+import { closeLine, parseClose, planCloseDay } from "../src/core/close";
 import { applyPlanToSource } from "../src/core/insert";
-import WeaverPlugin from "../src/main";
-import {
-  createApp,
-  createFile,
-  fileContent,
-  instantiatePlugin,
-  noticeMessages
-} from "../test-support/harness";
-import { planCloseDay } from "../src/core/close";
-import { parseMarks } from "../src/core/marks";
-import type { InsertOptions } from "../src/core/insert";
 
-const AT_1637 = new Date(2024, 0, 2, 16, 37, 4);
-const OPTIONS: InsertOptions = { maxDepth: 12, separator: " - ", format: "HH:mm:ss" };
+const AT_1730 = new Date(2026, 9, 27, 17, 30, 4);
 
-describe("planCloseDay", () => {
-  it("appends one closing mark after a blank line", () => {
-    const source = "# 09:00:00 - x\nbody";
-    const plan = planCloseDay(source, AT_1637, OPTIONS);
-    expect(plan).not.toBeNull();
+describe("parseClose", () => {
+  const SOURCE = [
+    "---",
+    "✓ 09:00:00",
+    "---",
+    "```",
+    "✓ 10:00:00",
+    "```",
+    "{ 1.1.1 } - 11:00:00",
+    "prose",
+    "✓ 17:30:00"
+  ].join("\n");
 
-    const applied = applyPlanToSource(source, plan!);
-    expect(applied.source).toBe("# 09:00:00 - x\nbody\n\n✓ 16:37:04\n");
-    expect(parseMarks(applied.source).closedAt).toBe("16:37:04");
+  it("finds the mark and ignores frontmatter and fenced code", () => {
+    const scan = parseClose(SOURCE);
+    expect(scan.closedAt).toBe("17:30:00");
+    expect(scan.line).toBe(8);
   });
 
-  it("uses the note's own clock format, so the mark matches the dimensions", () => {
-    const source = "# 09:00 - x";
-    const plan = planCloseDay(source, AT_1637, { ...OPTIONS, format: "HH:mm" });
-    expect(applyPlanToSource(source, plan!).source).toBe("# 09:00 - x\n\n✓ 16:37\n");
+  it("keeps the last mark when a note carries two", () => {
+    expect(parseClose("✓ 09:00:00\n✓ 10:00:00").closedAt).toBe("10:00:00");
   });
 
-  it("refuses a second close instead of appending another mark", () => {
-    expect(planCloseDay("✓ 09:00", AT_1637, OPTIONS)).toBeNull();
-    expect(planCloseDay("# 09:00:00 - x\n\n✓ 09:00\n\ntext", AT_1637, OPTIONS)).toBeNull();
+  it("reports an open day as open", () => {
+    expect(parseClose("{ 1.1.1 } - 10:00:00").closedAt).toBeNull();
   });
 
-  it("refuses to write into an unclosed frontmatter block or fence", () => {
-    expect(planCloseDay("---\ntitle: x", AT_1637, OPTIONS)).toBeNull();
-    expect(planCloseDay("```\ncode", AT_1637, OPTIONS)).toBeNull();
-  });
-
-  it("writes a lone mark into an empty note", () => {
-    const plan = planCloseDay("", AT_1637, OPTIONS);
-    expect(applyPlanToSource("", plan!).source).toBe("✓ 16:37:04\n");
+  it("writes the mark as one line", () => {
+    expect(closeLine("17:30:04")).toBe("✓ 17:30:04");
   });
 });
 
-describe("close-day through the plugin", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+describe("planCloseDay", () => {
+  it("appends the mark at the tip of the note", () => {
+    const source = ["{ 1.1.1 } - 10:00:00", "prose", "+ 00:00:00"].join("\n");
+    const plan = planCloseDay(source, AT_1730);
+    if (plan === null) throw new Error("expected a plan");
+
+    expect(applyPlanToSource(source, plan).source).toBe(`${source}\n\n✓ 17:30:04\n`);
   });
 
-  it("closes once, then refuses with a notice and writes nothing more", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 9, 27, 16, 37, 4));
-    Platform.isPhone = false;
+  it("refuses a second close", () => {
+    const source = ["{ 1.1.1 } - 10:00:00", "prose", "✓ 09:00:00"].join("\n");
+    expect(planCloseDay(source, AT_1730)).toBeNull();
+  });
 
-    const day = createFile("Chronomancer/2026.10.27.md", "# 09:00:00 - x\n");
-    const app = createApp([day]);
-    const plugin = instantiatePlugin(WeaverPlugin, app);
-    await plugin.onload();
+  it("refuses to write into an unclosed code block", () => {
+    expect(planCloseDay("```\nunclosed", AT_1730)).toBeNull();
+  });
 
-    await plugin.closeDay();
-
-    expect(fileContent(day)).toContain("✓ 16:37:04");
-    expect(parseMarks(fileContent(day)).closedAt).toBe("16:37:04");
-    expect(noticeMessages()).toEqual(["Weaver: day closed at 16:37:04."]);
-
-    const closed = fileContent(day);
-    await plugin.closeDay();
-
-    expect(fileContent(day)).toBe(closed);
-    expect(noticeMessages()).toContain(
-      "Weaver: this day is already closed. Nothing was written."
-    );
-    // Every refusal says what it is and that the vault is untouched.
-    const refusal = noticeMessages().at(-1) ?? "";
-    expect(refusal.startsWith("Weaver: ")).toBe(true);
-    expect(refusal.endsWith("Nothing was written.")).toBe(true);
+  it("ends the file with a newline, like the rest of the note", () => {
+    const plan = planCloseDay("", AT_1730);
+    if (plan === null) throw new Error("expected a plan");
+    expect(applyPlanToSource("", plan).source).toBe("✓ 17:30:04\n");
   });
 });

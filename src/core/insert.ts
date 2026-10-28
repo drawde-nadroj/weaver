@@ -1,21 +1,24 @@
-import { formatClock, type TimestampFormat } from "./clock";
-import {
-  findCurrentHeading,
-  findHeadingAtLine,
-  findSectionEndLine,
-  lineStartsOf,
-  type Heading,
-  type HeadingIndex
-} from "./headings";
-import { sparkLine } from "./marks";
-import { newBlockId, shortLabel, trailingBlockId } from "./reference";
-import { SPARK_GLYPH } from "./vocabulary";
+/**
+ * The three plans that write entry text, and the arithmetic every plan shares.
+ *
+ * A plan is a list of changes plus the selection to leave behind, applied in one
+ * transaction so a single undo reverts all of it. `+` is never written twice,
+ * `C` is renumbered on insert, and `N` is only ever appended.
+ */
 
-export interface InsertOptions {
-  maxDepth: number;
-  separator: string;
-  format: TimestampFormat;
-}
+import { formatClock } from "./clock";
+import { lineStartsOf } from "./document";
+import { formatDurationLine, type DurationSigil } from "./duration";
+import {
+  endOfSubtree,
+  formatMarker,
+  nextChild,
+  nextSeq,
+  parseEntries,
+  renumberMarkers,
+  type Entry,
+  type EntryIndex
+} from "./entries";
 
 export interface TextChange {
   from: number;
@@ -28,114 +31,13 @@ export interface InsertPlan {
   selection: { from: number; to: number };
 }
 
-export interface InsertSite {
-  from: number;
-  to: number;
-  /** Text placed before the heading, so the heading lands on its own line. */
-  prefix: string;
-  line: number;
-}
-
 const NEWLINE = "\n";
-
-/**
- * Builds a heading line. An empty title keeps a single trailing space so the
- * cursor has somewhere to sit and the user can type immediately.
- */
-export function formatHeading(level: number, time: string, title: string, separator: string): string {
-  return `${"#".repeat(level)} ${time}${title.length > 0 ? separator + title : " "}`;
-}
-
-/** One level below the containing heading, capped at `maxDepth`. */
-export function computeInsertLevel(parent: Heading | null, maxDepth: number): number {
-  const level = parent === null ? 1 : parent.level + 1;
-  return Math.min(Math.max(level, 1), maxDepth);
-}
 
 function lineEnd(starts: readonly number[], source: string, line: number): number {
   const nextStart = starts[line + 1];
   if (nextStart === undefined) return source.length;
   // `nextStart` sits one past the newline that terminates this line.
   return nextStart - 1;
-}
-
-function siteForLine(starts: readonly number[], source: string, line: number, prefix: string): InsertSite {
-  const end = lineEnd(starts, source, line);
-  // An empty prefix replaces the line itself (a blank cursor line); otherwise
-  // the heading is appended after the line, keeping its content intact.
-  if (prefix === "") return { from: starts[line] ?? 0, to: end, prefix, line };
-  return { from: end, to: end, prefix, line };
-}
-
-/**
- * Decides where a new heading belongs for the given cursor line.
- *
- * Returns null only when the document state makes insertion unsafe: an unclosed
- * frontmatter block or an unclosed fence.
- */
-export function resolveInsertSite(
-  source: string,
-  index: HeadingIndex,
-  cursorLine: number
-): InsertSite | null {
-  const starts = lineStartsOf(source);
-  const lines = source.split("\n");
-
-  if (index.unclosedFrontmatter) return null;
-
-  const frontmatterEnd = index.frontmatterEnd;
-  if (frontmatterEnd !== null && cursorLine <= frontmatterEnd) {
-    return siteForLine(starts, source, frontmatterEnd, NEWLINE);
-  }
-
-  for (const fence of index.codeFences) {
-    if (cursorLine < fence.start || cursorLine > fence.end) continue;
-    if (!fence.closed) return null;
-    return siteForLine(starts, source, fence.end, NEWLINE);
-  }
-
-  if ((lines[cursorLine] ?? "").trim() === "") {
-    return siteForLine(starts, source, cursorLine, "");
-  }
-
-  const heading = findHeadingAtLine(index, cursorLine);
-  if (heading !== null) {
-    return siteForLine(starts, source, findSectionEndLine(lines, index, heading), NEWLINE);
-  }
-
-  return siteForLine(starts, source, cursorLine, NEWLINE);
-}
-
-export function planInsertHeading(
-  source: string,
-  index: HeadingIndex,
-  cursorLine: number,
-  now: Date,
-  options: InsertOptions,
-  title: string,
-  levelOverride?: number
-): InsertPlan | null {
-  const site = resolveInsertSite(source, index, cursorLine);
-  if (site === null) return null;
-
-  const computedLevel = computeInsertLevel(findCurrentHeading(index, cursorLine), options.maxDepth);
-  const level = Math.min(
-    Math.max(levelOverride ?? computedLevel, computedLevel),
-    options.maxDepth
-  );
-
-  const heading = formatHeading(
-    level,
-    formatClock(now, options.format),
-    title.trim(),
-    options.separator
-  );
-  const inserted = site.prefix + heading;
-
-  return {
-    changes: [{ from: site.from, to: site.to, text: inserted }],
-    selection: { from: site.from + inserted.length, to: site.from + inserted.length }
-  };
 }
 
 /**
@@ -172,117 +74,132 @@ export function planAppendLine(source: string, text: string, caret: number = tex
   };
 }
 
-/** A source named by a caller that already knows its link target. */
-export interface SourceRef {
-  /** What the `✦` line links to, e.g. `Note#^abc123` or `Note#09:12 - first`. */
-  target: string;
-  label: string;
-}
-
-export interface SparkInput {
-  source: string;
-  index: HeadingIndex;
-  now: Date;
-  options: InsertOptions;
-  /** The selected passage, in absolute offsets, when the spark came from one. */
-  selection: { from: number; to: number; text: string } | null;
-  /** Basename of the note the spark came from, for the `✦` link target. */
-  noteBasename: string;
-  /** Block ids already used in the note the id will be written into. */
-  existingIds: ReadonlySet<string>;
-  /**
-   * An id another writer already put on the source line, used when the
-   * selection lives in a different file from the spark.
-   */
-  selectionId?: string;
-  /** A source the caller already resolved, used by the shuttle. */
-  sourceRef?: SourceRef;
-}
-
-export interface SourceIdPlan {
-  id: string;
-  /** The change that appends ` ^id`, or null when the line already carries one. */
-  change: TextChange | null;
-}
-
-const SPARK_TITLE_MAX = 120;
-
 /**
- * The block id a selection needs: the one already ending its last line, else a
- * fresh id plus the change that appends it there. Both planners share this, so
- * they cannot disagree about where an id goes.
- */
-export function planSourceId(
-  source: string,
-  selection: { from: number; to: number; text: string },
-  existingIds: ReadonlySet<string>
-): SourceIdPlan {
-  const lines = source.split("\n");
-  const starts = lineStartsOf(source);
-  // A selection that ends on a newline belongs to the line above it, and an
-  // offset past the end of the document (a stale cursor) still resolves to a
-  // real line rather than to nothing.
-  const ending =
-    selection.to > selection.from && source[selection.to - 1] === "\n"
-      ? selection.to - 1
-      : selection.to;
-  const lastOffset = Math.max(0, Math.min(source.length - 1, ending));
-  const line = offsetToLineCh(source, lastOffset).line;
-  const lineText = lines[line] ?? "";
-
-  const trailing = trailingBlockId(lineText);
-  if (trailing !== null) return { id: trailing, change: null };
-
-  const id = newBlockId(existingIds);
-  const end = (starts[line] ?? 0) + lineText.length;
-  return { id, change: { from: end, to: end, text: ` ^${id}` } };
-}
-
-/**
- * Appends a spark — a 1D dimension plus its `✦` source line — to the target
- * note. A selection carries its own block id, appended to the end of its last
- * line inside the same plan, so one undo removes both halves.
+ * A new root entry at the tip of the note: `{ 1.k.m } - HH:MM:SS`, a blank prose
+ * line, and its `- 00:00:00` duration.
  *
- * Returns null only when the document is unsafe to write: unclosed frontmatter
- * or an unclosed fence.
+ * The caret lands on the blank line, which is where the writing happens.
  */
-export function planSpark(input: SparkInput): InsertPlan | null {
-  const { source, index, now, options, selection, noteBasename, existingIds, selectionId } = input;
-  const { sourceRef } = input;
+export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence) return null;
 
-  const title =
-    selection === null
-      ? ""
-      : selection.text.replace(/\s+/g, " ").trim().slice(0, SPARK_TITLE_MAX);
+  const marker = formatMarker(1, nextChild(index, null), nextSeq(index), formatClock(now));
+  const text = `${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
+  return planAppendLine(source, text, marker.length + 1);
+}
 
-  const clock = formatClock(now, options.format);
-  // An empty title keeps the note's separator, so the title typed at the caret
-  // produces the same `time - title` line as every other dimension here.
-  const heading =
-    title === ""
-      ? // An empty separator would glue the title to the clock as soon as the
-        // writer starts typing, so the space stands in for it.
-        `# ${clock}${options.separator || " "}`
-      : formatHeading(1, clock, title, options.separator);
+/**
+ * A child entry one dimension deeper, directly under the parent's subtree.
+ *
+ * The siblings' `C` values are repaired in the same plan, so one undo reverses
+ * the insert and the renumbering together.
+ */
+export function planChildEntry(
+  _source: string,
+  index: EntryIndex,
+  parent: Entry,
+  now: Date
+): InsertPlan | null {
+  if (index.unclosedFrontmatter || index.unclosedFence) return null;
 
-  let mark = SPARK_GLYPH;
-  const changes: TextChange[] = [];
+  const marker = formatMarker(
+    parent.d + 1,
+    nextChild(index, parent),
+    nextSeq(index),
+    formatClock(now)
+  );
+  const blockEnd = endOfSubtree(index, parent);
 
-  if (sourceRef !== undefined) {
-    mark = sparkLine(sourceRef.target, sourceRef.label);
-  } else if (selection !== null && noteBasename !== "") {
-    const idPlan =
-      selectionId !== undefined
-        ? { id: selectionId, change: null }
-        : planSourceId(source, selection, existingIds);
-    if (idPlan.change !== null) changes.push(idPlan.change);
+  // Blank lines at the end of the subtree are spacing; the child goes under the
+  // last line the writer actually typed.
+  let anchor = blockEnd;
+  while (anchor > parent.line && (index.lines[anchor] ?? "").trim() === "") anchor -= 1;
 
-    mark = sparkLine(`${noteBasename}#^${idPlan.id}`, shortLabel(selection.text));
+  const at = (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
+  const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
+
+  const changes: TextChange[] = [{ from: at, to: at, text }];
+
+  const parentEnd = (index.lineStarts[blockEnd] ?? 0) + (index.lines[blockEnd] ?? "").length;
+  for (const change of renumberMarkers(index)) {
+    if (change.from >= parent.from && change.from <= parentEnd) changes.push(change);
   }
 
-  const plan = planAppendLine(source, `${heading}${NEWLINE}${mark}`, heading.length);
-  return { changes: [...plan.changes, ...changes], selection: plan.selection };
+  const caret = at + NEWLINE.length * 2 + marker.length + 1;
+  return { changes, selection: { from: caret, to: caret } };
+}
+
+/**
+ * Removes an entry and everything under it: the exact inverse of the block
+ * `planChildEntry` writes.
+ *
+ * The block runs from the marker to the end of its subtree, the blank separator
+ * lines below it go with it, and the surviving siblings' `C` values are repaired
+ * in the same plan, so one undo restores the whole subtree and the renumbering.
+ * The caret lands where the block was.
+ */
+export function planDeleteEntry(
+  source: string,
+  index: EntryIndex,
+  entry: Entry
+): InsertPlan | null {
+  if (index.unclosedFrontmatter || index.unclosedFence) return null;
+
+  const first = entry.line;
+  let last = endOfSubtree(index, entry);
+
+  // The blank separator lines below the block are spacing the block owned.
+  while (last + 1 < index.lines.length && (index.lines[last + 1] ?? "").trim() === "") last += 1;
+
+  let from = index.lineStarts[first] ?? 0;
+  const to = Math.min(source.length, from + index.lines.slice(first, last + 1).join(NEWLINE).length + 1);
+
+  // A block that ran to the end of the file also takes the blank line above it,
+  // so the file keeps exactly one trailing newline and no dangling blank line.
+  if (to === source.length && first >= 2 && (index.lines[first - 1] ?? "").trim() === "") {
+    from = index.lineStarts[first - 1] ?? from;
+  }
+
+  const changes: TextChange[] = [{ from, to, text: "" }];
+  // The survivors' `C` values are ordinals of the tree that remains, so they are
+  // computed on the deleted text and shifted back into the document as it is:
+  // every marker still needing a number sits below the block.
+  const shift = to - from;
+  const remaining = parseEntries(source.slice(0, from) + source.slice(to));
+  for (const change of renumberMarkers(remaining)) {
+    changes.push({ from: change.from + shift, to: change.to + shift, text: change.text });
+  }
+
+  const caret = Math.min(from, source.length - (to - from));
+  return { changes, selection: { from: caret, to: caret } };
+}
+
+/**
+ * Writes the duration line in place.
+ *
+ * A settled entry — a `+` line, or a line that carries no duration at all — is
+ * final: nothing is planned for it, whatever the sigil. An open entry is
+ * rewritten whenever the bytes would change, which the identical-text guard
+ * decides, so a pause that reaches the same second plans nothing. The selection
+ * is reported at the prose, because the caller keeps the live selection:
+ * rewriting a duration must not move the caret.
+ */
+export function planDuration(
+  _source: string,
+  index: EntryIndex,
+  entry: Entry,
+  sigil: DurationSigil,
+  ms: number
+): InsertPlan | null {
+  if (entry.durationLine === null || entry.state === "settled") return null;
+
+  const target = formatDurationLine(sigil, ms);
+  if ((index.lines[entry.durationLine] ?? "") === target) return null;
+
+  return {
+    changes: [{ from: entry.durationFrom, to: entry.durationTo, text: target }],
+    selection: { from: entry.proseFrom, to: entry.proseFrom }
+  };
 }
 
 /** Converts an absolute offset into a zero-based line/ch position. */
@@ -290,6 +207,19 @@ export function offsetToLineCh(source: string, offset: number): { line: number; 
   const before = source.slice(0, Math.min(Math.max(0, offset), source.length));
   const line = before.split("\n").length - 1;
   return { line, ch: before.length - (before.lastIndexOf("\n") + 1) };
+}
+
+/**
+ * A plan's changes in CodeMirror's own shape.
+ *
+ * CodeMirror reads `insert`, not `text`: a `TextChange` handed to a view as-is
+ * is a change with no text, so nothing is written and nothing throws. Every
+ * dispatch of a plan goes through here.
+ */
+export function cmChanges(
+  changes: readonly TextChange[]
+): { from: number; to: number; insert: string }[] {
+  return changes.map((change) => ({ from: change.from, to: change.to, insert: change.text }));
 }
 
 /** Applies a plan's changes to a source string; used by tests and previews. */

@@ -1,239 +1,176 @@
 # Weaver — surfaces
 
-Every control Weaver ships, the job it does, and the form it took: **11 commands,
-4 settings groups and 4 surfaces** — the strip, the Tapestry tab, the shuttle and
-the weave row — plus travel and the marks themselves.
+Four surfaces, and one rule: **the note is the record, the cards are the work and
+the navigation, the settings are the look.** Everything else was removed in 0.4.0 —
+the status strip, the Tapestry, the shuttle, the weave row, the draft blocks and
+the in-page markers duplicated one of these. The entry palette is the one surface
+0.5.0 added, and it writes only what `⏎`, `n` and `x` write.
 
 ## One verb per intent
 
-| id | Name | Chord | What it does |
-| --- | --- | --- | --- |
-| `spark` | Spark | `Mod+Shift+K` | A 1D dimension plus `✦` at the tip of the target note; the caret lands in the title and the note is revealed. |
-| `insert-heading` | Insert dimension | `Mod+Shift+J` | Writes at the caret's site, one level under its parent; the caret lands in the title. |
-| `open-composer` | Weave rows | `Mod+Shift+L` | The inline row; `⌘⏎` weaves N rows in one edit. |
-| `new-draft` | Start a draft at the cursor | `Mod+Shift+D` | Opens a `⟪draft …⟫` block at the cursor. |
-| `weave-draft` | Weave the draft at the cursor | — | Draft → dimension, in one undo. |
-| `load-shuttle` | Shuttle | `Mod+Shift+G` | Loads the caret's context, then opens the palette. |
-| `return` | Return to source | `Mod+Shift+Enter` | Jumps to the `✦` source of the spark above the caret, and back. |
-| `close-day` | Close the day | — | `✓ HH:mm`, recomputed counters, a toast naming the time. |
-| `tapestry` | Open Tapestry | `Mod+Shift+T` | The tab, at a scope. |
-| `open-draft-search` | Search open drafts | — | Cross-note draft search. |
-| `travel` | Travel through dimensions | `Mod+Shift+P` | Keyboard walk of the note's own dimensions. |
+| Intent | Verb | Where |
+| --- | --- | --- |
+| Begin | `⌘⇧E` *Start an entry* | anywhere, including inside an editor, Reading view, and no note at all |
+| Go deeper by hand | `⌘⇧J` *Insert a child entry* | the caret's entry |
+| Finish this entry | `⏎` | the open entry the caret is in, on every platform |
+| Go deeper | `⏎` again, on a settled entry | the settled entry the caret is in |
+| Work a list | `⌘⇧P` *Entry palette* | anywhere; it shows today's note |
+| Make a newline | `⇧⏎` or `weaver:line-break` | the caret, in any entry |
+| Go somewhere else | `⌘⇧⏎` *Travel to a draft* | anywhere |
+| End the day | *Close the day* | anywhere |
 
-Travel is kept deliberately: it is the only keyboard walk of the note's own
-dimensions and the established navigation vocabulary (previous/next,
-shallower/deeper). Everything else that duplicated a surface is gone — the
-sibling-above insert, the second shuttle verb, the ribbon icons, the breadcrumb
-bar, the gutter lane, the mobile floating button and the palette-recalculation
-command whose button now lives in Settings.
+`⏎` is two-way and stateless. In an open entry — `-` being written or `=` paused —
+it settles the duration to `+` and stops the clock, and nothing else moves. In a
+settled entry it opens a child one dimension deeper with the caret in that child's
+prose. Nothing is remembered between presses, so `⏎` on yesterday's `+` entry
+descends too. Every non-entry line is Obsidian's, as is every key Vim's normal mode
+owns; Obsidian's own newline inside an entry is `⇧⏎`, and on a phone — where a soft
+keyboard has no `⇧⏎` — `weaver:line-break` is the newline the toolbar can host.
+
+`⌘⇧E` is bound twice on purpose. The command covers the caret that is not in an
+editor; inside an editor CodeMirror's own keymap takes the same chord at
+`Prec.highest`. It is `⌘⇧E` and not `⌘⏎` because Obsidian's core *Open link under
+cursor in new tab* owns `⌘⏎` and its scope runs in the document's capture phase,
+so no plugin keymap — at any precedence — ever sees that chord.
 
 ## The audit
 
-Every control from `0.2.0`, with its shipped state.
+Every surface must answer three questions; one that cannot is not a surface.
 
-| Control | Intended job | Shipped state |
-| --- | --- | --- |
-| `weaver:insert-heading` | Add a timestamped dimension under the cursor's section. | **Becomes an immediate insert.** Named *Insert dimension*; it writes the dimension where the caret is and leaves the caret in the title, so the note is the only authoring surface. |
-| `weaver:append-h1` | Start a thread at the end of this note. | **Retired**, folded into `weaver:spark` with the *This note* target. Nothing claims its chord. |
-| `weaver:insert-sibling-above` | Add an empty dimension above the current one. | **Deleted.** It was a second way to write the same line, and the only command whose result did not put the caret where you type. |
-| `weaver:open-composer` | Compose several dimensions and land them in one edit. | **Kept, narrowed.** Named *Weave rows*: one row shape (level + title), `⌘⏎` commits, the footer reads `type a title to weave` until there is something to commit. |
-| `weaver:new-draft` | Start an unfinished dimension at the cursor. | **Unchanged.** The id stays, because Obsidian stores user hotkeys against it. |
-| `weaver:weave-draft` | Turn the draft at the cursor into a dimension. | **Unchanged**, and it now says `Weaver: no draft at the cursor.` instead of returning silently. |
-| `weaver:open-draft-search` | Find a draft in another note. | **Unchanged.** |
-| `weaver:travel` | Walk the note's dimensions and drafts from the keyboard. | **Unchanged.** Its two settings moved to Advanced. |
-| `weaver:open-panel` | Show the control panel. | **Becomes `weaver:tapestry`**, a tab of its own at four scopes; the phone gets the sheet. |
-| `weaver:load-shuttle` + `weaver:shuttle` | Load a source, then show what is loaded. | **One verb.** Loading is not a separate stop on the way to the palette. |
-| `weaver:recalculate-palette` | Re-measure the vault's deepest dimension. | **Becomes a button** in Settings → Advanced, next to the depth it measures. |
-| `weaver:toggle-gutter-rail` / `weaver:toggle-breadcrumbs` | Show or hide an orientation lane / context bar. | **Deleted with their surfaces.** The strip names the chain, so a second reading of it had no job left. |
-| Ribbon icons | Discover the gutter rail and the panel. | **Deleted.** The command palette and the strip are the entry points. |
-| Mobile floating button | Reach six commands from the corner of a phone. | **Deleted** with its three settings: the same commands are on the mobile toolbar and in the sheet. |
-| Settings tab | Configure the surfaces. | **Four groups, 23 settings** (below). |
+1. **What does it write?** The note says exactly. A surface that writes nothing
+   says so, and a surface that writes something says what.
+2. **What happens if it is wrong?** One undo reverses any single action: a plan is
+   one transaction, including the sibling renumbering that an insert causes.
+3. **What does it show when there is nothing?** Travel says
+   `Weaver: no drafts to travel to.` and writes nothing. Insert says
+   `put the cursor in an entry first. Nothing was written.` and writes nothing.
 
 ## Surface specs
 
-### Strip
+### The entry, in the editor
 
-**Purpose.** Answer "where am I, and what is unfinished" in one line, without a
-click and without a panel.
+- The marker line and the prose lines carry `--weaver-dcolor` and `--weaver-d`, so
+  the stylesheet needs no per-level rule: colour and indent are one `calc()`.
+- The marker keeps its text. Only its runs are marked up: digits are
+  `.weaver-dcn-num` (white in both themes), punctuation `.weaver-dcn-ink` (the
+  dimension's colour). The line therefore stays typable.
+- The duration line is a block widget while the selection is elsewhere, and raw
+  text while the selection touches it. Both come from a `StateField` — a block
+  widget from a plugin throws.
+- The widget ticks itself whenever the session is live, whatever sigil the file
+  holds: while writing, the line reads `-` whether the file says `-` or not. It
+  mutates the three `.weaver-duration-num` spans every second and nothing else, so
+  there is no transaction, no re-render and no undo entry.
+- Its `eq` ignores the elapsed time, so a refresh after a keystroke finds the same
+  widget and leaves the DOM alone; the sigil, the liveness and the colour are
+  repainted in place by `updateDOM`. The line's top stays identical to the pixel
+  across a run of insertions — that hop was the old per-keystroke redraw.
+- The ticker belongs to the element, not to the widget instance: CodeMirror calls
+  `updateDOM` on the *new* widget while the previous instance may still hold an
+  interval, and one writer per element is what keeps the digits from counting
+  twice.
+- The two `.weaver-duration-ink` colons are separate spans because they take the
+  dimension's colour while the digits stay white.
+- The widget is `display: block` with 6 px of bottom padding: a span cannot take
+  vertical padding, and that padding is the only air between the stopwatch and
+  whatever follows it.
+- A marker line whose selection touches it gets `.weaver-entry-head-raw`.
+- On a past-day note, ` - [[2026.10.26]]` is rendered after the clock and is never
+  written to the file.
 
-**Composition.** One line above the editor: the ancestor chain and the current
-dimension, then the flags that are actually set, in order —
-`1D Breaking Free ▸ 2D Why now · 1 untitled · 2 drafts · closed 21:29`. A day
-with nothing recorded reads `Tue 27 Oct · no marks yet`; a day that has marks but
-whose caret is above the first dimension reads just its date. It carries no spark
-or dimension totals — the Tapestry's census owns those. It never scrolls with the
-text and it is never a modal.
+### The entry, in Reading view
 
-**Keys.** Click or tap the strip: it opens the Tapestry at the matching scope —
-Day on the day note, Note everywhere else.
+The same shape, from a post processor: a `<p>` starting with a marker becomes
+`div.weaver-entry-head` with the same span split; each following sibling becomes
+`.weaver-entry-prose` until the next head or duration paragraph; a `<p>` that is
+only a duration becomes `div.weaver-duration`. No wrapper is inserted, so margins
+do not move, and inline markup inside the prose is untouched.
 
-**States.** Day, closed day, empty day, other note, and hidden (no Markdown view).
+### The entry palette
 
-**Touch.** The same line, pinned at the top of the note pane, ellipsized rather
-than wrapped; the innermost chain segment survives; a tap opens the sheet.
+- Self-mounted overlay with the travel card's geometry (`.weaver-travel-modal` for
+  position, its own `.weaver-palette-card`), and the same refusal of a `Scope`.
+- Rows are today's entries in document order: `D.C.N`, clock, title, `+N` children,
+  and `+` settled or `→` open. The selection starts on the entry the caret is in,
+  or the one directly above it.
+- `⏎` settles the selection and descends under it, `n` appends a root at the tip,
+  `x` deletes the selection's whole subtree in one undoable transaction. `n` and
+  `x` are commands only while the query is empty and no filter is locked: the key
+  event is left alone otherwise, so a bare letter reaches the input.
+- The query is the travel grammar — `1`, `1.2`, `.14`, `1.2.14` — from the same
+  `parseDcnQuery`/`filterRows` pair, locked with `⏎`. `Esc` clears the query, then
+  the filter, then closes and leaves the CM caret on the selection's prose.
+- Every action re-reads the index from the live document: the card never caches a
+  line number across a write.
+- Opening pauses the stopwatch, like the travel card.
 
-### Tapestry
+### The travel card
 
-**Purpose.** Show what exists and what is unfinished, at four scopes, without
-becoming a second place to write prose.
+- Self-mounted overlay, centred with `transform: translate(-50%, -50%)` from the
+  note pane's rect (the visible viewport on a phone), re-measured on resize, on
+  `visualViewport` changes and on `layout-change`.
+- **It never takes a `Scope`.** A scope is what swallowed `⌘,`; here any chord with
+  `⌘`/`⌃`/`⌥` is ignored before `preventDefault`.
+- Composition: query input, day chips (`2026.10.26 · 3`), rows
+  (`.weaver-travel-dcn` + clock + title), one hint line. Rows and chips are
+  `<button>`s, so touch works with no keyboard.
+- A locked filter regroups both axes: `←`/`→` walk only days that hold a match,
+  `↑`/`↓` walk the matches inside the current day.
+- Opening pauses the stopwatch. Travelling closes the card, focuses the editor and
+  sets the travel target; it does **not** start the session.
 
-**Composition.** One tab. Scope chips `Note · Day · Month · All` and the Spark
-target toggle (`Today` / `This note`, saved on change) in the header, then that
-scope's sections in one grid — `repeat(auto-fit, minmax(320px, 1fr))`, so two
-columns at width and one in a narrow window, with no measurement code. `Threads`
-(each row: numeral, `HH:mm` + title, child count, `✦` when a source is recorded),
-`Census`, `Review`, `Drafts`, `Dimensions` (note scope only), `Calendar` (Month and
-All), and `Past horizon` (All). Note scope shows Dimensions and Drafts; Day scope
-shows Threads, Census, Review and today's Drafts; Month and All show Census, the day
-totals and the calendar. Nothing else renders in a scope.
+### The travelled entry
 
-**Review** names what is unfinished, and every pending row is a button that leads
-somewhere: `n drafts, unwoven` → Note scope, `n loaded, not yet woven` → the
-shuttle, `n sparks untitled` → the first untitled 1D in the day note. With nothing
-pending the first row reads `Nothing pending.` `last mark HH:mm` and `closed HH:mm`
-are plain rows. Closing the day does not open anything: the strip flips to
-`closed HH:mm` and the toast names the time.
+`.weaver-travel-rect` is an absolutely positioned overlay inside the editor,
+measured from `coordsAtPos` over the entry's prose lines. No padding, no border on
+lines, no margins — turning it on moves nothing. It re-measures on scroll because
+it lives outside the scroller, and it hides when the target's `N` is not in the
+document.
 
-**Keys.** `Tab` cycles focus between the two lists in note scope and walks out of
-the panel; `↑`/`↓` or `j`/`k` move a list's cursor; `Home`/`End` reach its ends;
-`↵` opens the row; `/` focuses that list's filter; a typed letter starts a filter.
-In day scope there is exactly one cursor, over Threads.
+### The close mark
 
-**States.** One registered view, read-only, writing nothing: browsing every scope
-must leave the vault unchanged. An open Tapestry is re-scoped and revealed rather
-than duplicated. Month scope shows 12 weeks, All scope 53.
-
-**Touch.** A bottom sheet with the same scope chips, the sections stacked, and 44px
-rows; no cursors, no filters, every row a tap target.
-
-### Shuttle
-
-**Purpose.** Keep the sources you grabbed available while you write, without
-writing anything into the vault.
-
-**Composition.** A floating palette: header `Shuttle · 3 loaded`, rows showing the
-source kind glyph (`✦` dimension, `▸` note, `❝` words), the short label, and the
-day it was loaded. A row that has been woven in shows its use count as `·2`.
-
-**Keys.** `↑`/`↓` or `j`/`k` move; `↵` weaves the source in at the caret; `⌥↵`
-opens the source; `⌫` unloads; `/` filters; `Esc` closes. Weaving in keeps the row
-and bumps its use count; only `⌫` unloads. Empty state: `Nothing loaded. Grab a
-source with ⌘⇧G.`
-
-**States.** Loaded, filtered, empty, and woven-in-but-retained. A successful load
-says nothing beyond the palette opening with the row at the top; the toast is
-reserved for `Weaver: nothing to load.` The shuttle persists across restarts as
-plugin data, is device-local, is never synced into the vault, and is never counted
-as evidence.
-
-**Touch.** A bottom sheet above the keyboard with the same four verbs; `⌫` becomes
-a swipe-left on a row plus a visible `×`.
-
-### The weave row
-
-**Purpose.** Record several dimensions at the caret, in the note you are already
-in, without a modal over the text.
-
-**Composition.** At the caret, no overlay: a block widget above the insertion line
-holds one row per dimension — `◂ 1D ▸` and a real title field — and a footer with
-the Weave button and the hint `⌘⏎ weave · Esc cancel`. Drafts keep their existing
-`⟪draft⟫` markers; a draft is edited in place, not through this widget.
-
-**Keys.** `⏎` adds a row, `⌘⏎` (or `⌥⏎`) weaves every non-empty row in one edit,
-`⇥` moves to the level stepper, `◂`/`▸` step the level within the configured
-depth, `Esc` cancels with the document untouched.
-
-**States.** Empty (Weave disabled, footer `type a title to weave`), typing, and
-committed. The widget never writes except as the single commit transaction, so
-cancelling leaves the note byte-identical and every commit is one undo.
-
-**Touch.** The same row, kept above the keyboard, with the level stepper as tap
-targets.
-
-### Marks
-
-**Purpose.** Show what has happened, without turning events into structure.
-
-**Composition.** A `✦` line renders as a chip in Reading view and as a banded line
-in Live Preview (`--background-secondary`, a faint left rule, monospace); the
-closing mark `✓ HH:mm` renders as muted text in both.
-
-**Keys.** None of their own. In Live Preview only a line class is added, so the
-glyph stays typable and a `[[link]]` inside a `✦` line stays clickable.
-
-**States.** Present or absent. None of these are headings and none enter the
-census as dimensions: a `✦` line inside frontmatter, inside a fenced code block or
-inside a `⟪draft⟫` block is not a mark at all.
-
-**Touch.** The same two states; the band carries the emphasis a hover card used to.
-
-### Travel
-
-**Purpose.** Move through the note's dimensions and drafts from the keyboard
-without editing.
-
-**Composition.** The bottom travel bar on phones and the key set elsewhere.
-
-**Keys.** `1`–`9` level filter, `0`/`a` all, `↑`/`↓`/`j`/`k` move,
-`←`/`→`/`h`/`l` parent or first child, `g`/`G` or `Home`/`End` first or last,
-`Tab` headings or drafts, `Enter`/`Esc`/`q` leave at the current target.
-
-**States.** Inactive, active over dimensions, active over drafts.
-
-**Touch.** The bottom travel bar: Headings/Drafts toggle, level chips,
-up/down/Done, parent/child.
+`✓ HH:MM:SS` is banded in Live Preview (line decoration) and muted in Reading view
+(paragraph class). It is never an entry and never enters `travels`.
 
 ## Settings
 
-Four groups, 23 settings. It is the whole configuration surface.
-
-| Group | Settings |
-| --- | --- |
-| Writing | `timestampFormat`, `timestampSeparator`, `maxDepth` |
-| Day | `sparkTarget`, `writeDayCounters`, `dayNoteFolder`, `dayNoteFormat` |
-| Look | `equalizeHeadingSizes`, `headingSize`, `headingLevelSizes`, `headingWeight`, `indentStep`, `mobileIndentStep`, `indentMaxLevel`, `colorMode`, `paletteTransitionMs`, `deepHeadingLivePreview`, `deepHeadingReadingView`, `portEmphasisColors`, `inPageDrafts` |
-| Advanced | `travelDefaultLevel`, `travelWrap`, `debug`, plus the vault-depth rescan row |
+Twelve settings in four groups. **Writing** is the note's own convention, **Day**
+is where the day note lives, **Look** is how the note is drawn, **Advanced** is the
+past-day link and logging. There is no palette mode, no depth cap, no per-level
+size field and no travel default level: colour is a function of `D` alone, and the
+travel card always starts at the first day holding a draft.
 
 ## Mobile matrix
 
-| Surface | Pointer | Touch |
+| Surface | Desktop | Phone |
 | --- | --- | --- |
-| Strip | One line above the editor; click opens the Tapestry at the matching scope. | One line pinned at the top of the note pane; tap opens the Tapestry sheet. |
-| Tapestry | A tab with scope chips, filters and two list cursors. | Bottom sheet, same scope chips, sections stacked, 44px rows. |
-| Shuttle | Floating palette with filter input and single-key verbs. | Bottom sheet above the keyboard, same four verbs, swipe-left plus a visible `×` to unload. |
-| Weave row | Block widget above the caret with a real title field and stepper keys. | Same row, kept above the keyboard, level stepper as tap targets. |
-| Marks | Banded `✦` line while writing, chip in Reading view, muted `✓` line. | The same three readings. |
-| Travel | Keyboard walking with the travel bar hidden on desktop. | The bottom travel bar with level chips and Done. |
+| Entry | mono marker, digits white, punctuation coloured | same, with `--weaver-indent-step-mobile` |
+| Duration | block widget, ticks while live | same, pinned to the bottom of the writing band after each keystroke |
+| Travel card | centred in the pane, 420 px | full width − 24 px, rows ≥ 44 px, centred on the visible viewport |
+| Entry palette | same geometry, travel's row and query rules | same, rows ≥ 44 px, centred on the visible viewport |
+| Travel keys | arrows, `⏎`, `Esc` | same keys plus tap targets; the soft keyboard never covers the selected row |
 
-No surface ships phone-less: each one is designed twice, in the same vocabulary.
+The phone pinning runs one pure decision — `shouldPinStopwatch` — that requires all
+four of: a phone, the live session, the caret on the entry's last prose line, and a
+duration line to pin. Moving the caret into the middle of a long entry scrolls
+nothing.
 
 ## Record formats
 
-The contract every surface reads and writes. It is stated once here so that no
-screen invents its own shape.
+```markdown
+{ 1.1.1 } - 16:10:00
+the first prose line is the title, the rest is the entry
++ 00:04:12
+```
 
-- **Day note frontmatter** written by the plugin: `date: YYYY-MM-DD`, `sparks: <n>`,
-  `dimensions: <n>`, `sources: <n>`. Recalculated from the note and written only
-  when a value changes. There is no `opened_at`, no `closed_at`: opening a day is
-  not an event, and closing is a mark in the note.
-- **Spark**: `# <HH:mm> - <Title>` in the day note, then the first body line
-  `✦ [[<note>#<HH:mm - Title>|<HH:mm Title>]]`, optionally followed by ` - <why>`.
-  A spark without a recorded source is a bare `✦` line and still counts as a spark.
-  A spark with no title yet (`# <HH:mm> - `) is a legal record: it counts as
-  untitled, is named `Untitled` by the strip and Review, and is never auto-repaired.
-- **Words**: `^<id>` appended to the end of the referenced line. Never on its own
-  line.
-- **Closing**: `✓ <time>` on its own line, never a heading, where `<time>` uses the
-  note's timestamp format, so `✓ 23:41` or `✓ 23:41:07`. A day carries at most one
-  closing mark; the last one wins on read, and a second close is refused with a
-  notice that ends `Nothing was written.`
-- **Drafts**: the `⟪draft L.O YYYY-MM-DD HH:mm:ss⟫ … ⟪/draft L.O⟫` pair, unchanged.
-- **Counting**: `sparks` = 1D dimensions in the day note; `dimensions` = all
-  dimensions in the day note; `sources` = `✦` lines carrying a link. `untitled` is
-  derived from the note (1D dimensions with an empty title) and is never written to
-  frontmatter. The counters are written after every mutation of the day note —
-  spark, dimension, weave, close — and after a two-second-debounced `modify`, and
-  only when a value changed.
-- **Block ids** are six characters from `a-z0-9`, unique within the file, appended
-  as ` ^<id>` to the end of the referenced line, reusing an existing trailing id
-  rather than adding a second one.
+- Marker: `{ D.C.N } - HH:MM:SS`, matched as a prefix. `{1.2.3}-13:27` reads as
+  13:27:00. A marker in frontmatter or a fenced block is text.
+- Prose: everything after the marker up to the next marker or duration line,
+  trimmed of blank lines at both ends.
+- Duration: `[+-=] HH:MM:SS`, the same shape as the marker's clock. `-` is open and
+  being written, `=` is open and paused, `+` alone is settled. Minutes and seconds
+  are `0–59`, hours unbounded, and the field is the only mutable part of an entry.
+  A settled entry is never rewritten.
+- Frontmatter: `date`, `travels`, `depth`, `duration`. Written only when a value
+  changes.
+- Close: `✓ HH:MM:SS`, at most one per day.

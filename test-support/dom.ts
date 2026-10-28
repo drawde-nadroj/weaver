@@ -107,6 +107,8 @@ export class ShimElement {
   offsetTop = 0;
   scrollTop = 0;
   scrollHeight = 0;
+  selectionStart = 0;
+  selectionEnd = 0;
 
   get childNodes(): ShimElement[] {
     return this.children;
@@ -264,7 +266,10 @@ export class ShimElement {
 
   focus(): void {}
   blur(): void {}
-  setSelectionRange(): void {}
+  setSelectionRange(start = 0, end = start): void {
+    this.selectionStart = start;
+    this.selectionEnd = end;
+  }
   scrollIntoView(): void {}
   setPointerCapture(): void {}
   releasePointerCapture(): void {}

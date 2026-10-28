@@ -102,7 +102,15 @@ export function resolveDayNote(
 
 /** The frontmatter a brand-new day note carries, and nothing else. */
 export function dayFrontmatter(day: string): string {
-  return ["---", `date: ${day}`, "sparks: 0", "dimensions: 0", "sources: 0", "---", ""].join("\n");
+  return [
+    "---",
+    `date: ${day}`,
+    "travels: 0",
+    "depth: 0",
+    "duration: 00:00:00",
+    "---",
+    ""
+  ].join("\n");
 }
 
 /**

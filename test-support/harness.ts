@@ -79,6 +79,7 @@ export function rerenderCount(view: MarkdownView): number {
 export interface RegisteredCommand {
   id: string;
   name?: string;
+  icon?: string;
   hotkeys?: Array<{ modifiers: string[]; key: string }>;
 }
 

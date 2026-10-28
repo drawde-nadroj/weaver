@@ -1,157 +1,144 @@
 # Weaver — user flows
 
-Ten flows, each with the five fields that make it executable: what starts it, what
-the person does, what lands on disk, what can go wrong, and what it looks like on a
-phone. "Written" is the honest disk result — when a flow writes nothing, it says so.
+Each flow states what it writes, what one undo reverses, and what happens when
+there is nothing to do.
 
-## Flow: Open a day
+## Flow: start an entry
 
-**Trigger.** You open today's note, or the core Daily Notes plugin creates `Chronomancer/YYYY.MM.DD.md` for the first time.
+1. `⌘⇧E`. Today's note is created if it does not exist; otherwise it is opened.
+2. An empty root entry is appended at the tip: `{ 1.k.m } - HH:MM:SS`, one blank
+   prose line, `- 00:00:00`, and the caret on the blank line.
 
-**Steps.**
-1. Open the day note, or run *Open today's daily note*.
-2. The strip reads the note and names the dimension the caret is in, then what is unfinished: `1D Breaking Free ▸ 2D Why now · 1 untitled · 2 drafts`.
-3. Read, or start writing at the tip.
+Writes: the marker, the duration line, and (when it is created) the frontmatter
+block. Undo: one step, the whole entry. Already on screen: the write goes through
+the editor, so the undo is the editor's own; otherwise through `Vault.process` and
+the note is revealed in a tab of its own — never replacing the tab you are in.
 
-**Written.** nothing — opening a day records no event about you.
+## Flow: write
 
-**Failure.** No day note exists: the Tapestry's Day scope offers to create it, and creating it writes only the frontmatter block. The ingest day note under `Autonomic Ingest/` exists while the human one does not: the strip and the Tapestry read the human note and report `no marks yet` rather than importing ledger rows.
+1. Type. Your own input in the entry starts the session with the draft's stored
+   duration as the baseline. The vault reloading a note, and Weaver's own writes,
+   start nothing: an entry nobody has typed in has no time in it.
+2. The rendered duration reads `- HH:MM:SS` and ticks; the file still says
+   `- 00:00:00`.
 
-**Touch.** The strip is pinned above the note; a tap opens the Tapestry sheet at Day scope.
+Writes: nothing until the writing stops. The ticking widget mutates its own digit
+spans, so no transaction and no undo entry is created by the clock.
 
-## Flow: Spark
+## Flow: pause
 
-**Trigger.** *Spark* (`Mod+Shift+K`) with text selected, with the caret inside a dimension, or with no selection at all.
+1. Stop writing. Every interruption of writing is a pause: a caret move that is not
+   a document change (an arrow key, a click, a tap), a blur of the editor, a wheel
+   or a finger on the note, another leaf becoming active, the app hidden, the
+   travel card or the palette opening, and the live entry being deleted.
+2. The clock stops and the entry's line becomes `= HH:MM:SS`.
 
-**Steps.**
-1. Select the passage that caused the thought, or put the caret where the thread starts.
-2. Run *Spark*. A new 1D dimension is written at the Spark target.
-3. Type the title in the note itself; the caret is already at the end of the title line.
+Writes: the duration line of the entry the clock was on, through the editor when
+the note is on screen and through `Vault.process` otherwise (re-read first, skipped
+if the entry is gone). Nothing is written when the second has not changed — that
+guard is why a caret move costs at most one rewrite per second. Not added to the
+undo history: a pause is not an edit you asked for.
 
-**Written.** The target note gains `# <HH:mm> - <Title>` and, beneath it, a source line: `✦ [[<note>#^<id>|<alias>]]` when you spark from a selection, and a bare `✦` line when you do not. A selection in another note also gains ` ^<id>` at the end of its last line, so sparking from a selection into Today writes to two files: the source gets the id, the day note gets the thread. The day note's counters are rewritten in the same pass.
+Refused, silently, when the entry has been deleted or settled in the meantime.
 
-**Failure.** Spark target changed mid-edit: the resolved target at the moment of the command is the one used, and the notice names it. A source file that has become read-only leaves the id unwritten and the notice says the spark was recorded without a source. A day note that cannot be created (read-only vault, sync lock) fails with "today's day note could not be found" and writes nothing at all — there is no silent fallback to the current note.
+## Flow: settle, then descend
 
-**Touch.** Select with the native handles, then *Spark* from the sheet; the day note opens under your thumb with the caret on the title.
+1. `⏎` in an open entry — `-` being written or `=` paused.
+2. The duration becomes `+ HH:MM:SS`, the session ends, and nothing else moves: no
+   child, no caret.
+3. `⏎` again, on that settled entry: a child opens one dimension deeper, directly
+   beneath it, with the caret in its prose. It becomes the travel target, so the
+   outline moves with the caret.
 
-## Flow: Load the shuttle
+Writes: the duration (one transaction), then the child's marker plus the sibling
+`C` renumbering it disturbs (a second transaction). Each is undoable on its own.
+The child's own line reads `- 00:00:00`, and its stopwatch does not start until the
+first keystroke.
 
-**Trigger.** *Shuttle* (`Mod+Shift+G`), from a selection, a dimension or a note.
+A settled entry is final: `⏎` there descends, it never rewrites the `+` line.
+Refused (nothing written, `⏎` not handled) only when the caret is not in an entry.
+The rule is stateless, so `⏎` in yesterday's `+` entry descends too, and a stray
+`⏎` while reading leaves an empty child that `x` or one undo removes.
 
-**Steps.**
-1. Select a passage, or put the caret inside a dimension, or open the note you want.
-2. Run *Shuttle*. The context is loaded and the palette opens with the new row at the top, its header counting what is held.
-3. Optionally run it again with another source.
+## Flow: insert a child
 
-**Written.** nothing — the shuttle is session state, and the vault is unchanged.
+1. Put the caret in an entry, `⌘⇧J`.
+2. A child appears at the end of that entry's subtree: `D+1`, the next child
+   ordinal, the next sequence, a blank prose line and `- 00:00:00`.
 
-**Failure.** No active file and no selection with an empty palette: `Weaver: nothing to load.` and nothing is loaded. A successful load says nothing else: the open palette is the acknowledgement, so there is no toast over the row it describes. Loading the same target twice moves the row to the front instead of adding a duplicate, so the count reflects distinct sources; loading a 51st distinct source drops the oldest row.
+Writes: the child and, in the same transaction, the sibling `C` renumbering it
+disturbs. Undo: one step.
 
-**Touch.** The same command from the sheet; the palette is a bottom sheet above the keyboard.
+Refused with `put the cursor in an entry first. Nothing was written.` when the
+caret is not inside an entry — a note with no entries at all gets no entry from
+this command; *Start an entry* is the one that begins a note.
 
-## Flow: Weave in a loaded source
+## Flow: work today's entries from one card
 
-**Trigger.** `↵` on a shuttle row, with the caret in the note.
+1. `⌘⇧P`. Today's note is opened in source mode if it is not on screen, and the card
+   lists every entry in document order, the caret's entry selected.
+2. `↑`/`↓` select; `⏎` settles the selection and opens a child under it; `n` starts a
+   root at the tip of the day; `x` deletes the selection's whole subtree.
+3. Typing `1`, `1.2`, `.14` or `1.2.14` and pressing `⏎` locks that filter and puts
+   the selection on the first match. `Esc` clears the query, then the filter, then
+   closes and leaves the caret on the selection's prose.
 
-**Steps.**
-1. Open the shuttle (`Mod+Shift+G`) and move to the row.
-2. Press `↵`. The reference is inserted at the caret in the form the source kind dictates.
-3. Keep writing around it.
+Writes: one transaction per action — the settle, the child, the root, the deletion
+with its renumbering. Undo: one step each.
 
-**Written.** One reference form lands in the note: `[[<note>]]` for a note, `[[<note>#<HH:mm - Title>|<HH:mm Title>]]` for a dimension, `[[<note>#^<id>|<short alias>]]` for words — the last of which also appends ` ^<id>` to the end of the referenced line, reusing a trailing id rather than adding a second one.
+`n` and `x` are commands only while the query is empty and no filter is locked, so a
+bare letter is never eaten out of a number being typed. An unparseable query is not
+a command: the card stays open with the text intact. `x` asks for no confirmation —
+the row's `+N` child count is the whole blast radius, and one undo brings it back.
 
-**Failure.** The source was deleted or renamed: the link is still inserted (a link to a note that no longer exists is honest evidence of what you meant), and opening it later creates the note rather than failing silently. A caret inside a fenced code block or unclosed frontmatter refuses with the close-the-block notice and writes nothing.
+## Flow: travel
 
-**Touch.** `↵` is a tap on the row; the palette stays open so a second source costs one more tap.
+1. `⌘⇧⏎`. The card lists every draft in the day-note folder, by day.
+2. `←`/`→` move between days, `↑`/`↓` between drafts. Typing `1`, `1.2`, `.14` or
+   `1.2.14` and pressing `⏎` locks that filter; `Esc` clears it, a second `Esc`
+   closes.
+3. `⏎` on a draft opens its note, switches the leaf to source mode if it was in
+   preview, puts the caret in the prose, and outlines the entry.
 
-## Flow: Deepen a thread
+Writes: nothing. Opening the card pauses the clock, which may write a `= `
+duration — that is the only write, and it is the pause you would get by leaving the
+note anyway. `⌘,` and every other Obsidian chord still reach the app while the card
+is open.
 
-**Trigger.** *Insert dimension* (`Mod+Shift+J`), *Start a draft* (`Mod+Shift+D`), or *Weave rows* (`Mod+Shift+L`).
+Empty: `Weaver: no drafts to travel to.` and nothing on screen. A day whose entries
+are all settled — `+` — has nothing to travel to.
 
-**Steps.**
-1. Put the caret in the thread you want to deepen.
-2. *Insert dimension* writes one dimension at the caret's own site, one level below its parent and capped at the configured maximum depth, and puts the caret in the title: you type it in the note.
-3. *Weave rows* opens the inline row instead. `⏎` adds another row, `⌘⏎` weaves them all, `Esc` cancels.
+## Flow: close the day
 
-**Written.** One dimension line per committed row, all inside a single transaction, so one undo removes the whole commit. A draft writes the `⟪draft⟫` pair instead and becomes a dimension only when woven. Nothing is written before the commit, so cancelling leaves the file byte-identical.
+1. *Close the day* on today's note.
+2. `✓ HH:MM:SS` is appended at the tip.
+3. If *Write day counters* is on, `travels`, `depth` and `duration` are recomputed
+   from the note in the same write.
 
-**Failure.** Every row empty: the Weave button is disabled and the footer reads `type a title to weave` — preventing the empty commit rather than refusing it afterwards. Unclosed frontmatter or an unclosed code block: refused with the matching notice, which ends `Nothing was written.` A level above the maximum depth is clamped, never written out of range. In Reading view the command refuses with `Weaver: this needs an editable note. Nothing was written.`
+Writes: the mark and, when a value changed, the frontmatter. Undo: one step.
 
-**Touch.** The same row above the keyboard; the level stepper is two tap targets.
+Refused when the day already carries a mark (`this day is already closed`), when
+the frontmatter is unclosed, or when a code block is unclosed. The first decision
+stands.
 
-## Flow: Return
+## Flow: read a day back
 
-**Trigger.** *Return to source* (`Mod+Shift+Enter`) with the caret inside a spark that records a source.
+Nothing is written. The note itself is the view: digits white, punctuation in the
+dimension's colour, durations as they were settled, and `- [[day]]` after the clock
+on any note that is not today's.
 
-**Steps.**
-1. Put the caret in a spark.
-2. Run *Return to source*. The reading position jumps to the `✦` source.
-3. Run it again to come back to where you were writing.
+## Flow: phone capture
 
-**Written.** nothing — the return place is session state.
+1. `⌘⇧E` from the mobile toolbar. The note opens with the caret in the new entry.
+2. Type: after every keystroke the duration line is pinned to the bottom of the
+   writing band above the soft keyboard, with the caret line directly above it.
+3. Scroll up without typing: the view stays where you put it, and the scroll itself
+   pauses the clock. Tap back into the last prose line and type again: the clock
+   resumes from that second and the stopwatch comes back to the bottom.
+4. `⏎` settles the entry and opens nothing; the newline is `weaver:line-break` in the
+   toolbar, since a soft keyboard has no `⇧⏎`.
+5. `⌘⇧⏎` and `⌘⇧P` open their cards at the visible viewport centre; rows are at
+   least 44 px and the soft keyboard never covers the selected row.
 
-**Failure.** The spark has no `✦` line: `Weaver: this spark has no source. Nothing was written.` and nothing moves. The source was deleted: the link opens as a new empty note, and no return target is stored from the spark itself. The caret is above the first 1D dimension: the same no-source notice, because there is no spark to return from.
-
-**Touch.** The `↩` mark on the spark and the same command in the sheet; returning puts you back where the keyboard was.
-
-## Flow: Review
-
-**Trigger.** Open the Tapestry's Day scope, or open tomorrow's day note.
-
-**Steps.**
-1. Click the strip, or run *Open Tapestry* (`Mod+Shift+T`). The Tapestry opens as a tab of its own.
-2. Read the sections: `Threads`, `Census`, `Review`, `Drafts`, in two columns at width and one in a narrow window.
-3. Follow any row into the note if it needs work. Every pending row in `Review` — drafts, loaded sources, untitled sparks — leads somewhere.
-
-**Written.** nothing. Reviewing writes nothing, and browsing every scope must leave the vault unchanged.
-
-**Failure.** No day note for today: the Day scope offers to create it and shows no threads until it exists. An empty day reports `no marks yet` rather than zeros dressed up as progress. A draft that no longer parses as a draft block is absent from the list and still visible as text in the note.
-
-**Touch.** The Tapestry sheet, same sections, same words, 44px rows.
-
-## Flow: Close the day
-
-**Trigger.** *Close the day*, from the command palette or from the end of the Review section.
-
-**Steps.**
-1. Run *Close the day*.
-2. The closing mark is appended and the counters are recomputed.
-3. The strip flips to `closed HH:mm` and the toast names the time: `Weaver: day closed at 21:29:04.` The Review's button becomes `Day closed` and stops.
-
-**Written.** One line `✓ <time>` at the end of the day note, using the note's timestamp format, and the recomputed `sparks`, `dimensions` and `sources` counters. The closing mark is never a heading.
-
-**Failure.** The day is already closed: the second close returns nothing and shows `Weaver: this day is already closed. Nothing was written.` A day with no note: `Weaver: today's day note could not be found. Nothing was written.` A count that would go negative cannot happen by construction — the counters are recomputed from the note, never incremented blind.
-
-**Touch.** A button in the sheet's Review section; the mark is appended and the sheet stays open on the refreshed review.
-
-## Flow: Read the Tapestry
-
-**Trigger.** *Open Tapestry* (`Mod+Shift+T`) or the strip.
-
-**Steps.**
-1. Pick a scope: `Note`, `Day`, `Month` or `All`.
-2. Read the sections for that scope.
-3. Click a row to open it.
-
-**Written.** nothing — the Tapestry is a derived reading and writes no file.
-
-**Failure.** Month and All scopes read counters from the metadata cache; when a day note carries no counters the cell shows 0 intensity rather than an estimate. A note that fails to parse (unclosed frontmatter) contributes nothing to Note scope and does not block the other scopes. A missing metadata cache falls back to reading the single file, never to inventing numbers.
-
-**Touch.** The Tapestry sheet with stacked sections; the calendar keeps 10px cells and carries its detail in each cell's label.
-
-## Flow: Phone capture
-
-**Trigger.** A thought arrives while the phone is in hand.
-
-**Steps.**
-1. In the note, select the passage that caused it.
-2. Run *Spark* from the sheet.
-3. The day note opens with the caret on the new title.
-4. Type the title, then deepen it with the inline control row if it needs a second dimension.
-5. Optionally load a source into the shuttle for later.
-
-**Written.** The same records as the desktop flows: the 1D dimension and its mark in the day note, ` ^<id>` in the source when the spark came from a selection elsewhere, and the counters.
-
-**Failure.** No keyboard-safe space left on screen: the control row is kept above the keyboard and the sheet scrolls instead of the widget. A sync lock mid-write fails that one command with a notice and leaves the day note as it was. Backgrounding the app with the shuttle open loses nothing, because the shuttle is saved plugin data.
-
-**Touch.** This flow *is* the phone form: pinned strip, one sheet, one inline control row, and no dialog over the text.
+Writes: the same as desktop. Nothing about the pinning writes anything — it only
+scrolls.

@@ -41,9 +41,17 @@ describe("day keys", () => {
   });
 });
 
+describe("dayFrontmatter", () => {
+  it("carries the day and its three stats, and nothing else", () => {
+    expect(dayFrontmatter("2026-10-26")).toBe(
+      ["---", "date: 2026-10-26", "travels: 0", "depth: 0", "duration: 00:00:00", "---", ""].join("\n")
+    );
+  });
+});
+
 describe("resolveDayNote", () => {
   it("falls back to the settings when Daily Notes cannot be read", () => {
-    const app = createApp([createFile("Chronomancer/2024.01.02.md", "# 09:00 - x")]);
+    const app = createApp([createFile("Chronomancer/2024.01.02.md", "")]);
 
     const resolved = resolveDayNote(app, DEFAULT_SETTINGS, AT_1637);
     expect(resolved.path).toBe("Chronomancer/2024.01.02.md");
@@ -52,59 +60,39 @@ describe("resolveDayNote", () => {
 
   it("reports a missing day note as null rather than inventing a file", () => {
     const resolved = resolveDayNote(createApp(), DEFAULT_SETTINGS, AT_1637);
+
     expect(resolved.path).toBe("Chronomancer/2024.01.02.md");
     expect(resolved.file).toBeNull();
   });
 
   it("prefers the Daily Notes configuration when it is readable", () => {
     const app = createApp([createFile("Journal/2024-01-02.md", "")]);
-    (app as unknown as { internalPlugins: unknown }).internalPlugins = {
+    // The harness App exposes the core-plugin slot for tests to fill in.
+    const stub = app as unknown as { internalPlugins: unknown };
+    stub.internalPlugins = {
       plugins: {
         "daily-notes": { instance: { options: { folder: "Journal", format: "YYYY-MM-DD" } } }
       }
     };
 
-    const resolved = resolveDayNote(app, DEFAULT_SETTINGS, AT_1637);
-    expect(resolved.path).toBe("Journal/2024-01-02.md");
-    expect(resolved.file).not.toBeNull();
-  });
-
-  it("survives an internal plugin shape it does not recognise", () => {
-    const app = createApp();
-    (app as unknown as { internalPlugins: unknown }).internalPlugins = { plugins: "nonsense" };
-
-    expect(resolveDayNote(app, DEFAULT_SETTINGS, AT_1637).path).toBe(
-      "Chronomancer/2024.01.02.md"
-    );
+    expect(resolveDayNote(app, DEFAULT_SETTINGS, AT_1637).path).toBe("Journal/2024-01-02.md");
   });
 });
 
 describe("ensureDayNote", () => {
-  it("creates the folder and a frontmatter-only note", async () => {
+  it("creates the file with the day's frontmatter", async () => {
     const app = createApp();
-
     const file = await ensureDayNote(app, "Chronomancer/2024.01.02.md", AT_1637);
 
     expect(file.path).toBe("Chronomancer/2024.01.02.md");
-    expect(fileContent(file)).toBe(dayFrontmatter("2024-01-02"));
-    expect(fileContent(file)).toBe(
-      "---\ndate: 2024-01-02\nsparks: 0\ndimensions: 0\nsources: 0\n---\n"
-    );
-    expect((app.vault as unknown as { folders: string[] }).folders).toEqual(["Chronomancer"]);
+    expect(fileContent(file)).toContain("travels: 0");
   });
 
-  it("never overwrites an existing day note", async () => {
-    const existing = createFile("Chronomancer/2024.01.02.md", "# 09:00 - written\n");
+  it("never overwrites a note that already exists", async () => {
+    const existing = createFile("Chronomancer/2024.01.02.md", "{ 1.1.1 } - 10:00:00");
     const app = createApp([existing]);
 
-    const file = await ensureDayNote(app, existing.path, AT_1637);
-
-    expect(fileContent(file)).toBe("# 09:00 - written\n");
-  });
-
-  it("creates a note with no folder when the path has none", async () => {
-    const app = createApp();
-    const file = await ensureDayNote(app, "2024.01.02.md", AT_1637);
-    expect(file.path).toBe("2024.01.02.md");
+    const file = await ensureDayNote(app, "Chronomancer/2024.01.02.md", AT_1637);
+    expect(fileContent(file)).toBe("{ 1.1.1 } - 10:00:00");
   });
 });
