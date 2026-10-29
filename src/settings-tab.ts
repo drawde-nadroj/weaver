@@ -175,6 +175,16 @@ export class WeaverSettingTab extends PluginSettingTab {
           this.commit();
         });
       });
+
+    new Setting(containerEl)
+      .setName("Frame each entry")
+      .setDesc("Draw a rounded frame around every entry, with the marker on its top rail and the duration on its bottom rail.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.entryFrames).onChange((value) => {
+          this.plugin.settings.entryFrames = value;
+          this.commit();
+        });
+      });
   }
 
   private renderAdvanced(containerEl: HTMLElement): void {

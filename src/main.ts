@@ -17,6 +17,7 @@ import { applyPlanToSource } from "./core/insert";
 import type { TravelRow } from "./core/travel-model";
 import { closeDecorationsExtension } from "./editor/close-decorations";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
+import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, refreshEntriesEffect } from "./editor/entry-field";
 import { travelTargetExtension } from "./editor/travel-target";
@@ -47,6 +48,7 @@ const DAY_STATS_DELAY_MS = 2000;
 const BODY_CLASSES = [
   "weaver-no-emphasis",
   "weaver-unequal",
+  "weaver-frames",
   "weaver-platform-mobile",
   "weaver-phone",
   "weaver-tablet"
@@ -86,6 +88,14 @@ export default class WeaverPlugin extends Plugin {
         }
       ),
       closeDecorationsExtension(),
+      entryFrameExtension({
+        settings: () => this.settings,
+        session: () => this.session,
+        fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? "",
+        openDayLink: (target, sourcePath) => {
+          void this.app.workspace.openLinkText(target, sourcePath, false);
+        }
+      }),
       travelTargetExtension(() => this.app.workspace.getActiveFile()?.path ?? ""),
       entryKeysExtension(this),
       entryEditExtension(this)
@@ -151,6 +161,7 @@ export default class WeaverPlugin extends Plugin {
     const body = document.body.classList;
     body.toggle("weaver-no-emphasis", !this.settings.portEmphasisColors);
     body.toggle("weaver-unequal", !this.settings.equalizeHeadingSizes);
+    body.toggle("weaver-frames", this.settings.entryFrames);
     body.toggle("weaver-platform-mobile", isMobile());
     body.toggle("weaver-phone", isPhone());
     body.toggle("weaver-tablet", isTablet());

@@ -49,11 +49,15 @@ Every surface must answer three questions; one that cannot is not a surface.
 
 ### The entry, in the editor
 
+- One font: the note's. The marker, the stopwatch and the close mark used to ask
+  for `--font-monospace` while the prose did not, so one entry read as two
+  typefaces. Everything Weaver writes now inherits `--font-text`, and clocks stay
+  aligned by `font-variant-numeric: tabular-nums` instead of by a monospace face.
 - The marker line and the prose lines carry `--weaver-dcolor` and `--weaver-d`, so
   the stylesheet needs no per-level rule: colour and indent are one `calc()`.
 - The marker keeps its text. Only its runs are marked up: digits are
-  `.weaver-dcn-num` (white in both themes), punctuation `.weaver-dcn-ink` (the
-  dimension's colour). The line therefore stays typable.
+  `.weaver-dcn-num` (the note's own text colour), punctuation `.weaver-dcn-ink`
+  (the dimension's colour). The line therefore stays typable.
 - The duration line is a block widget while the selection is elsewhere, and raw
   text while the selection touches it. Both come from a `StateField` — a block
   widget from a plugin throws.
@@ -68,9 +72,9 @@ Every surface must answer three questions; one that cannot is not a surface.
 - The ticker belongs to the element, not to the widget instance: CodeMirror calls
   `updateDOM` on the *new* widget while the previous instance may still hold an
   interval, and one writer per element is what keeps the digits from counting
-  twice.
+  twice. `duration-ticker.ts` is the one writer, shared with the frame's clock.
 - The two `.weaver-duration-ink` colons are separate spans because they take the
-  dimension's colour while the digits stay white.
+  dimension's colour while the digits keep the text colour.
 - The widget is `display: block` with 6 px of bottom padding: a span cannot take
   vertical padding, and that padding is the only air between the stopwatch and
   whatever follows it.
@@ -78,13 +82,58 @@ Every surface must answer three questions; one that cannot is not a surface.
 - On a past-day note, ` - [[2026.10.26]]` is rendered after the clock and is never
   written to the file.
 
+### The frame, around every entry
+
+CodeMirror gives each line its own element and offers no way to wrap a range of
+lines in a container, so the box is **drawn over the note**: one absolutely
+positioned layer inside `.cm-scroller`, one box per entry, in document coordinates.
+
+- `src/core/frame.ts` is the contract, ported from pi-frame's `frameRail` rather
+  than imported (pi-frame is terminal cells; this is pixels). A frame starts at a
+  limited width, grows with the text it encloses, and stops at the edge of the
+  column. Below 120 px of room it is not drawn at all, and then nothing is hidden.
+- The layer is `z-index: -1` inside the scroller, which CodeMirror already makes a
+  stacking context. It therefore paints above the page and under the note's text,
+  which is what lets a chip sit *behind* the file's own marker instead of over it.
+- Nothing reflows: the box catches up to the text, never the other way round.
+  `.cm-scroller` is already `position: relative`, so the boxes scroll with the
+  content and a scroll costs no measurement; only a reflow or a resize schedules
+  one, and the schedule is one `requestAnimationFrame` however many updates ask.
+- The rails run through the middle of the rows they name. The marker's line and the
+  duration line are at `opacity: 0` — laid out, caret-able, still in the
+  accessibility tree — and the frame paints their runs on the rails. Put the caret
+  on one of those rows and the line stops being transparent: the file's own text
+  comes back, and a chip of page colour cuts the rail behind it. That is the same
+  raw-text rule the duration widget has always followed.
+- The hiding is scoped to `weaver-frames-live`, a class the layer puts on the
+  scroller only while it has frames drawn. A pane too narrow to carry one, a
+  surface the layer does not run on, and Source mode all keep the file's words
+  visible.
+- Labels render the canonical marker (`{ 1.2.3 } - 13:27:43`), not the file's raw
+  prefix, and take the entry's colour with the digits in the text colour. They
+  ellipsize rather than leave the rail; the width floor is a marker's worth so the
+  clock is never the part that goes.
+- The live entry's rails carry a highlight travelling counter-clockwise once every
+  three seconds, and stop under `prefers-reduced-motion`. The bottom rail's clock
+  is the same ticker as the widget's.
+- Frames are Live Preview only. Source mode is the file's own text, which is the
+  point of it.
+
 ### The entry, in Reading view
 
-The same shape, from a post processor: a `<p>` starting with a marker becomes
-`div.weaver-entry-head` with the same span split; each following sibling becomes
-`.weaver-entry-prose` until the next head or duration paragraph; a `<p>` that is
-only a duration becomes `div.weaver-duration`. No wrapper is inserted, so margins
-do not move, and inline markup inside the prose is untouched.
+The same shape, from a post processor: a `<p>` starting with a marker becomes the
+frame's top label, each following sibling becomes `.weaver-entry-prose` inside the
+frame, and a `<p>` that is only a duration becomes the frame's bottom label — with
+the wrapper and the labels both drawn by CSS. The browser does the hugging: the
+frame is a real element, so `width: fit-content` is the whole measurement, with the
+same width floor and the same one-row gap between frames.
+
+The wrapper is inserted on purpose; the older shape promised no wrapper at all.
+Nesting is carried by the frame's left margin rather than by padding on the text
+inside it, and the text inside gives up its own indent so it is not indented twice.
+Inline markup inside the prose is untouched, and only the marker's own characters
+leave the marker paragraph — a title typed after the clock, with its links and
+emphasis, stays in the DOM exactly as Obsidian made it.
 
 ### The entry palette
 
@@ -134,18 +183,20 @@ document.
 
 ## Settings
 
-Twelve settings in four groups. **Writing** is the note's own convention, **Day**
-is where the day note lives, **Look** is how the note is drawn, **Advanced** is the
-past-day link and logging. There is no palette mode, no depth cap, no per-level
-size field and no travel default level: colour is a function of `D` alone, and the
-travel card always starts at the first day holding a draft.
+Thirteen settings in four groups. **Writing** is the note's own convention, **Day**
+is where the day note lives, **Look** is how the note is drawn (including whether
+it is framed at all), **Advanced** is the past-day link and logging. There is no
+palette mode, no depth cap, no per-level size field and no travel default level:
+colour is a function of `D` alone, and the travel card always starts at the first
+day holding a draft.
 
 ## Mobile matrix
 
 | Surface | Desktop | Phone |
 | --- | --- | --- |
-| Entry | mono marker, digits white, punctuation coloured | same, with `--weaver-indent-step-mobile` |
-| Duration | block widget, ticks while live | same, pinned to the bottom of the writing band after each keystroke |
+| Entry | marker on the frame's top rail, digits in the text colour, punctuation coloured | same, with `--weaver-indent-step-mobile` |
+| Frame | hugs the text, one row of air between frames | same; the width floor and the pane edge are the only limits |
+| Duration | block widget, ticks while live, drawn on the frame's bottom rail | same, pinned to the bottom of the writing band after each keystroke |
 | Travel card | centred in the pane, 420 px | full width − 24 px, rows ≥ 44 px, centred on the visible viewport |
 | Entry palette | same geometry, travel's row and query rules | same, rows ≥ 44 px, centred on the visible viewport |
 | Travel keys | arrows, `⏎`, `Esc` | same keys plus tap targets; the soft keyboard never covers the selected row |

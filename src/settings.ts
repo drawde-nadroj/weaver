@@ -25,6 +25,8 @@ export interface WeaverSettings {
   mobileIndentStep: number;
   indentMaxLevel: number;
   portEmphasisColors: boolean;
+  /** Draw a frame around every entry, with the marker and duration on its rails. */
+  entryFrames: boolean;
 
   // Advanced
   /** Render ` - [[2026.10.26]]` after the clock on any day but today. */
@@ -50,6 +52,8 @@ export const DEFAULT_SETTINGS: WeaverSettings = {
   mobileIndentStep: 12,
   indentMaxLevel: 8,
   portEmphasisColors: true,
+
+  entryFrames: true,
 
   entryDayLink: true,
   debug: false
@@ -108,6 +112,7 @@ export function normalizeSettings(data: unknown): WeaverSettings {
     mobileIndentStep: integer(data.mobileIndentStep, DEFAULT_SETTINGS.mobileIndentStep, 0, 32),
     indentMaxLevel: integer(data.indentMaxLevel, DEFAULT_SETTINGS.indentMaxLevel, 1, 24),
     portEmphasisColors: bool(data.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
+    entryFrames: bool(data.entryFrames, DEFAULT_SETTINGS.entryFrames),
 
     entryDayLink: bool(data.entryDayLink, DEFAULT_SETTINGS.entryDayLink),
     debug: bool(data.debug, DEFAULT_SETTINGS.debug)

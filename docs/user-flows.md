@@ -123,9 +123,10 @@ stands.
 
 ## Flow: read a day back
 
-Nothing is written. The note itself is the view: digits white, punctuation in the
-dimension's colour, durations as they were settled, and `- [[day]]` after the clock
-on any note that is not today's.
+Nothing is written. The note itself is the view: each entry in its frame, the marker
+on the top rail and the duration on the bottom rail, digits in the text colour and
+punctuation in the dimension's colour, durations as they were settled, and
+`- [[day]]` after the clock on any note that is not today's.
 
 ## Flow: phone capture
 

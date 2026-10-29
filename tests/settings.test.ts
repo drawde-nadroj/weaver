@@ -13,6 +13,13 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ entryDayLink: false }).entryDayLink).toBe(false);
   });
 
+  it("frames every entry unless the vault says otherwise", () => {
+    expect(DEFAULT_SETTINGS.entryFrames).toBe(true);
+    expect(normalizeSettings(null).entryFrames).toBe(true);
+    expect(normalizeSettings({ entryFrames: false }).entryFrames).toBe(false);
+    expect(normalizeSettings({ entryFrames: "no" }).entryFrames).toBe(true);
+  });
+
   it("drops every key the entry model no longer has", () => {
     const normalized = normalizeSettings({
       colorMode: "vault-stretch",

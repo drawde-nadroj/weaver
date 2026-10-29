@@ -12,7 +12,7 @@
  * which is why everything here is a `StateField`.
  */
 
-import { editorInfoField } from "obsidian";
+import { editorInfoField, editorLivePreviewField } from "obsidian";
 import {
   StateField,
   type EditorState,
@@ -128,6 +128,11 @@ export function entryDecorationSet(
   const fileDay = dayKeyFromName(basename);
   const today = dayKey(new Date(now));
   const showDayLink = settings.entryDayLink && fileDay !== null && fileDay !== today;
+  // Frames are drawn over the note by `entry-frame.ts`, which also draws the
+  // marker on the top rail. The line keeps its text — laid out, announced, still
+  // the record — and only its paint is removed. Source mode never hides it: the
+  // raw mark is the point of that mode, and the layer does not run there either.
+  const framed = settings.entryFrames && state.field(editorLivePreviewField, false) === true;
 
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
@@ -135,12 +140,15 @@ export function entryDecorationSet(
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
     const headRaw = touches(state, head.from, head.to);
+    const headClasses = ["weaver-entry-head"];
+    if (headRaw) headClasses.push("weaver-entry-head-raw");
+    else if (framed) headClasses.push("weaver-entry-head-framed");
 
     ranges.push({
       from: head.from,
       to: head.from,
       value: Decoration.line({
-        class: headRaw ? "weaver-entry-head weaver-entry-head-raw" : "weaver-entry-head",
+        class: headClasses.join(" "),
         attributes: { style: vars }
       })
     });

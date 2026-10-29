@@ -18,6 +18,11 @@ body {
 
 /* ── The entry ─────────────────────────────────────────────────────────── */
 
+/* One font, the note's. The marker, the stopwatch and the close mark used to
+ * ask for `--font-monospace` while the prose did not, which made one entry read
+ * as two typefaces. Everything Weaver writes now inherits `--font-text`; clocks
+ * stay aligned by tabular figures instead of by a monospace face. */
+
 .weaver-entry-head,
 .weaver-entry-prose,
 .weaver-duration {
@@ -29,7 +34,6 @@ body {
 }
 
 .weaver-entry-head {
-  font-family: var(--font-monospace);
   font-size: var(--weaver-entry-size);
   font-weight: var(--weaver-entry-weight);
 }
@@ -39,8 +43,8 @@ body {
   line-height: var(--weaver-entry-line-height);
 }
 
-/* Digits are white in both themes; the punctuation — the marker's braces and
- * dots, the stopwatch's sigil and its two colons — carries the dimension's
+/* Digits take the note's own text colour; the punctuation — the marker's braces
+ * and dots, the stopwatch's sigil and its two colons — carries the dimension's
  * colour, which is what makes a depth legible at a glance. */
 .weaver-dcn-num,
 .weaver-duration-num {
@@ -62,7 +66,6 @@ body {
   /* Explicit, so the block's height is a function of the line height and not of
    * its own content: the digits change every second and the line does not move. */
   line-height: var(--weaver-entry-line-height);
-  font-family: var(--font-monospace);
   font-size: var(--weaver-entry-size);
   font-variant-numeric: tabular-nums;
 }
@@ -90,13 +93,221 @@ body.weaver-phone .weaver-duration {
   );
 }
 
+/* ── The frame ─────────────────────────────────────────────────────────── */
+
+/* A frame is drawn, never laid out. The layer lives inside the scroller — which
+ * CodeMirror already makes `position: relative` — so its boxes scroll with the
+ * note and a scroll costs no measurement. Every box is `pointer-events: none`,
+ * so editing, selection and touch are exactly what they were.
+ *
+ * The rail runs through the middle of the row it names, and the label that
+ * breaks it is a chip of page colour sitting on the rail. A raw marker or
+ * duration row is cut out of the rail the same way, so the file's own text is
+ * never struck through. */
+
+.weaver-frame-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  /* Below the note's text, above the scroller's own background: the scroller is
+   * a stacking context (`z-index: 0` in CodeMirror's base theme), so a negative
+   * layer paints under every line. That is what lets a chip sit *behind* the raw
+   * marker while the caret is on the row, instead of covering it. */
+  z-index: -1;
+  pointer-events: none;
+}
+
+.weaver-frame {
+  /* The chip's colour is the page's; a theme with a textured or transparent note
+   * background can name its own here and the rail will cut cleanly. */
+  --weaver-frame-cut: var(--weaver-frame-cut-color, var(--background-primary));
+  position: absolute;
+  font-size: var(--weaver-entry-size);
+  border-radius: 10px;
+  /* An inset shadow rather than a border: the rail sits exactly on the box's
+   * edge, so the label centred on that edge is centred on the rail. */
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklab, var(--weaver-dcolor, var(--text-faint)) 45%, transparent);
+  pointer-events: none;
+  transition:
+    width 120ms ease,
+    height 120ms ease;
+}
+
+.weaver-frame-label {
+  position: absolute;
+  right: 10px;
+  display: block;
+  box-sizing: border-box;
+  max-width: calc(100% - 20px);
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--weaver-frame-cut);
+  color: var(--weaver-dcolor, var(--text-muted));
+  font-family: var(--font-text);
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weaver-frame-label-top {
+  top: 0;
+  transform: translateY(-50%);
+}
+
+.weaver-frame-label-bottom {
+  bottom: 0;
+  transform: translateY(50%);
+}
+
+/* The day link is the one part of a frame that is clicked rather than read. Its
+ * label is painted under the note's text, so the click target lives in a second
+ * layer, above the text and over the link only. */
+.weaver-frame-hit-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.weaver-frame-dayhit {
+  position: absolute;
+  display: none;
+  border-radius: 4px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Behind the file's own text, while the caret is on that rail row. */
+.weaver-frame-chip {
+  position: absolute;
+  border-radius: 4px;
+  background: var(--weaver-frame-cut);
+}
+
+/* The entry being written: a highlight travels the rails, counter-clockwise,
+ * once every three seconds. Motion is the running clock's, not decoration's. */
+.weaver-frame.is-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--weaver-dcolor, var(--text-accent)) 50%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  /* Keep only the 1px ring: two masks, excluding the content box. */
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  animation: weaver-frame-travel 3s linear infinite;
+  opacity: 0.9;
+}
+
+@keyframes weaver-frame-travel {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weaver-frame {
+    transition: none;
+  }
+
+  .weaver-frame.is-live::after {
+    animation: none;
+    background: none;
+  }
+}
+
+/* The marker's row is fully transparent, not hidden: it keeps its layout, its
+ * caret and its place in the accessibility tree, and stops painting only while
+ * the frame draws it on the rail. Hovering or tapping the row puts the caret on
+ * it, which removes this class and brings the raw text back.
+ *
+ * `weaver-frames-live` is set by the frame layer on the scroller, and only while
+ * it has frames drawn: a pane too narrow for a frame, or a surface the layer
+ * does not run on, keeps the file's own words visible. */
+.weaver-frames-live .weaver-entry-head-framed {
+  opacity: 0;
+}
+
+/* The same for the duration widget: the frame's bottom rail is the visible
+ * clock, and the widget keeps the row's height and its raw-text contract. */
+body.weaver-frames .weaver-frames-live .weaver-duration {
+  opacity: 0;
+}
+
+/* Reading view draws the same box, but the browser does the hugging: the frame
+ * is a real element, so `fit-content` is the whole measurement. */
+.markdown-rendered .weaver-frame.is-static {
+  --weaver-frame-indent: calc(
+    min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
+  );
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  /* The rail must be long enough to carry its own label, and two frames need
+   * one row of air: the labels hang half a line off each rail, so a tighter gap
+   * would put one entry's clock in the next entry's border row. */
+  min-width: min(280px, calc(100% - var(--weaver-frame-indent)));
+  max-width: calc(100% - var(--weaver-frame-indent));
+  margin: 12px 0 12px var(--weaver-frame-indent);
+  padding: 0.85em 0.9em;
+  border-radius: 10px;
+  font-size: var(--weaver-entry-size);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklab, var(--weaver-dcolor, var(--text-faint)) 45%, transparent);
+}
+
+body.weaver-phone .markdown-rendered .weaver-frame.is-static {
+  --weaver-frame-indent: calc(
+    min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
+      var(--weaver-indent-step-mobile)
+  );
+}
+
+/* The frame carries the indent, so the text inside it does not carry it twice. */
+.markdown-rendered .weaver-frame.is-static .weaver-entry-prose,
+.markdown-rendered .weaver-frame.is-static .weaver-entry-head,
+.markdown-rendered .weaver-frame.is-static .weaver-duration {
+  margin: 0;
+  padding-left: 0;
+}
+
+.markdown-rendered .weaver-frame.is-static .weaver-frame-label {
+  right: 12px;
+  max-width: calc(100% - 24px);
+}
+
 /* ── Closing the day ───────────────────────────────────────────────────── */
 
 /* A `✓` line records a decision. Muted, never an entry. */
 .weaver-close-mark {
   margin: var(--size-2-2) 0;
   color: var(--text-faint);
-  font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   letter-spacing: 0.04em;
 }
@@ -135,11 +346,14 @@ body.weaver-phone .weaver-duration {
   border-radius: var(--radius-l, 12px);
   background: var(--background-primary);
   box-shadow: var(--shadow-l, 0 8px 24px rgb(0 0 0 / 25%));
+  /* The cards are outside `.markdown-rendered`, so they name the note's font
+   * instead of inheriting the interface one: one typeface, every surface. */
+  font-family: var(--font-text);
 }
 
 .weaver-travel-query {
   width: 100%;
-  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
 }
 
 .weaver-travel-days,
@@ -166,7 +380,6 @@ body.weaver-phone .weaver-duration {
   border-radius: var(--radius-s, 4px);
   background: transparent;
   color: var(--text-muted);
-  font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   box-shadow: none;
 }
@@ -198,7 +411,7 @@ body.weaver-phone .weaver-duration {
 
 .weaver-travel-dcn,
 .weaver-palette-dcn {
-  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
 }
 
 .weaver-travel-time,
@@ -206,8 +419,8 @@ body.weaver-phone .weaver-duration {
 .weaver-palette-count,
 .weaver-palette-state {
   color: var(--text-muted);
-  font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
 }
 
 .weaver-travel-title,

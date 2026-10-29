@@ -85,6 +85,50 @@ describe("the entry processor", () => {
     expect(root.querySelectorAll("p").length).toBe(0);
   });
 
+  it("frames the entry around its prose, with the marker and duration on the rails", () => {
+    const root = container();
+    paragraph(root, "{ 1.2.3 } - 13:27:43");
+    paragraph(root, "the thought this one opened");
+    paragraph(root, "+ 00:04:12");
+
+    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+
+    const frame = root.querySelector(".weaver-frame");
+    expect(frame?.hasClass("is-static")).toBe(true);
+    expect(frame?.getAttr("style")).toBe("--weaver-dcolor:#ef4444;--weaver-d:1");
+    expect(frame?.querySelector(".weaver-frame-label-top")?.hasClass("weaver-entry-head")).toBe(true);
+    expect(
+      frame?.querySelector(".weaver-frame-label-bottom")?.hasClass("weaver-duration")
+    ).toBe(true);
+    // The prose is the interior; the marker and duration paragraphs are gone.
+    expect(frame?.querySelectorAll(".weaver-entry-prose").length).toBe(1);
+    expect(frame?.querySelectorAll("p").length).toBe(1);
+    expect(root.querySelectorAll(".weaver-entry-prose").length).toBe(1);
+  });
+
+  it("keeps a title typed after the clock as the first prose line", () => {
+    const root = container();
+    paragraph(root, "{ 1.2.3 } - 13:27:43 a title");
+
+    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+
+    // The label is the canonical marker, never the title: a rail cannot ellipsize
+    // away a line of the entry.
+    expect(root.querySelector(".weaver-entry-head")?.textContent).toBe("{ 1.2.3 } - 13:27:43");
+    expect(root.querySelector(".weaver-entry-prose")?.textContent?.trim()).toBe("a title");
+  });
+
+  it("draws a duration with no entry above it as a plain block", () => {
+    const root = container();
+    paragraph(root, "+ 00:04:12");
+
+    createEntryProcessor(host())(root as never, context(PATH));
+
+    const duration = root.querySelector(".weaver-duration");
+    expect(duration).not.toBeNull();
+    expect(duration?.hasClass("weaver-frame-label")).toBe(false);
+  });
+
   it("marks the prose and keeps its markup", () => {
     const root = container();
     paragraph(root, "{ 1.2.3 } - 13:27:43");

@@ -14,15 +14,16 @@
  * that DOM in place instead of rebuilding it, which is what used to make the
  * line hop a pixel on every keystroke.
  *
- * A ticker belongs to the element it writes into, not to the widget instance:
- * CodeMirror calls `updateDOM` on the *new* widget while the previous instance
- * may still hold an interval. Keying the interval by the DOM means one writer
- * per element, whichever instance created it.
+ * With frames on, this element is the frame's bottom rail's other half: it keeps
+ * the row's geometry and its raw-text contract, and the frame layer draws the
+ * visible clock. The ticker is shared, keyed by the element, so whichever of the
+ * two owns the element owns the one interval.
  */
 
 import { WidgetType } from "@codemirror/view";
 
 import { formatClock, type DurationSigil } from "../core/duration";
+import { startTicking, stopTicking, writeDigits } from "./duration-ticker";
 
 export interface DurationWidgetInput {
   sigil: DurationSigil;
@@ -31,44 +32,6 @@ export interface DurationWidgetInput {
   color: string;
   /** The entry's depth, so the rendered line keeps the entry's indent. */
   d: number;
-}
-
-/** A second is the smallest unit the line shows, so the tick is a second. */
-const TICK_MS = 1000;
-
-interface Ticker {
-  timer: number;
-  shown: number;
-  digits: HTMLElement[];
-}
-
-const tickers = new WeakMap<HTMLElement, Ticker>();
-
-function writeDigits(digits: readonly HTMLElement[], ms: number): void {
-  formatClock(ms)
-    .split(":")
-    .forEach((part, index) => {
-      const span = digits[index];
-      if (span !== undefined) span.textContent = part;
-    });
-}
-
-function stopTicking(dom: HTMLElement | null): void {
-  if (dom === null) return;
-  const ticker = tickers.get(dom);
-  if (ticker !== undefined) window.clearInterval(ticker.timer);
-  tickers.delete(dom);
-}
-
-function startTicking(dom: HTMLElement, digits: HTMLElement[], ms: number): void {
-  stopTicking(dom);
-
-  const ticker: Ticker = { timer: 0, shown: ms, digits };
-  ticker.timer = window.setInterval(() => {
-    ticker.shown += TICK_MS;
-    writeDigits(ticker.digits, ticker.shown);
-  }, TICK_MS);
-  tickers.set(dom, ticker);
 }
 
 export class DurationWidget extends WidgetType {

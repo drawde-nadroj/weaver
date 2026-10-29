@@ -25,11 +25,12 @@ note; nothing is written until a command or a keystroke says so.
 
 ## Status
 
-`0.5.0` — three sigils, the entry palette, and a clock in seconds. The suite covers
-167 tests: parsing, plans, decorations, keys, the travel model and card, the entry
-palette, both post processors, the day stats, the stopwatch widget, and both
-migration passes. The duration algebra is a Bend module, `src/core/duration.bend`,
-compiled to `src/core/bend/duration.mjs`; `LAWS.bend` states its seven laws and
+`0.5.0` — three sigils, the entry palette, a clock in seconds, and a frame around
+every entry. The suite covers 185 tests: parsing, plans, decorations, keys, the
+travel model and card, the entry palette, both post processors, the day stats, the
+stopwatch widget, the frame geometry and labels, and both migration passes. The
+duration algebra is a Bend module, `src/core/duration.bend`, compiled to
+`src/core/bend/duration.mjs`; `LAWS.bend` states its seven laws and
 `bend PROOF.bend` proves them.
 
 The live surface was exercised against Obsidian 1.15 on 2026-10-28 through the
@@ -42,6 +43,11 @@ child under it and sets the travel target; `⌘⇧P` lists today's entries with 
 caret's entry selected, and its arrows, filter lock, `n`, `x` and `Esc` behave as
 documented; five insertions at the caret leave the duration line's top identical to
 the pixel, and two newlines move it exactly two line heights.
+
+The frame around every entry is newer than that pass: its geometry and label runs
+are unit-tested (`tests/frame.test.ts`) and its rendering was checked against a
+standalone mock of the editor's measurement and of the Reading view's wrapper, but
+it has not yet had its live pass. Its checks are at the end of *Manual checks*.
 
 ## The loop
 
@@ -175,6 +181,7 @@ changes, and only when *Write day counters* is on.
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
+| Look | Frame each entry | on | Draw a rounded frame around every entry, with the marker on its top rail and the duration on its bottom rail. |
 | Advanced | Link past days | on | Render ` - [[2026.10.26]]` after the clock on any note that is not today's. |
 | Advanced | Debug logging | off | Verbose console output. |
 
@@ -274,8 +281,8 @@ These need a live Obsidian and are not covered by `npm test`:
   appears directly under it, with the caret in its prose and the travel rectangle
   around it.
 - Prose renders in the dimension's colour, the stopwatch's two colons render in
-  that colour while its digits stay white, and the duration line keeps its height
-  while the digits change.
+  that colour while its digits keep the note's own text colour, and the duration
+  line keeps its height while the digits change.
 - `⇧⏎` inside an open entry adds a line; `weaver:line-break` does the same from the
   toolbar.
 - Deleting the live entry then pressing `⌘⇧E`: the new entry's stopwatch reads
@@ -297,6 +304,24 @@ These need a live Obsidian and are not covered by `npm test`:
   the visible viewport, and `Start an entry` lands the caret in the new entry's
   prose even from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
+- Frames, Live Preview: every entry is enclosed by a rounded frame that hugs its
+  text and stops at the pane's edge; the marker `{ D.C.N } - HH:MM:SS` sits on the
+  top rail at the right, the duration on the bottom rail, both cut into the rail by
+  a chip of page colour; a short entry starts at a limited width (~a marker's
+  worth) and a long one reaches the edge; ~10 px of air separates adjacent frames
+  (one invisible row on each side of the rail).
+- Frames, the caret: put the caret on a marker row and the file's own text returns,
+  with the rail cut behind it; the same for a duration row. Every other row keeps
+  its label. Turning *Frame each entry* off restores the plain lines with no
+  leftover layer, and Source mode never draws a frame.
+- Frames, live: while an entry is being written its rails shimmer counter-
+  clockwise; a still entry does not. The duration on the bottom rail ticks with the
+  same second as the widget it replaced.
+- Frames, Reading view: the same boxes, one per entry, with the prose inside and no
+  second indent; a nested entry's frame starts one indent step further right; the
+  frames do not touch.
+- Frames, phone: the frame keeps its rails, its labels fit without ellipsis on a
+  narrow pane, and the frame reaches the edge when the text does.
 
 ## Known limits
 
@@ -320,7 +345,7 @@ npm run typecheck # tsc --noEmit
 npm test          # vitest
 npm run build     # production bundle
 npm run deploy    # copy main.js, manifest.json, styles.css into the vault
-npm run check     # typecheck + tests + production build
+npm run check     # typecheck + tests + proof gate + production build
 ```
 
 `src/core` is pure and has no `obsidian` import; the editor and UI layers sit on

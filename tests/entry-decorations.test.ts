@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
+import { editorLivePreviewField } from "obsidian";
 import type { Decoration } from "@codemirror/view";
 
 import { entryDecorationSet } from "../src/editor/entry-decorations";
@@ -52,13 +53,17 @@ function collect(
 
 /** The caret sits in the prose unless a test says otherwise. */
 function stateAt(anchor = DOC.indexOf("prose")): EditorState {
-  return EditorState.create({ doc: DOC, selection: { anchor }, extensions: [entryIndexField] });
+  return EditorState.create({
+    doc: DOC,
+    selection: { anchor },
+    extensions: [entryIndexField, editorLivePreviewField]
+  });
 }
 
 describe("the entry decorations", () => {
   it("carries the depth and the colour on every line of the entry", () => {
     const found = collect(stateAt());
-    const head = found.find((range) => range.spec.class === "weaver-entry-head");
+    const head = found.find((range) => range.spec.class?.startsWith("weaver-entry-head"));
     const prose = found.find((range) => range.spec.class === "weaver-entry-prose");
 
     expect(head?.spec.attributes?.style).toBe("--weaver-dcolor:#f97316;--weaver-d:2");
@@ -97,6 +102,28 @@ describe("the entry decorations", () => {
     expect(found.some((range) => range.spec.class === "weaver-entry-head weaver-entry-head-raw")).toBe(
       true
     );
+  });
+
+  it("takes the marker's paint away while the frame draws it", () => {
+    const head = collect(stateAt()).find((range) =>
+      range.spec.class?.startsWith("weaver-entry-head")
+    );
+    expect(head?.spec.class).toBe("weaver-entry-head weaver-entry-head-framed");
+
+    // The caret on the row always wins: the file's own text comes back.
+    const raw = collect(stateAt(2)).find((range) =>
+      range.spec.class?.startsWith("weaver-entry-head")
+    );
+    expect(raw?.spec.class).toBe("weaver-entry-head weaver-entry-head-raw");
+  });
+
+  it("never removes the marker's paint with framing turned off", () => {
+    const off: WeaverSettings = { ...DEFAULT_SETTINGS, entryFrames: false };
+    const head = collect(stateAt(), off).find((range) =>
+      range.spec.class?.startsWith("weaver-entry-head")
+    );
+
+    expect(head?.spec.class).toBe("weaver-entry-head");
   });
 
   it("ticks a live session instead of showing the stored time", () => {
