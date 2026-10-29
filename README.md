@@ -15,20 +15,22 @@ the thought this one opened, one dimension deeper
 = 00:01:30
 ```
 
-`D` is the dimension, `C` the child ordinal (renumbered on insert), `N` the day
-sequence (assigned once, only appended). `N` is identity, `C` is address, and the
-duration is the only mutable field. Colour is a pure function of `D`, so nothing is
-recalculated when a deeper entry appears: depth 7 looks the same before and after.
+`D` is the dimension, `C` the thread — a depth-1 entry's position among depth-1
+entries, carried unchanged all the way down its branch — and `N` the day sequence
+(assigned once, only appended). `N` is identity, `C` is address, and the duration is
+the only mutable field. Colour is a pure function of `D`, so nothing is recalculated
+when a deeper entry appears: depth 7 looks the same before and after.
 
-The note and one centred travel card are the whole surface. Writing happens in the
-note; nothing is written until a command or a keystroke says so.
+The note and one navigator are the whole surface. Writing happens in the note;
+nothing is written until a command or a keystroke says so, and every write of a day
+note goes through one writer.
 
 ## Status
 
-`0.5.0` — three sigils, the entry palette, a clock in seconds, and a frame around
-every entry. The suite covers 185 tests: parsing, plans, decorations, keys, the
-travel model and card, the entry palette, both post processors, the day stats, the
-stopwatch widget, the frame geometry and labels, and both migration passes. The
+`0.5.0` — three sigils, one navigator, a clock in seconds, and a frame around every
+entry. The suite covers 192 tests: parsing, plans, decorations, keys, the navigator
+and its return stack, the one writer, both post processors, the day stats, the
+stopwatch widget, the frame box, and both migration passes. The
 duration algebra is a Bend module, `src/core/duration.bend`, compiled to
 `src/core/bend/duration.mjs`; `LAWS.bend` states its seven laws and
 `bend PROOF.bend` proves them.
@@ -39,20 +41,22 @@ entry and leaves the caret on its blank prose line with no clock running; a
 keystroke starts the clock while the file keeps `- 00:00:00`; moving the caret out,
 a wheel, and an arrow key inside the entry each write `=` at the current second;
 `⏎` settles that line to `+` with no child and the caret still; `⏎` again opens a
-child under it and sets the travel target; `⌘⇧P` lists today's entries with the
-caret's entry selected, and its arrows, filter lock, `n`, `x` and `Esc` behave as
-documented; five insertions at the caret leave the duration line's top identical to
-the pixel, and two newlines move it exactly two line heights.
+child under it and pushes the place it left; `⌘⇧P` lists today's entries with the
+caret's entry selected, and its keys behave as documented; five insertions at the
+caret leave the duration line's top identical to the pixel, and two newlines move it
+exactly two line heights.
 
-The frame around every entry is newer than that pass: its geometry and label runs
-are unit-tested (`tests/frame.test.ts`) and its rendering was checked against a
-standalone mock of the editor's measurement and of the Reading view's wrapper, but
-it has not yet had its live pass. Its checks are at the end of *Manual checks*.
+The navigator, the one writer and the rebuilt frame are newer than that pass: their
+geometry, their plans and their keys are unit-tested (`tests/frame.test.ts`,
+`tests/navigator.test.ts`, `tests/writer.test.ts`), and the frame's rendering was
+checked against a standalone mock of the editor's measurement and of the Reading
+view's wrapper, but they have not yet had their live pass. Their checks are at the
+end of *Manual checks*.
 
 ## The loop
 
-1. **Start** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
-   appended at the tip of today's note with an empty prose line and `- 00:00:00`.
+1. **Append** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
+   added at the tip of today's note with an empty prose line and `- 00:00:00`.
 2. **Write.** The first keystroke starts the stopwatch; the rendered line ticks
    while the file still says `- 00:00:00`.
 3. **Stop writing** — move the caret away, click out of the note, scroll with the
@@ -60,11 +64,10 @@ it has not yet had its live pass. Its checks are at the end of *Manual checks*.
 4. **Settle** with `⏎`: the line becomes `+ HH:MM:SS`, the session ends and nothing
    else moves. `⏎` again on that settled entry opens a child one dimension deeper
    with the caret in its prose.
-5. **Insert** a child by hand with `⌘⇧J` under the entry at the caret.
-6. **Travel** with `⌘⇧⏎` to any draft, filtered by `1`, `1.2`, `.14` or `1.2.14`.
-7. **Palette** with `⌘⇧P`: today's entries in one card, where `⏎` settles and
-   descends, `n` starts a root at the tip, and `x` deletes the selection's subtree.
-8. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
+5. **Navigate** with `⌘⇧P`: today's entries in one card, where `⏎` jumps, `⇧⏎`
+   settles and descends, `n` appends at the tip, `x` deletes the selection's
+   subtree, and `⌘[` walks back a stop.
+6. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
 A pause writes only when a whole second has accumulated, so moving the caret costs
 at most one line rewrite per second and the value always reads back the same.
@@ -78,10 +81,8 @@ starts no clock: an entry nobody has touched has no time in it.
 
 | Command ID | Name | Default hotkey | Icon |
 | --- | --- | --- | --- |
-| `weaver:start-entry` | Start an entry | `Mod+Shift+E` | `plus` |
-| `weaver:insert-entry` | Insert a child entry | `Mod+Shift+J` | `indent-increase` |
-| `weaver:travel` | Travel to a draft | `Mod+Shift+Enter` | `compass` |
-| `weaver:palette` | Entry palette | `Mod+Shift+P` | `list` |
+| `weaver:append-entry` | Append an entry | `Mod+Shift+E` | `plus` |
+| `weaver:navigate` | Today's entries | `Mod+Shift+P` | `list` |
 | `weaver:line-break` | Insert a line break | — | `corner-down-left` |
 | `weaver:close-day` | Close the day | — | `check-circle` |
 
@@ -105,50 +106,47 @@ toolbar can host — a soft keyboard has no `⇧⏎`, and `⏎` now settles ever
 Vim normal mode `⏎` is Vim's, as is every other key Vim owns: the entry keys live
 in the editor keymap, and Vim's own normal-mode map runs before it.
 
-## The entry palette
+## The navigator
 
-`⌘⇧P` shows today's note, put into source mode, with one card listing every entry
-in document order. The selection starts on the entry the caret is in, or the one
-directly above it.
+`⌘⇧P` shows today's note, put into source mode, with one card over it. On a phone
+the same card is a full-height sheet. It is the only navigation: append, descend and
+jump, with the return stack inside it.
 
 | Key | Effect |
 | --- | --- |
 | `↑` `↓` | move the selection (clamped, no wrap) |
-| `1`, `1.2`, `.14`, `1.2.14` then `⏎` | lock that filter, and put the selection on the first match |
-| `⏎` with an empty query | settle the selection, then open a child under it |
-| `n` | a new root at the tip of the day |
+| `⏎` | put the caret in the selected entry |
+| `⇧⏎` | settle the selection if it is open, then open a child under it |
+| `n` | append a root at the tip of the day |
 | `x` | delete the selection's whole subtree |
-| `Esc` | clear the query, then the filter, then leave the caret on the selection |
+| `⌘[` | walk back one stop |
+| `Esc` | close, and put the caret back where the card opened |
 
-`n` and `x` act only while the query is empty and no filter is locked, so a bare
-letter is never eaten out of a number being typed. Each row shows `D.C.N`, the
-entry's clock, its title, `+N` when it has children (that count is the blast radius
-of `x`), and a `+` for settled or `→` for open. `x` asks for no confirmation: its
-whole subtree goes in one undoable transaction, and one undo brings it back.
+On touch: a row taps to jump, the caret's own row taps to descend, and `✕` arms on
+the first tap and deletes on the second. The footer names the gestures the platform
+can make.
 
-## Travel
+The first row is `＋ end of day`, then a `return` block — one row per place a move
+left — then `today`: every entry in document order, `D.C.N`, clock, title, `+N`
+children (that count is the blast radius of `x`), with the caret's own entry marked.
+`x` asks for no confirmation: the whole subtree goes in one undoable transaction,
+the surviving branches' `C` values are repaired in that same transaction, and one
+undo brings both back.
 
-`⌘⇧⏎` opens one card, centred in the note pane:
-
-| Key | Effect |
-| --- | --- |
-| `←` `→` | previous/next day that holds a draft (no wrap) |
-| `↑` `↓` | previous/next draft in that day |
-| `1`, `1.2`, `.14`, `1.2.14` then `⏎` | lock that filter; days and rows regroup around the matches |
-| `⏎` with an empty query | travel to the selected draft |
-| `Esc` | clear the query, then close |
-
-Rows are touch targets as well as keys. The card never takes a `Scope`, so `⌘,`
-and every other Obsidian chord reach the app while it is open. Travel puts the
-caret in the entry's prose and outlines it without moving a single line: the
-rectangle is an absolute overlay, never padding or a border.
+The card never takes a `Scope`, so `⌘,` and every other Obsidian chord reach the app
+while it is open. Every action re-reads the document; the card never caches a line
+number across a write. The list is today's note — the same target *Append an entry*
+writes to — so reaching another day means opening that note.
 
 ## Record formats
 
 **Marker line** — `{ D.C.N } - HH:MM:SS`, matched as a prefix, so a title typed
 after the clock becomes the first prose line. Tokens are optional in the file:
 `{1.2.3}-13:27` reads as 13:27:00. A marker inside frontmatter or a fenced code
-block is text.
+block is text. On a framed surface the marker's characters are the box's top rail
+label: the rail runs through the middle of the row and is cut behind it, so the
+file's own text is what names the box. The hyphen is ordinary punctuation inside
+that label — the file keeps it, and no character belongs to the box instead.
 
 **Duration line** — `[+-=] HH:MM:SS`, the first such line under a marker, in the
 same shape as the marker's own clock so the two can be read against each other.
@@ -181,7 +179,7 @@ changes, and only when *Write day counters* is on.
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
-| Look | Frame each entry | on | Draw a rounded frame around every entry, with the marker on its top rail and the duration on its bottom rail. |
+| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail and the duration row its bottom rail, each running through the middle of the row that names it and cut behind that label. |
 | Advanced | Link past days | on | Render ` - [[2026.10.26]]` after the clock on any note that is not today's. |
 | Advanced | Debug logging | off | Verbose console output. |
 
@@ -230,7 +228,7 @@ fails loudly rather than skipping: a law left open prints `SOME PROOFS FAIL`.
 Nothing else is in Bend, and that is a rule rather than a preference: a part
 belongs there when it is pure and total, closed-form or structurally inductive so
 `{==}` discharges it without lemmas Base does not carry, and off the per-keystroke
-path. `parseEntries` and `renumberMarkers` fail the last test; `dimensionColor`
+path. `parseEntries` and `repairThreads` fail the last test; `dimensionColor`
 fails the second; everything that touches CodeMirror or Obsidian fails the first.
 
 ## Migrating a day note
@@ -246,9 +244,27 @@ node scripts/migrate-dcn.mjs --verify <file…>           # self-consistency
 node scripts/migrate-dcn.mjs --verify --from <original> <file…>   # plus line survival
 ```
 
-`D` is the hash count, `C` the sibling ordinal in document order, `N` the rank by
-clock across the file (ties by document order). Every non-heading line survives
-byte for byte; a file whose lines already start with a marker is left untouched.
+`D` is the hash count, `C` the thread (a root's position among roots, carried down
+its branch), `N` the rank by clock across the file (ties by document order). Every
+non-heading line survives byte for byte; a file whose lines already start with a
+marker is left untouched.
+
+Notes already in marker form from an earlier build carry the old per-parent `C`.
+One pass threads them, and it rewrites nothing but those `C` fields:
+
+```sh
+node scripts/migrate-dcn.mjs --threads --dry-run <file…>   # print, write nothing
+node scripts/migrate-dcn.mjs --threads <file…>             # thread in place
+node scripts/migrate-dcn.mjs --threads --verify --from <copy> <file…>
+```
+
+Roots already hold their own `C`, so the only bytes that differ are the `C` fields of
+depth-2 and deeper markers. `--verify` checks that the marker count, every `D`, every
+`N`, every root's `C` and every non-marker byte survived, and that every deeper `C`
+equals its root's. Run it once; a threaded file reports `already threaded`. The
+plugin never rewrites a note's numbering on load: an unmigrated note reads as the
+file says, and the next deletion repairs every drifted `C` in the same undoable
+transaction.
 
 `0.5.0` changed what a duration line means, so notes written before it need one
 one-shot pass:
@@ -278,8 +294,7 @@ These need a live Obsidian and are not covered by `npm test`:
   from that second and the rendered sigil returns to `-` without the file moving.
 - `⏎` on the open entry: the line becomes `+ HH:MM:SS`, no child appears and the
   caret does not move. `⏎` again: a child `{ 2.1.2 } - HH:MM:SS` with `- 00:00:00`
-  appears directly under it, with the caret in its prose and the travel rectangle
-  around it.
+  appears directly under it, with the caret in its prose.
 - Prose renders in the dimension's colour, the stopwatch's two colons render in
   that colour while its digits keep the note's own text colour, and the duration
   line keeps its height while the digits change.
@@ -290,47 +305,47 @@ These need a live Obsidian and are not covered by `npm test`:
 - Type into a settled entry: its duration line never changes, and a `+` entry is
   never rewritten.
 - `⌘⇧P`: the card lists today's entries with the caret's entry selected; `↓` moves
-  the selection; `1.5` then `⏎` locks the filter on that entry; `n` while the query
-  is non-empty goes into the query and creates nothing; `n` on an empty query
-  appends a root at the tip; `x` removes the selected subtree in one undo; `Esc`
-  clears the query, then the filter, then leaves the CM caret on the selection.
-- `⌘⇧⏎`: the card is centred in the note pane, `⌘,` opens Obsidian settings with
-  the card open, the sidebar moves the card with the pane, `3` then `⏎` locks the
-  dimension filter.
-- Travelling shows the rounded rectangle around the prose without moving it, and
-  the stopwatch still reads `-` until the first keystroke.
+the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles it and opens a
+child; `n` appends a root at the tip; `x` removes the selected subtree in one undo;
+`⌘[` walks back a stop and the list reopens where it landed; `Esc` closes and puts
+the caret back where the card opened. `⌘,` still opens Obsidian settings with the
+card open.
 - Phone: `⏎` settles the open entry and never opens a child, from any line of it.
-  `weaver:line-break` in the toolbar is the newline. Rows ≥ 44 px, the card fits
-  the visible viewport, and `Start an entry` lands the caret in the new entry's
-  prose even from Reading view.
+  `weaver:line-break` in the toolbar is the newline. Rows ≥ 44 px, the sheet fills
+  the screen, and *Append an entry* lands the caret in the new entry's prose even
+  from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
-- Frames, Live Preview: every entry is enclosed by a rounded frame that hugs its
-  text and stops at the pane's edge; the marker `{ D.C.N } - HH:MM:SS` sits on the
-  top rail at the right, the duration on the bottom rail, both cut into the rail by
-  a chip of page colour; a short entry starts at a limited width (~a marker's
-  worth) and a long one reaches the edge; ~10 px of air separates adjacent frames
-  (one invisible row on each side of the rail).
-- Frames, the caret: put the caret on a marker row and the file's own text returns,
-  with the rail cut behind it; the same for a duration row. Every other row keeps
-  its label. Turning *Frame each entry* off restores the plain lines with no
-  leftover layer, and Source mode never draws a frame.
-- Frames, live: while an entry is being written its rails shimmer counter-
-  clockwise; a still entry does not. The duration on the bottom rail ticks with the
-  same second as the widget it replaced.
+- Frames, Live Preview: every entry is enclosed by one unbroken box spanning the
+  text column; the box's top rail runs through the middle of the entry's own marker
+  row and its bottom rail through the middle of its own duration row, each exactly
+  once and never dimmed. Both rails are cut behind their labels, with a short stub
+  left beside each corner, so the box reads as running into its own text. Scroll to
+  the middle of a long entry: the box stays whole with its last line still
+  off-screen. Two neighbouring boxes never overlap — 8 px of clear space, at least,
+  between one entry's clock centre and the next entry's marker centre.
+- Frames, the caret: put the caret on the marker row or on the duration row — the
+  text stays exactly where it is, both labels keep cutting their rails, and nothing
+  steps aside. Turning *Frame each entry* off removes every box and leaves the lines
+  untouched; Source mode never draws one.
+- Frames, live: while an entry is being written its border shimmers counter-
+  clockwise along the visible rails, and the shimmer is hidden behind the labels; a
+  still entry does not shimmer.
 - Frames, Reading view: the same boxes, one per entry, with the prose inside and no
   second indent; a nested entry's frame starts one indent step further right; the
-  frames do not touch.
-- Frames, phone: the frame keeps its rails, its labels fit without ellipsis on a
-  narrow pane, and the frame reaches the edge when the text does.
+  marker hangs half a line over the top rail and the clock half a line over the
+  bottom one, both centred on their rails.
+- Frames, phone: the box reaches the pane's edge, and the clock reads on one line in
+  the bottom-right corner.
 
 ## Known limits
 
 - Entry markers are plain text, so Obsidian's outline, folding and `[[#heading]]`
-  links do not list entries. Travel is the only navigation.
-- Travel lists drafts only — `-` and `=` — so a day whose entries are all `+` has
-  nothing to travel to.
-- The day index scans the day-note folder only, capped at 5000 files and 2 MB per
-  file; a failed scan keeps the previous results.
+  links do not list entries. The navigator is the only navigation, and it lists
+  today's note: another day is reached by opening that note.
+- The navigator has no query: a sixty-entry day is scrolled, or walked with the
+  arrows. Filtering is a contained addition (one input, one filter), not a redesign.
+- The frame's box is full-width by design: a hugging box could not put the clock in
+  its own bottom-right corner without rendering the row twice.
 - Durations are whole seconds: a session under half a second reads `00:00:00`, and
   a hundredth of a second is not recoverable.
 - Setext (`===` underlined) headings are not parsed, and a marker inside frontmatter
@@ -349,4 +364,6 @@ npm run check     # typecheck + tests + proof gate + production build
 ```
 
 `src/core` is pure and has no `obsidian` import; the editor and UI layers sit on
-top of it. `src/entries/engine.ts` is the only writer of entry text.
+top of it. `src/entries/writer.ts` is the only writer of a day note — the open
+editor or the vault, never both — and `src/entries/engine.ts` is the only caller
+that decides what to write.

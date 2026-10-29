@@ -55,7 +55,7 @@ describe("planChildEntry", () => {
     "- 00:00:00"
   ].join("\n");
 
-  it("goes one dimension deeper, next in the sibling order", () => {
+  it("goes one dimension deeper on the same thread, next in the sequence", () => {
     const index = parseEntries(SOURCE);
     const parent = index.entries[0];
     if (parent === undefined) throw new Error("expected a parent");
@@ -64,17 +64,20 @@ describe("planChildEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(SOURCE, plan);
-    expect(next).toContain("{ 2.3.4 } - 13:27:43");
+    expect(next).toContain("{ 2.1.4 } - 13:27:43");
     expect(next.split("\n").length).toBe(SOURCE.split("\n").length + 4);
+    // One change, one undo: an insert renumbers nothing.
+    expect(plan.changes.length).toBe(1);
   });
 
-  it("renumbers the siblings it disturbs, in the same plan", () => {
+  it("keeps a crooked branch's C when inserting under it", () => {
     const crooked = [
       "{ 1.1.1 } - 10:00:00",
       "root",
       "+ 00:01:00",
       "{ 2.5.2 } - 10:01:00",
-      "crooked child"
+      "crooked child",
+      "+ 00:00:00"
     ].join("\n");
 
     const index = parseEntries(crooked);
@@ -85,8 +88,10 @@ describe("planChildEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(crooked, plan);
-    expect(next).toContain("{ 2.1.2 } - 10:01:00");
-    expect(next).toContain("{ 2.2.3 } - 13:27:43");
+    // The child inherits the parent's written `C`: the branch stays uniform.
+    expect(next).toContain("{ 2.1.3 } - 13:27:43");
+    // The existing child is left exactly as the writer typed it.
+    expect(next).toContain("{ 2.5.2 } - 10:01:00");
   });
 });
 

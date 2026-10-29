@@ -7,10 +7,10 @@ import {
   findEntryAtLine,
   findEntryAtOffset,
   formatMarker,
-  nextChild,
   nextSeq,
+  nextThread,
   parseEntries,
-  renumberMarkers
+  repairThreads
 } from "../src/core/entries";
 
 const SINGLE = ["{ 1.2.3 } - 13:27:43", "the title line", "+ 00:04:12"].join("\n");
@@ -117,14 +117,13 @@ describe("parseEntries", () => {
     expect(entryBySeq(index, 2)?.title).toBe("second");
   });
 
-  it("counts children and the next sequence", () => {
+  it("counts children and the next thread", () => {
     const source = ["{ 1.1.1 } - 10:00:00", "{ 2.1.2 } - 10:01:00", "{ 2.2.3 } - 10:02:00"].join("\n");
     const index = parseEntries(source);
     const root = index.entries[0] ?? null;
 
     expect(childrenOf(index, root).length).toBe(2);
-    expect(nextChild(index, root)).toBe(3);
-    expect(nextChild(index, null)).toBe(2);
+    expect(nextThread(index)).toBe(2);
     expect(nextSeq(index)).toBe(4);
   });
 
@@ -132,26 +131,58 @@ describe("parseEntries", () => {
     expect(formatMarker(1, 2, 3, "13:27:43")).toBe("{ 1.2.3 } - 13:27:43");
   });
 
-  it("renumbers only the addresses that are out of order", () => {
+  it("gives every entry in a branch its thread's id", () => {
+    // Crooked on purpose: the markers agree on nothing, and the thread is read
+    // from the tree, never from the digits.
     const source = [
       "{ 2.5.1 } - 10:00:00",
-      "first",
+      "root",
       "+ 00:00:00",
-      "{ 2.7.2 } - 10:01:00",
-      "second",
+      "{ 3.9.2 } - 10:01:00",
+      "child",
+      "+ 00:00:00",
+      "{ 4.7.3 } - 10:02:00",
+      "grandchild",
+      "+ 00:00:00",
+      "{ 3.2.4 } - 10:03:00",
+      "second child",
+      "+ 00:00:00",
+      "{ 1.9.5 } - 10:04:00",
+      "second root",
       "+ 00:00:00"
     ].join("\n");
 
     const index = parseEntries(source);
-    const changes = renumberMarkers(index);
-    expect(changes.map((change) => change.text)).toEqual(["1", "2"]);
+    expect(index.entries.map((entry) => entry.thread)).toEqual([1, 1, 1, 1, 2]);
+    // The file's own `C` values are reported as they are, not repaired.
+    expect(index.entries.map((entry) => entry.c)).toEqual([5, 9, 7, 2, 9]);
+
+    // Repairing rewrites every drifted `C` onto its branch's thread.
+    const changes = repairThreads(index);
+    expect(changes.map((change) => change.text)).toEqual(["1", "1", "1", "1", "2"]);
 
     const next = changes.reduce(
       (text, change) => text.slice(0, change.from) + change.text + text.slice(change.to),
       source
     );
     expect(next.split("\n")[0]).toBe("{ 2.1.1 } - 10:00:00");
-    expect(next.split("\n")[3]).toBe("{ 2.2.2 } - 10:01:00");
+    expect(next.split("\n")[3]).toBe("{ 3.1.2 } - 10:01:00");
+    expect(next.split("\n")[6]).toBe("{ 4.1.3 } - 10:02:00");
+    expect(next.split("\n")[9]).toBe("{ 3.1.4 } - 10:03:00");
+    expect(next.split("\n")[12]).toBe("{ 1.2.5 } - 10:04:00");
+  });
+
+  it("rewrites nothing when every branch already carries its thread", () => {
+    const source = [
+      "{ 1.1.1 } - 10:00:00",
+      "first",
+      "{ 2.1.2 } - 10:01:00",
+      "child",
+      "{ 1.2.3 } - 10:02:00",
+      "second"
+    ].join("\n");
+
+    expect(repairThreads(parseEntries(source))).toEqual([]);
   });
 
   it("reports an unclosed frontmatter instead of guessing", () => {

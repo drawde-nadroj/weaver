@@ -4,6 +4,7 @@ import { DurationWidget, type DurationWidgetInput } from "../src/editor/stopwatc
 
 function widget(overrides: Partial<DurationWidgetInput> = {}): DurationWidget {
   return new DurationWidget({
+    n: 1,
     sigil: "-",
     ms: 0,
     active: false,
@@ -34,6 +35,18 @@ describe("the duration widget", () => {
     expect(widget().eq(widget({ active: true }))).toBe(false);
     expect(widget().eq(widget({ color: "#22d3ee" }))).toBe(false);
     expect(widget().eq(widget({ d: 3 }))).toBe(false);
+    // A different entry is a different row: its stamp has to be repainted.
+    expect(widget().eq(widget({ n: 2 }))).toBe(false);
+  });
+
+  it("stamps its element with the entry it belongs to", () => {
+    // The frame layer finds this row by the stamp, not by a DOM position.
+    expect(widget({ n: 4 }).toDOM().getAttribute("data-weaver-n")).toBe("4");
+
+    // An adopted element is repainted, stamp included.
+    const root = widget({ n: 4 }).toDOM();
+    widget({ n: 7 }).updateDOM(root);
+    expect(root.getAttribute("data-weaver-n")).toBe("7");
   });
 
   it("repaints a reused element in place instead of rebuilding it", () => {

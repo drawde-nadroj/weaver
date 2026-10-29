@@ -1,15 +1,17 @@
 /**
  * Reading view: the same entry the editor draws, in the same frame.
  *
- * The marker paragraph becomes the frame's top label and the duration paragraph
- * its bottom one; the prose between them is the frame's interior. A real wrapper
- * is inserted here, unlike the old shape, because a frame that hugs its text
- * needs a box to hug it — the browser's `width: fit-content` is exactly the
- * measurement the editor's frame layer does by hand.
+ * The marker paragraph becomes the frame's first child and the duration
+ * paragraph its last; the prose between them is the frame's interior. The
+ * wrapper is a real element because a box needs one to enclose — and because the
+ * file's own text is what labels it: the marker row is the top rail's label, the
+ * duration row the bottom rail's, each appearing once. The rails run through the
+ * middle of those rows and are cut behind them by the labels' own backgrounds, so
+ * the box reads as running into its own text.
  *
- * The marker's canonical shape is drawn (`{ 1.2.3 } - 13:27:43`), so a hand
- * written `{1.2.3}-13:27` reads the same here as it does on the rail. Anything
- * typed after the marker stays in the DOM untouched, links and emphasis included.
+ * The marker's own characters are kept, split into digit runs so the digits stay
+ * white and the punctuation takes the dimension's colour. Anything typed after
+ * the marker stays in the DOM untouched, links and emphasis included.
  */
 
 import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidian";
@@ -17,9 +19,9 @@ import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidi
 import { dimensionColorVars } from "../core/color";
 import { dayKey, dayKeyFromName } from "../core/day-note";
 import { formatClock, parseDurationLine } from "../core/duration";
-import { markerRuns, type LabelRun } from "../core/frame";
 import { parseMarkerPrefix } from "../core/entries";
 import type WeaverPlugin from "../main";
+import { appendDigitRuns } from "../ui/dcn";
 
 /** Containers whose paragraphs must never be rewritten. */
 const SKIP_SELECTOR = "blockquote, .callout, .markdown-embed, li, table, pre, code";
@@ -28,25 +30,12 @@ const PROCESSED = "data-weaver-entry-processed";
 const HEAD_CLASS = "weaver-entry-head";
 const TEXT_NODE = 3;
 
-/** Digits white, punctuation in the entry's colour. */
-function appendRuns(parent: HTMLElement, runs: readonly LabelRun[]): void {
-  for (const run of runs) {
-    const span = document.createElement("span");
-    span.className = run.num ? "weaver-dcn-num" : "weaver-dcn-ink";
-    span.textContent = run.text;
-    parent.appendChild(span);
-  }
-}
-
 function durationElement(
   parsed: NonNullable<ReturnType<typeof parseDurationLine>>,
-  d: number | null,
-  label: boolean
+  d: number | null
 ): HTMLElement {
   const root = document.createElement("div");
-  root.className = label
-    ? "weaver-duration weaver-frame-label weaver-frame-label-bottom"
-    : "weaver-duration";
+  root.className = "weaver-duration";
   root.setAttribute(PROCESSED, "true");
   if (d !== null) root.setAttribute("style", dimensionColorVars(d));
 
@@ -100,7 +89,7 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
         // A duration paragraph on its own, with no frame to sit on — a stray
         // line, or one separated from its marker by something that is not a
         // paragraph — is drawn as the plain block it always was.
-        paragraph.replaceWith(durationElement(duration, depth, false));
+        paragraph.replaceWith(durationElement(duration, depth));
         continue;
       }
 
@@ -109,12 +98,14 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
       depth = prefix.d;
 
       const head = document.createElement("div");
-      head.className = `${HEAD_CLASS} weaver-frame-label weaver-frame-label-top`;
+      // The marker row is the frame's top rail: its own background cuts the rail
+      // behind it, so the box reads as running into the row that names it.
+      head.className = "weaver-entry-head weaver-frame-label";
       head.setAttribute("style", dimensionColorVars(prefix.d));
       head.setAttribute("data-weaver-d", String(prefix.d));
       head.setAttribute(PROCESSED, "true");
 
-      appendRuns(head, markerRuns(prefix));
+      appendDigitRuns(head, text.slice(0, prefix.length));
 
       if (showLink) {
         const link = document.createElement("span");
@@ -161,7 +152,11 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
         if (sibling.classList.contains("weaver-frame")) break;
         const parsed = parseDurationLine((sibling.textContent ?? "").trim());
         if (parsed !== null) {
-          frame.appendChild(durationElement(parsed, prefix.d, true));
+          const duration = durationElement(parsed, prefix.d);
+          // Only inside a frame: a stray duration with no entry above it must not
+          // paint a full-width band over the text it sits beside.
+          duration.classList.add("weaver-frame-label");
+          frame.appendChild(duration);
           sibling.remove();
           break;
         }

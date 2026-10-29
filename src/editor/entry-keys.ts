@@ -1,5 +1,5 @@
 /**
- * The three keys an entry owns, and the two edit events that keep the stopwatch
+ * The two keys an entry owns, and the two edit events that keep the stopwatch
  * honest.
  *
  * `Mod-Shift-E` starts an entry from inside any editor as well as from the app.
@@ -24,7 +24,6 @@ import type { EntrySession } from "../entries/session";
 import { isPhone } from "../ui/platform";
 import { editorPathOf } from "./editor-path";
 import { entryIndexField, programmaticWrite } from "./entry-field";
-import { clearTravelTarget } from "./travel-target";
 import { registeredEditorViews } from "./view-registry";
 
 /**
@@ -35,13 +34,12 @@ import { registeredEditorViews } from "./view-registry";
  * neither a `Prec.highest` editor binding nor a command hotkey ever sees that
  * chord. `Mod+Shift+E` belongs to no other command, so it reaches us.
  */
-export const ENTRY_KEYS = ["Mod-Shift-E", "Enter", "Escape"] as const;
+export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const;
 
 export interface EntryKeyHost {
   session: EntrySession;
-  travelTarget: { path: string; seq: number } | null;
   entries: {
-    startToday(now: Date): Promise<void>;
+    appendEntry(now: Date): Promise<void>;
     settle(view: EditorView, entry: Entry): void;
     descend(view: EditorView, entry: Entry): void;
     deleteEntry(view: EditorView, entry: Entry): void;
@@ -87,16 +85,7 @@ export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean {
  * claiming it here cannot take anything away from the writer.
  */
 export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean {
-  void host.entries.startToday(new Date());
-  return true;
-}
-
-/** Clears the travel rectangle and pauses; not handled when there is none. */
-export function handleEscapeKey(view: EditorView, host: EntryKeyHost): boolean {
-  if (host.travelTarget === null) return false;
-
-  host.entries.pause(new Date());
-  view.dispatch({ effects: clearTravelTarget.of(null) });
+  void host.entries.appendEntry(new Date());
   return true;
 }
 
@@ -154,8 +143,7 @@ export function entryKeysExtension(host: EntryKeyHost): Extension {
   return Prec.highest(
     keymap.of([
       { key: "Mod-Shift-e", run: (view) => handleStartKey(view, host) },
-      { key: "Enter", run: (view) => handleEnterKey(view, host) },
-      { key: "Escape", run: (view) => handleEscapeKey(view, host) }
+      { key: "Enter", run: (view) => handleEnterKey(view, host) }
     ])
   );
 }

@@ -61,6 +61,11 @@ describe("the entry processor", () => {
       "43"
     ]);
     expect(head?.querySelector(".weaver-dcn-ink")?.textContent).toBe("{ ");
+    // The marker row is the top rail's label, in the file's own characters: the
+    // hyphen is ordinary punctuation inside it, not a second drawing of the rail.
+    expect(head?.hasClass("weaver-frame-label")).toBe(true);
+    expect(head?.querySelector(".weaver-marker-dash")).toBeNull();
+    expect(head?.textContent).toBe("{ 1.2.3 } - 13:27:43");
   });
 
   it("turns a duration paragraph into the rendered duration", () => {
@@ -85,7 +90,7 @@ describe("the entry processor", () => {
     expect(root.querySelectorAll("p").length).toBe(0);
   });
 
-  it("frames the entry around its prose, with the marker and duration on the rails", () => {
+  it("frames the entry around its prose, with its rows as the rail labels", () => {
     const root = container();
     paragraph(root, "{ 1.2.3 } - 13:27:43");
     paragraph(root, "the thought this one opened");
@@ -96,10 +101,13 @@ describe("the entry processor", () => {
     const frame = root.querySelector(".weaver-frame");
     expect(frame?.hasClass("is-static")).toBe(true);
     expect(frame?.getAttr("style")).toBe("--weaver-dcolor:#ef4444;--weaver-d:1");
-    expect(frame?.querySelector(".weaver-frame-label-top")?.hasClass("weaver-entry-head")).toBe(true);
-    expect(
-      frame?.querySelector(".weaver-frame-label-bottom")?.hasClass("weaver-duration")
-    ).toBe(true);
+    // The first child is the marker row, the last the duration row: each is the
+    // label of the rail it sits on, so each cuts that rail behind itself.
+    expect(frame?.firstChild?.hasClass("weaver-entry-head")).toBe(true);
+    expect(frame?.firstChild?.hasClass("weaver-frame-label")).toBe(true);
+    expect(frame?.firstChild?.textContent).toBe("{ 1.2.3 } - 13:27:43");
+    expect(frame?.lastChild?.hasClass("weaver-duration")).toBe(true);
+    expect(frame?.lastChild?.hasClass("weaver-frame-label")).toBe(true);
     // The prose is the interior; the marker and duration paragraphs are gone.
     expect(frame?.querySelectorAll(".weaver-entry-prose").length).toBe(1);
     expect(frame?.querySelectorAll("p").length).toBe(1);
@@ -126,6 +134,9 @@ describe("the entry processor", () => {
 
     const duration = root.querySelector(".weaver-duration");
     expect(duration).not.toBeNull();
+    expect(duration?.hasClass("weaver-duration")).toBe(true);
+    // No rail to cut, so no label: a stray duration must not paint a band over
+    // the text beside it.
     expect(duration?.hasClass("weaver-frame-label")).toBe(false);
   });
 

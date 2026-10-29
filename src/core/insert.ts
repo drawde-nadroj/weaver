@@ -3,7 +3,8 @@
  *
  * A plan is a list of changes plus the selection to leave behind, applied in one
  * transaction so a single undo reverts all of it. `+` is never written twice,
- * `C` is renumbered on insert, and `N` is only ever appended.
+ * `C` is a branch's thread id (inherited on insert, repaired only when a root is
+ * deleted), and `N` is only ever appended.
  */
 
 import { formatClock } from "./clock";
@@ -12,10 +13,10 @@ import { formatDurationLine, type DurationSigil } from "./duration";
 import {
   endOfSubtree,
   formatMarker,
-  nextChild,
   nextSeq,
+  nextThread,
   parseEntries,
-  renumberMarkers,
+  repairThreads,
   type Entry,
   type EntryIndex
 } from "./entries";
@@ -83,7 +84,7 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence) return null;
 
-  const marker = formatMarker(1, nextChild(index, null), nextSeq(index), formatClock(now));
+  const marker = formatMarker(1, nextThread(index), nextSeq(index), formatClock(now));
   const text = `${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
   return planAppendLine(source, text, marker.length + 1);
 }
@@ -91,8 +92,9 @@ export function planStartEntry(source: string, index: EntryIndex, now: Date): In
 /**
  * A child entry one dimension deeper, directly under the parent's subtree.
  *
- * The siblings' `C` values are repaired in the same plan, so one undo reverses
- * the insert and the renumbering together.
+ * The child inherits its parent's written `C`, so a branch carries one thread id
+ * from its root all the way down — and an insert never renumbers anything, which
+ * is what makes it a single change.
  */
 export function planChildEntry(
   _source: string,
@@ -102,12 +104,7 @@ export function planChildEntry(
 ): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence) return null;
 
-  const marker = formatMarker(
-    parent.d + 1,
-    nextChild(index, parent),
-    nextSeq(index),
-    formatClock(now)
-  );
+  const marker = formatMarker(parent.d + 1, parent.c, nextSeq(index), formatClock(now));
   const blockEnd = endOfSubtree(index, parent);
 
   // Blank lines at the end of the subtree are spacing; the child goes under the
@@ -118,15 +115,8 @@ export function planChildEntry(
   const at = (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
   const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
 
-  const changes: TextChange[] = [{ from: at, to: at, text }];
-
-  const parentEnd = (index.lineStarts[blockEnd] ?? 0) + (index.lines[blockEnd] ?? "").length;
-  for (const change of renumberMarkers(index)) {
-    if (change.from >= parent.from && change.from <= parentEnd) changes.push(change);
-  }
-
   const caret = at + NEWLINE.length * 2 + marker.length + 1;
-  return { changes, selection: { from: caret, to: caret } };
+  return { changes: [{ from: at, to: at, text }], selection: { from: caret, to: caret } };
 }
 
 /**
@@ -134,9 +124,9 @@ export function planChildEntry(
  * `planChildEntry` writes.
  *
  * The block runs from the marker to the end of its subtree, the blank separator
- * lines below it go with it, and the surviving siblings' `C` values are repaired
- * in the same plan, so one undo restores the whole subtree and the renumbering.
- * The caret lands where the block was.
+ * lines below it go with it, and every surviving branch whose thread id shifted
+ * is rewritten in the same plan, so one undo restores the whole subtree and the
+ * addressing. The caret lands where the block was.
  */
 export function planDeleteEntry(
   source: string,
@@ -161,12 +151,11 @@ export function planDeleteEntry(
   }
 
   const changes: TextChange[] = [{ from, to, text: "" }];
-  // The survivors' `C` values are ordinals of the tree that remains, so they are
-  // computed on the deleted text and shifted back into the document as it is:
-  // every marker still needing a number sits below the block.
+  // The survivors' threads are computed on the deleted text — where every marker
+  // below the block sits — and shifted back into the document as it is.
   const shift = to - from;
   const remaining = parseEntries(source.slice(0, from) + source.slice(to));
-  for (const change of renumberMarkers(remaining)) {
+  for (const change of repairThreads(remaining)) {
     changes.push({ from: change.from + shift, to: change.to + shift, text: change.text });
   }
 

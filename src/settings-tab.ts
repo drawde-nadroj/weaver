@@ -178,7 +178,7 @@ export class WeaverSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Frame each entry")
-      .setDesc("Draw a rounded frame around every entry, with the marker on its top rail and the duration on its bottom rail.")
+      .setDesc("Draw a rounded frame around every entry: the marker row is its top rail label and the duration row its bottom rail, each rail running through the middle of its row and cut behind the label.")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.entryFrames).onChange((value) => {
           this.plugin.settings.entryFrames = value;

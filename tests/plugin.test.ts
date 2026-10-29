@@ -22,15 +22,13 @@ beforeEach(() => {
 });
 
 describe("the command surface", () => {
-  it("registers exactly the six commands, with their chords", async () => {
+  it("registers exactly the four commands, with their chords", async () => {
     const plugin = await start();
     const commands = registeredCommands(plugin);
 
     expect(commands.map((command) => command.id)).toEqual([
-      "start-entry",
-      "insert-entry",
-      "travel",
-      "palette",
+      "append-entry",
+      "navigate",
       "line-break",
       "close-day"
     ]);
@@ -39,16 +37,19 @@ describe("the command surface", () => {
       (command.hotkeys ?? []).map((hotkey) => `${hotkey.modifiers.join("+")}+${hotkey.key}`)
     );
     // `Mod+Enter` is the core "open link" chord and never reaches a plugin, so
-    // starting an entry owns `Mod+Shift+E` instead.
+    // appending owns `Mod+Shift+E` instead.
     expect(chords[0]).toEqual(["Mod+Shift+E"]);
-    expect(chords[1]).toEqual(["Mod+Shift+J"]);
-    expect(chords[2]).toEqual(["Mod+Shift+Enter"]);
-    expect(chords[3]).toEqual(["Mod+Shift+P"]);
-    expect(chords[4]).toEqual([]);
-    expect(chords[5]).toEqual([]);
+    expect(chords[1]).toEqual(["Mod+Shift+P"]);
+    expect(chords[2]).toEqual([]);
+    expect(chords[3]).toEqual([]);
 
-    // The toolbar's newline carries the icon the phone's toolbar draws.
-    expect(commands.find((command) => command.id === "line-break")?.icon).toBe("corner-down-left");
+    // Every command carries an icon, so the phone's toolbar can draw it.
+    expect(commands.map((command) => command.icon)).toEqual([
+      "plus",
+      "list",
+      "corner-down-left",
+      "check-circle"
+    ]);
 
     plugin.onunload();
   });

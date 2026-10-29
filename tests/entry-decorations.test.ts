@@ -76,7 +76,27 @@ describe("the entry decorations", () => {
     const ink = found.filter((range) => range.spec.class === "weaver-dcn-ink");
 
     expect(digits.map((range) => range.text)).toEqual(["2", "1", "1", "10", "00", "00"]);
+    // The hyphen is punctuation like the braces and the dots: the whole marker is
+    // the top rail's label, so no character of it belongs to the box instead.
     expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| } - |:|:");
+  });
+
+  it("labels the marker row as the top rail's label", () => {
+    const label = collect(stateAt()).find((range) => range.spec.class === "weaver-frame-label");
+
+    // One mark over the file's own marker: the rail is cut behind these
+    // characters, and no character is added, moved or hidden.
+    expect(label?.text).toBe("{ 2.1.1 } - 10:00:00");
+  });
+
+  it("stamps each row with the entry it belongs to", () => {
+    const found = collect(stateAt());
+    const head = found.find((range) => range.spec.class === "weaver-entry-head");
+    const widget = found.find((range) => range.spec.widget instanceof DurationWidget);
+
+    // The frame layer finds the rows by these stamps, never by a DOM position.
+    expect(head?.spec.attributes?.["data-weaver-n"]).toBe("1");
+    expect((widget?.spec.widget as DurationWidget | undefined)?.input.n).toBe(1);
   });
 
   it("replaces the duration line while the caret is elsewhere", () => {
@@ -90,40 +110,27 @@ describe("the entry decorations", () => {
   it("goes back to raw text while the caret is on the duration line", () => {
     const state = stateAt(DOC.length - 1);
     const found = collect(state);
+    const raw = found.find((range) => range.spec.class === "weaver-duration-raw");
 
     expect(found.some((range) => range.spec.widget instanceof DurationWidget)).toBe(false);
-    expect(found.some((range) => range.spec.class === "weaver-duration-raw")).toBe(true);
-    expect(found.some((range) => range.spec.class === "weaver-entry-head-raw")).toBe(false);
+    expect(raw?.spec.attributes?.["data-weaver-n"]).toBe("1");
+    // The bottom rail's label is the same row, in the file's own characters.
+    const label = found.find(
+      (range) => range.spec.class === "weaver-frame-label" && range.text.startsWith("+")
+    );
+    expect(label?.text).toBe("+ 00:01:00");
   });
 
-  it("marks the head raw while the caret is on the marker line", () => {
-    const found = collect(stateAt(2));
+  it("keeps the marker's own text on the line whatever the caret does", () => {
+    const headClass = (state: EditorState, settings: WeaverSettings = DEFAULT_SETTINGS): string =>
+      collect(state, settings).find((range) => range.spec.class?.startsWith("weaver-entry-head"))
+        ?.spec.class ?? "";
 
-    expect(found.some((range) => range.spec.class === "weaver-entry-head weaver-entry-head-raw")).toBe(
-      true
-    );
-  });
-
-  it("takes the marker's paint away while the frame draws it", () => {
-    const head = collect(stateAt()).find((range) =>
-      range.spec.class?.startsWith("weaver-entry-head")
-    );
-    expect(head?.spec.class).toBe("weaver-entry-head weaver-entry-head-framed");
-
-    // The caret on the row always wins: the file's own text comes back.
-    const raw = collect(stateAt(2)).find((range) =>
-      range.spec.class?.startsWith("weaver-entry-head")
-    );
-    expect(raw?.spec.class).toBe("weaver-entry-head weaver-entry-head-raw");
-  });
-
-  it("never removes the marker's paint with framing turned off", () => {
-    const off: WeaverSettings = { ...DEFAULT_SETTINGS, entryFrames: false };
-    const head = collect(stateAt(), off).find((range) =>
-      range.spec.class?.startsWith("weaver-entry-head")
-    );
-
-    expect(head?.spec.class).toBe("weaver-entry-head");
+    // Caret in the prose, caret on the marker row, and framing turned off: one
+    // class, because nothing swaps the line's text for a drawn label any more.
+    expect(headClass(stateAt())).toBe("weaver-entry-head");
+    expect(headClass(stateAt(2))).toBe("weaver-entry-head");
+    expect(headClass(stateAt(), { ...DEFAULT_SETTINGS, entryFrames: false })).toBe("weaver-entry-head");
   });
 
   it("ticks a live session instead of showing the stored time", () => {
@@ -159,7 +166,7 @@ describe("the entry decorations", () => {
   });
 
   it("draws two coloured colons between three white digit spans", () => {
-    const widget = new DurationWidget({ sigil: "-", ms: 66_000, active: false, color: "#f97316", d: 2 });
+    const widget = new DurationWidget({ n: 1, sigil: "-", ms: 66_000, active: false, color: "#f97316", d: 2 });
     const root = widget.toDOM() as unknown as {
       querySelectorAll: (selector: string) => Array<{ textContent: string }>;
     };
@@ -180,7 +187,8 @@ describe("the entry decorations", () => {
     const past = collect(stateAt()).find(
       (range) => range.spec.widget !== undefined && !range.spec.block
     );
-    expect(past?.spec.widget?.toDOM?.().className).toBe("weaver-entry-daylink");
+    // Part of the top rail's label, so its background cuts the rail behind it.
+    expect(past?.spec.widget?.toDOM?.().className).toBe("weaver-entry-daylink weaver-frame-label");
 
     const today = collect(
       stateAt(),

@@ -12,15 +12,18 @@ decoration around a note; it is the first dimension of a new thread, and it is w
 being the first because returning is the point. Anything that cannot be returned to
 is a thought the note will lose.
 
-Since 0.5.0 the loop is **start → write → stop → settle → deeper**: writing has its
+Since 0.5.0 the loop is **append → write → stop → settle → deeper**: writing has its
 own beginning and its own end, and neither is a keystroke away from the other. It
 happens in one place — the note. A day note is a linear list of entries, each one a
-marker line, its prose, and its duration. Nothing else writes.
+marker line, its prose, and its duration. Nothing else writes: every write of a day
+note goes through one writer, which is the open editor when there is one and the
+vault otherwise, never both.
 
 The promise is unchanged: *begin where you are, and never leave the note to record
 what you are writing in it.* A capture surface that opens a dialog over the note it
 captures from has already failed the promise, because the dialog is a second place
-to be. The travel card exists only to take you *to* a draft, never to write one.
+to be. The navigator exists only to move the caret — append, descend, jump — and
+never to write prose.
 
 ## Vocabulary
 
@@ -29,13 +32,13 @@ to be. The travel card exists only to take you *to* a draft, never to write one.
 | **Entry** | One unit of a day note: a marker line, its prose, and at most one duration line. | A Markdown heading, a block, a file. |
 | **Marker** | `{ D.C.N } - HH:MM:SS`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
 | **D** | The dimension: how deep the thought sits inside its thread. `1` is the top of a day. | A rank, a score, an order. |
-| **C** | The child ordinal: which child of its parent this entry is. Renumbered on insert. | Identity. It moves. |
+| **C** | The thread: a depth-1 entry's position among depth-1 entries, carried unchanged all the way down its branch. Repaired only when a root is deleted. | Identity. It moves. |
 | **N** | The day sequence: assigned once, only ever appended. | A sort key you can rewrite. |
 | **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its marker. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
 | **Open** | An entry whose duration line reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Settle** | `⏎` on an open entry: the duration becomes `+`, once, and the clock stops. Nothing else moves. | Saving, syncing, publishing, submitting. |
-| **Travel** | The card that lists open entries and takes you to one. | Search, a second editor, an outline. |
-| **Palette** | The card that lists today's entries and settles, descends, starts or deletes one. | A command list, a menu, a second editor. |
+| **Navigator** | The card that lists today's entries and the return stack, and appends, descends, jumps or deletes from it. | Search, a second editor, an outline, a dialog to write in. |
+| **Stop** | The place a move left: an entry, a caret and a scroll offset, remembered in the return stack. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
 | **Day plane** | Today's day note, `Chronomancer/YYYY.MM.DD.md` — the file the core Daily Notes plugin opens. | The ingest ledger under `Autonomic Ingest/`, which is machine-written. |
 
@@ -47,11 +50,12 @@ appears in copy — depth reads `1D`…`nD`.
 
 | Loop | Trigger | What moves | Lives in |
 | --- | --- | --- | --- |
-| Start | `⌘⇧E` — *Start an entry* | An empty root entry at the tip of today's note, with `- 00:00:00`. Works inside an editor too. | Evidence |
+| Append | `⌘⇧E` — *Append an entry* | An empty root entry at the tip of today's note, with `- 00:00:00`. Works inside an editor too. | Evidence |
 | Write | The first keystroke in a draft | The session's clock; the file keeps `-`. | Session |
 | Submit | `⏎` in any draft | `-` becomes `=`, and a child opens one dimension deeper with the caret in its prose. | Evidence |
-| Insert | `⌘⇧J` at the caret | One child entry under the entry at the caret; sibling `C` values renumber in the same edit. | Evidence |
-| Travel | `⌘⇧⏎` | The caret, and the note on screen. Nothing is written. | Session |
+| Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
+| Jump | `⏎` in the navigator | The caret, and the note on screen. Nothing is written. | Session |
+| Return | `⌘[` in the navigator | The caret, back to the last stop. Nothing is written. | Session |
 | Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `- `. | Evidence |
 | Close | *Close the day* | One `✓` line, then the day's own stats. | Evidence |
 
@@ -66,7 +70,7 @@ fields `date`, `travels`, `depth` and `duration`. Evidence is written by a comma
 by `⏎`, or by leaving the note — and by nothing else.
 
 Session is where this installation is working right now: which entry is being
-written, its baseline, where travel last went, the caret. Session state is
+written, its baseline, the return stack, the caret. Session state is
 device-local. It is never synced and never counted. It becomes evidence only at the
 moment the engine writes it.
 
@@ -105,7 +109,7 @@ requirement: an open day is open, not a gap to be repaired.
 Because entry markers are plain text, Obsidian's outline, folding and
 `[[#heading]]` links no longer address an entry. That is the accepted cost of
 markers: the trade is that depth 7 is exactly as cheap and as stable as depth 1,
-and that no palette re-spreads when a deeper level appears. Travel is the
+and that no palette re-spreads when a deeper level appears. The navigator is the
 navigation that replaces the outline.
 
 ## Prior art
@@ -130,5 +134,5 @@ navigation that replaces the outline.
 
 - Product word for the unit: **entry**. For its depth: **dimension**.
 - No hash-plus-number notation in copy: `1D`…`nD` only.
-- New surfaces take note vocabulary — entry, marker, duration, travel, settle, palette.
+- New surfaces take note vocabulary — entry, marker, duration, thread, stop, settle, navigator.
 - New surfaces do not take filing vocabulary — inbox, queue, folder, archive.

@@ -2,9 +2,10 @@
  * The entry: the unit a day note is made of.
  *
  * An entry is a marker line `{ D.C.N } - HH:MM:SS`, prose, then at most one
- * duration line `+ MM:SS:MS`. `D` is the dimension, `C` the child ordinal
- * (renumbered on insert), `N` the day sequence (assigned once, only appended).
- * `N` is identity, `C` is address, the duration is the only mutable field.
+ * duration line `+ MM:SS:MS`. `D` is the dimension, `C` the thread (a branch's
+ * id, carried unchanged from its depth-1 ancestor down), `N` the day sequence
+ * (assigned once, only appended). `N` is identity, `C` is address — and both
+ * halves of an address change only when a root is deleted, never on insert.
  *
  * The marker is matched as a **prefix**, so a hand-written title after the clock
  * becomes the first prose line instead of breaking the entry. Markers inside
@@ -29,6 +30,9 @@ export interface Entry {
   d: number;
   c: number;
   n: number;
+  /** 1-based position of the depth-1 ancestor among depth-1 entries; equals
+   * `c` in a healthy note, and is what a deletion repairs. */
+  thread: number;
   /** Normalised `HH:MM:SS`. */
   time: string;
   /** Absolute offset just past the clock, where a title or the day link sits. */
@@ -179,6 +183,8 @@ export function parseEntries(source: string): EntryIndex {
   }
 
   const stack: number[] = [];
+  // Depth-1 entries seen so far: a root's thread is its own 1-based position.
+  let roots = 0;
 
   for (let position = 0; position < hits.length; position += 1) {
     const hit = hits[position] as MarkerHit;
@@ -226,6 +232,13 @@ export function parseEntries(source: string): EntryIndex {
       (index.entries[stack.pop() as number] as Entry).blockEnd = hit.line - 1;
     }
 
+    // The stack is popped before this, so its top is the nearest shallower
+    // entry: every ancestor is already in `entries`, which is what makes a
+    // child's thread a lookup rather than a walk.
+    const parentIndex = stack.length > 0 ? (stack[stack.length - 1] as number) : null;
+    const thread =
+      parentIndex === null ? ++roots : (index.entries[parentIndex] as Entry).thread;
+
     const entry: Entry = {
       line: hit.line,
       from: start,
@@ -233,6 +246,7 @@ export function parseEntries(source: string): EntryIndex {
       d: hit.d,
       c: hit.c,
       n: hit.n,
+      thread,
       time: hit.time,
       markerEnd: hit.markerEnd,
       // `+` alone is settled: `-` is being written and `=` is paused, and both
@@ -248,7 +262,7 @@ export function parseEntries(source: string): EntryIndex {
       proseLines,
       firstProseLine,
       title,
-      parent: stack.length > 0 ? (stack[stack.length - 1] as number) : null,
+      parent: parentIndex,
       blockEnd: lines.length - 1
     };
 
@@ -330,9 +344,9 @@ export function nextSeq(index: EntryIndex): number {
   return index.maxN + 1;
 }
 
-/** The next child ordinal under `parent`. */
-export function nextChild(index: EntryIndex, parent: Entry | null): number {
-  return childrenOf(index, parent).length + 1;
+/** The next thread id: one past the depth-1 entries. */
+export function nextThread(index: EntryIndex): number {
+  return childrenOf(index, null).length + 1;
 }
 
 /** `{ 1.2.3 } - 13:27:43`; one space inside each brace. */
@@ -340,22 +354,24 @@ export function formatMarker(d: number, c: number, n: number, time: string): str
   return `{ ${d}.${c}.${n} } - ${time}`;
 }
 
-/** Changes that put every `C` back in document order under its own parent. */
-export function renumberMarkers(index: EntryIndex): TextChange[] {
-  const counts = new Map<number, number>();
+/**
+ * Changes that put every `C` back onto its branch's thread.
+ *
+ * A root's `C` is its 1-based position among roots, and a deeper entry's `C` is
+ * its root's — so deleting a root is the only thing that can unsettle a branch,
+ * and one pass over the note rewrites exactly the markers that drifted.
+ */
+export function repairThreads(index: EntryIndex): TextChange[] {
   const changes: TextChange[] = [];
 
   for (const entry of index.entries) {
-    const key = entry.parent === null ? -1 : entry.parent;
-    const expected = (counts.get(key) ?? 0) + 1;
-    counts.set(key, expected);
-    if (entry.c === expected) continue;
+    if (entry.c === entry.thread) continue;
 
     const span = MARKER.exec(index.lines[entry.line] ?? "")?.indices?.[2];
     if (span === undefined) continue;
 
     const start = index.lineStarts[entry.line] ?? 0;
-    changes.push({ from: start + span[0], to: start + span[1], text: String(expected) });
+    changes.push({ from: start + span[0], to: start + span[1], text: String(entry.thread) });
   }
 
   return changes;

@@ -25,7 +25,7 @@ export interface WeaverSettings {
   mobileIndentStep: number;
   indentMaxLevel: number;
   portEmphasisColors: boolean;
-  /** Draw a frame around every entry, with the marker and duration on its rails. */
+  /** Draw a frame around every entry: the rails run through the middle of the marker and duration rows, cut behind those labels. */
   entryFrames: boolean;
 
   // Advanced

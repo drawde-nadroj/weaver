@@ -1,21 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { editorInfoField, TFile, type MarkdownFileInfo, type MarkdownView } from "obsidian";
+import { editorInfoField, TFile, type MarkdownFileInfo } from "obsidian";
 
 import WeaverPlugin from "../src/main";
+import { parseEntries } from "../src/core/entries";
+import { dayNotePath } from "../src/core/day-note";
 import { entryIndexField } from "../src/editor/entry-field";
-import { NOTICE_NO_ENTRY } from "../src/notices";
+import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { FakeEditor } from "../test-support/editor";
 import {
+  addLeafWithView,
   clearNotices,
   createApp,
   createFile,
   createView,
   fileContent,
   instantiatePlugin,
-  noticeMessages,
+  liveEditor,
   resetHarness
 } from "../test-support/harness";
 
@@ -54,11 +57,11 @@ beforeEach(() => {
   clearNotices();
 });
 
-describe("starting an entry", () => {
+describe("appending an entry", () => {
   it("creates today's note and writes the first entry at its tip", async () => {
     const { plugin, app } = await start([]);
 
-    await plugin.entries.startToday(AT_1337);
+    await plugin.entries.appendEntry(AT_1337);
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
@@ -71,10 +74,43 @@ describe("starting an entry", () => {
     const existing = createFile(DAY, ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n"));
     const { plugin, app } = await start([existing]);
 
-    await plugin.entries.startToday(AT_1337);
+    await plugin.entries.appendEntry(AT_1337);
 
     const text = reading(app, DAY);
     expect(text).toContain("{ 1.2.2 } - 13:27:43");
+    expect(text.startsWith("{ 1.1.1 } - 09:00:00")).toBe(true);
+
+    plugin.onunload();
+  });
+
+  it("leaves the clock stopped on the entry it just wrote", async () => {
+    const { plugin, app } = await start([]);
+
+    await plugin.entries.appendEntry(AT_1337);
+
+    // No clock before the first keystroke: a write is not typing.
+    expect(plugin.session.active()).toBeNull();
+    expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43\n\n- 00:00:00");
+
+    plugin.onunload();
+  });
+
+  it("lands at the file's real end when the note grew under a stale read", async () => {
+    // A sync, a terminal, another device: the file holds two more entries than
+    // the note the appender was looking at. The plan is built from the text
+    // being written, so `N` counts the file's entries, not the stale ones.
+    const stale = ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n");
+    const grown = [stale, "", "", "{ 1.2.2 } - 09:30:00", "second", "+ 00:02:00", ""].join("\n");
+    const file = createFile(DAY, stale);
+    const { plugin, app } = await start([file]);
+
+    (file as unknown as { content: string }).content = grown;
+
+    await plugin.entries.appendEntry(AT_1337);
+
+    const text = reading(app, DAY);
+    expect(text).toContain("{ 1.3.3 } - 13:27:43");
+    expect(text.endsWith("- 00:00:00\n")).toBe(true);
     expect(text.startsWith("{ 1.1.1 } - 09:00:00")).toBe(true);
 
     plugin.onunload();
@@ -86,42 +122,9 @@ describe("starting an entry", () => {
     const view = createView(app, file, new FakeEditor(""), "preview");
     (app.workspace as unknown as { activeView: unknown }).activeView = view;
 
-    await plugin.entries.startToday(AT_1337);
+    await plugin.entries.appendEntry(AT_1337);
 
     expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43");
-
-    plugin.onunload();
-  });
-});
-
-describe("inserting a child entry", () => {
-  it("refuses when the caret is not in an entry, and writes nothing", async () => {
-    const file = createFile("Notes/plans.md", "just prose");
-    const { plugin } = await start([file]);
-    const editor = new FakeEditor("just prose");
-    const view = createView(plugin.app, file, editor) as MarkdownView;
-
-    plugin.entries.startFromCursor(view, AT_1337);
-
-    expect(editor.value).toBe("just prose");
-    expect(editor.transactions).toBe(0);
-    expect(noticeMessages()).toContain(NOTICE_NO_ENTRY);
-
-    plugin.onunload();
-  });
-
-  it("writes one dimension deeper under the entry at the caret", async () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "root", "- 00:01:00"].join("\n");
-    const file = createFile("Notes/plans.md", source);
-    const { plugin } = await start([file]);
-    const editor = new FakeEditor(source);
-    editor.setCursor({ line: 1, ch: 2 });
-    const view = createView(plugin.app, file, editor) as MarkdownView;
-
-    plugin.entries.startFromCursor(view, AT_1337);
-
-    expect(editor.value).toContain("{ 2.1.2 } - 13:27:43");
-    expect(editor.value).toContain("- 00:00:00");
 
     plugin.onunload();
   });
@@ -140,7 +143,7 @@ describe("deleting the entry being written", () => {
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toBe("");
 
-    await plugin.entries.startToday(AT_1337);
+    await plugin.entries.appendEntry(AT_1337);
 
     expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43");
     // No clock before the first keystroke in the new entry.
@@ -237,10 +240,70 @@ describe("writing a duration", () => {
       dayNoteFormat: "YYYY-MM-DD"
     };
 
-    await plugin.entries.startToday(AT_1337);
+    await plugin.entries.appendEntry(AT_1337);
 
     expect(plugin.app.vault.getAbstractFileByPath("Journal/2026-10-27.md")).not.toBeNull();
 
     plugin.onunload();
+  });
+});
+
+describe("moving the caret", () => {
+  const TWO = [
+    "{ 1.1.1 } - 10:00:00",
+    "first",
+    "+ 00:01:00",
+    "",
+    "{ 1.2.2 } - 10:05:00",
+    "second",
+    "+ 00:02:00",
+    ""
+  ].join("\n");
+
+  it("jumps without writing and without starting a clock", async () => {
+    // `jumpTo` reveals *today's* note, which is the machine's date, not the
+    // fixture's: the path has to be today's for the file to be the day note.
+    const today = dayNotePath(new Date(), {
+      folder: DEFAULT_SETTINGS.dayNoteFolder,
+      format: DEFAULT_SETTINGS.dayNoteFormat
+    });
+    const file = createFile(today, TWO);
+    const { plugin, app } = await start([file]);
+    // The note is on screen, and the editor holding it is the writer's own.
+    addLeafWithView(app, createView(app, file, new FakeEditor(TWO)));
+    const view = liveEditor(file, TWO, 0);
+    registerEditorView(view);
+
+    try {
+      plugin.session.start(today, 1, 60_000, AT_1337.getTime());
+      await plugin.entries.jumpTo(2);
+
+      expect(plugin.session.active()).toBeNull();
+      expect(view.state.selection.main.head).toBe(TWO.indexOf("second"));
+      expect(reading(app, today)).toBe(TWO);
+      // The place it left is the first row of the return stack.
+      expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
+    } finally {
+      unregisterEditorView(view);
+      plugin.onunload();
+    }
+  });
+
+  it("descends without starting a clock, on the parent's thread", () => {
+    const source = ["{ 1.1.1 } - 10:00:00", "first", "+ 00:01:00"].join("\n");
+    const file = createFile(DAY, source);
+    return start([file]).then(({ plugin }) => {
+      const view = liveEditor(file, source, source.indexOf("first"));
+      const parent = parseEntries(source).entries[0];
+      if (parent === undefined) throw new Error("expected an entry");
+
+      plugin.entries.descend(view, parent);
+
+      expect(plugin.session.active()).toBeNull();
+      expect(view.state.doc.toString()).toContain("{ 2.1.2 } - ");
+      expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
+
+      plugin.onunload();
+    });
   });
 });

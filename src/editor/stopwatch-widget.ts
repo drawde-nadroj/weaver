@@ -14,10 +14,13 @@
  * that DOM in place instead of rebuilding it, which is what used to make the
  * line hop a pixel on every keystroke.
  *
- * With frames on, this element is the frame's bottom rail's other half: it keeps
- * the row's geometry and its raw-text contract, and the frame layer draws the
- * visible clock. The ticker is shared, keyed by the element, so whichever of the
- * two owns the element owns the one interval.
+ * With frames on, this element is the box's bottom rail label: the clock's own
+ * box paints over the rail behind it, and the rail runs through the middle of the
+ * row. It is right-aligned like nothing else in the note, and it is the only clock
+ * — the frame layer draws no text. `n` is the entry it belongs to, so the frame
+ * layer can find the row by its stamp instead of by a DOM position. The ticker is
+ * keyed by the element, so whichever surface owns the element owns the one
+ * interval.
  */
 
 import { WidgetType } from "@codemirror/view";
@@ -26,6 +29,8 @@ import { formatClock, type DurationSigil } from "../core/duration";
 import { startTicking, stopTicking, writeDigits } from "./duration-ticker";
 
 export interface DurationWidgetInput {
+  /** The entry this row's clock belongs to: the frame layer's row stamp. */
+  n: number;
   sigil: DurationSigil;
   ms: number;
   active: boolean;
@@ -50,6 +55,7 @@ export class DurationWidget extends WidgetType {
    */
   eq(other: DurationWidget): boolean {
     return (
+      other.input.n === this.input.n &&
       other.input.sigil === this.input.sigil &&
       other.input.active === this.input.active &&
       other.input.color === this.input.color &&
@@ -109,12 +115,16 @@ export class DurationWidget extends WidgetType {
     this.digits = [];
   }
 
-  /** The sigil and the two custom properties, which live outside the digits. */
+  /** The sigil, the row stamp and the two custom properties, which live outside
+   * the digits. */
   private paint(root: HTMLElement): void {
     root.setAttribute(
       "style",
       `--weaver-dcolor:${this.input.color};--weaver-d:${this.input.d}`
     );
+    // The frame layer finds this row by its stamp, not by a DOM position: the
+    // widget is not always a line of its own.
+    root.setAttribute("data-weaver-n", String(this.input.n));
 
     let sigil = root.querySelector<HTMLElement>(".weaver-duration-sigil");
     if (sigil === null) {

@@ -4,14 +4,23 @@ import { EditorView, ViewPlugin } from "@codemirror/view";
 /** Every live CodeMirror view, so controllers can find one without a leaf scan. */
 const views = new Set<EditorView>();
 
+/** The registry's only door in, so a test can stand a view in for a real one. */
+export function registerEditorView(view: EditorView): void {
+  views.add(view);
+}
+
+export function unregisterEditorView(view: EditorView): void {
+  views.delete(view);
+}
+
 export const viewRegistryExtension = ViewPlugin.fromClass(
   class {
     constructor(private readonly view: EditorView) {
-      views.add(view);
+      registerEditorView(view);
     }
 
     destroy() {
-      views.delete(this.view);
+      unregisterEditorView(this.view);
     }
   }
 );

@@ -1,22 +1,21 @@
 # Weaver — surfaces
 
-Four surfaces, and one rule: **the note is the record, the cards are the work and
-the navigation, the settings are the look.** Everything else was removed in 0.4.0 —
-the status strip, the Tapestry, the shuttle, the weave row, the draft blocks and
-the in-page markers duplicated one of these. The entry palette is the one surface
-0.5.0 added, and it writes only what `⏎`, `n` and `x` write.
+Three surfaces, and one rule: **the note is the record, the navigator is the
+navigation, the settings are the look.** Everything else was removed — the status
+strip, the Tapestry, the shuttle, the weave row, the draft blocks, the in-page
+markers, the entry palette, the travel card and the travel rectangle each
+duplicated one of these. The navigator is the one surface that moves the caret, and
+it writes only what `⏎`, `n` and `x` write.
 
 ## One verb per intent
 
 | Intent | Verb | Where |
 | --- | --- | --- |
-| Begin | `⌘⇧E` *Start an entry* | anywhere, including inside an editor, Reading view, and no note at all |
-| Go deeper by hand | `⌘⇧J` *Insert a child entry* | the caret's entry |
+| Begin | `⌘⇧E` *Append an entry* | anywhere, including inside an editor, Reading view, and no note at all |
 | Finish this entry | `⏎` | the open entry the caret is in, on every platform |
 | Go deeper | `⏎` again, on a settled entry | the settled entry the caret is in |
-| Work a list | `⌘⇧P` *Entry palette* | anywhere; it shows today's note |
+| Go deeper, or somewhere else | `⌘⇧P` *Today's entries* | anywhere; the card shows today's note |
 | Make a newline | `⇧⏎` or `weaver:line-break` | the caret, in any entry |
-| Go somewhere else | `⌘⇧⏎` *Travel to a draft* | anywhere |
 | End the day | *Close the day* | anywhere |
 
 `⏎` is two-way and stateless. In an open entry — `-` being written or `=` paused —
@@ -40,10 +39,12 @@ Every surface must answer three questions; one that cannot is not a surface.
 1. **What does it write?** The note says exactly. A surface that writes nothing
    says so, and a surface that writes something says what.
 2. **What happens if it is wrong?** One undo reverses any single action: a plan is
-   one transaction, including the sibling renumbering that an insert causes.
-3. **What does it show when there is nothing?** Travel says
-   `Weaver: no drafts to travel to.` and writes nothing. Insert says
-   `put the cursor in an entry first. Nothing was written.` and writes nothing.
+   one transaction, including the branch renumbering that a deletion causes. An
+   insert never renumbers anything — a child inherits its parent's `C`.
+3. **What does it show when there is nothing?** The navigator says
+   `no entries yet — ＋ appends the first` and writes nothing. *Append an entry*
+   whose day note cannot be created says `today's day note could not be found.
+   Nothing was written.`
 
 ## Surface specs
 
@@ -72,15 +73,21 @@ Every surface must answer three questions; one that cannot is not a surface.
 - The ticker belongs to the element, not to the widget instance: CodeMirror calls
   `updateDOM` on the *new* widget while the previous instance may still hold an
   interval, and one writer per element is what keeps the digits from counting
-  twice. `duration-ticker.ts` is the one writer, shared with the frame's clock.
+  twice. `duration-ticker.ts` is the one writer; the frame draws no clock of its
+  own.
 - The two `.weaver-duration-ink` colons are separate spans because they take the
   dimension's colour while the digits keep the text colour.
-- The widget is `display: block` with 6 px of bottom padding: a span cannot take
-  vertical padding, and that padding is the only air between the stopwatch and
-  whatever follows it.
-- A marker line whose selection touches it gets `.weaver-entry-head-raw`.
+- The widget is the bottom rail's label: `display: block`, `width: fit-content`,
+  pushed right by `margin-left: auto`, with `10 px` of right padding and `6 px`
+  below. Its own background paints over the rail behind it, which is why it needs no
+  second element to cut the rail and no character moves when it appears.
 - On a past-day note, ` - [[2026.10.26]]` is rendered after the clock and is never
-  written to the file.
+  written to the file. It is part of the marker row, so it is part of the top rail's
+  label and cuts the rail behind itself.
+- The marker's characters are the top rail's label, punctuation and all: one
+  `.weaver-frame-label` mark over the whole marker, whose background covers the rail
+  behind it. The hyphen is punctuation like the braces, never a second drawing of
+  the rail, and no character of the label belongs to the box instead of the text.
 
 ### The frame, around every entry
 
@@ -88,93 +95,100 @@ CodeMirror gives each line its own element and offers no way to wrap a range of
 lines in a container, so the box is **drawn over the note**: one absolutely
 positioned layer inside `.cm-scroller`, one box per entry, in document coordinates.
 
-- `src/core/frame.ts` is the contract, ported from pi-frame's `frameRail` rather
-  than imported (pi-frame is terminal cells; this is pixels). A frame starts at a
-  limited width, grows with the text it encloses, and stops at the edge of the
-  column. Below 120 px of room it is not drawn at all, and then nothing is hidden.
-- The layer is `z-index: -1` inside the scroller, which CodeMirror already makes a
-  stacking context. It therefore paints above the page and under the note's text,
-  which is what lets a chip sit *behind* the file's own marker instead of over it.
+- The layer draws the border and the live highlight, and no text at all. The label
+  is the entry's own: the marker row sits on the box's top rail, its own duration
+  row on the bottom rail. Each appears once, from the file, and is never dimmed,
+  hidden or duplicated.
+- Both rails run through the *middle* of the row that labels them, and the label's
+  own background — `.weaver-frame-label`, note-background fill plus an 8 px shadow —
+  paints over the rail behind it. That is the whole mechanism: no second rendering of
+  the row, no masked rail, no character moved. The rails keep a short stub beside
+  each corner, which is what makes the box read as a frame rather than a box.
+- The box spans the text column: one label inset (`32 px`: corner `10` + stub `14` +
+  label pad `8`) outside the marker's ink on the left, and `20 px` past the text
+  column's right edge. A box that hugged its text could not put a clock in its own
+  corner without a second rendering of the row. `src/core/frame.ts` is the whole
+  geometry, two pure functions: `frameBox` and `frameSpan`.
 - Nothing reflows: the box catches up to the text, never the other way round.
   `.cm-scroller` is already `position: relative`, so the boxes scroll with the
   content and a scroll costs no measurement; only a reflow or a resize schedules
   one, and the schedule is one `requestAnimationFrame` however many updates ask.
-- The rails run through the middle of the rows they name. The marker's line and the
-  duration line are at `opacity: 0` — laid out, caret-able, still in the
-  accessibility tree — and the frame paints their runs on the rails. Put the caret
-  on one of those rows and the line stops being transparent: the file's own text
-  comes back, and a chip of page colour cuts the rail behind it. That is the same
-  raw-text rule the duration widget has always followed.
-- The hiding is scoped to `weaver-frames-live`, a class the layer puts on the
-  scroller only while it has frames drawn. A pane too narrow to carry one, a
-  surface the layer does not run on, and Source mode all keep the file's words
-  visible.
-- Labels render the canonical marker (`{ 1.2.3 } - 13:27:43`), not the file's raw
-  prefix, and take the entry's colour with the digits in the text colour. They
-  ellipsize rather than leave the rail; the width floor is a marker's worth so the
-  clock is never the part that goes.
-- The live entry's rails carry a highlight travelling counter-clockwise once every
-  three seconds, and stop under `prefers-reduced-motion`. The bottom rail's clock
-  is the same ticker as the widget's.
+- The rows are found by their own `data-weaver-n` stamp — written by the decoration
+  that makes the marker line and by the duration widget itself — never by a DOM
+  position. Asking CodeMirror for the position of the widget's element named the
+  wrong line, so the clock was measured as something else. A row that has scrolled
+  out of the render range falls back to its line block, whose centre is still the
+  label's centre.
+- Sibling boxes never cross: a box is withheld when the next entry's top rail is
+  closer than 8 px to its bottom rail. There is no trimming — a rail is a label's
+  centre or it is nothing — so a box is never drawn at a height that cuts its own
+  clock. When the rails touch or cross, there is no interior and no box.
+- A marker row that also carries prose (the legacy title case, `{ D.C.N } - HH:MM:SS
+  a title`) keeps its rail *above* the row, by 12 px, or the rail would cut the
+  entry's own first line.
+- An entry without a duration has no bottom label, so its box closes 8 px below its
+  last prose row — on air, not on a rail.
+- There is no width below which a box is withheld: a narrow pane gets a narrow box.
+  The only way to have no frame is to have measured nothing yet — a frame is never
+  a function of the caret, the scroll position or the width of the pane.
+- The duration row is right-aligned while nothing else is, so the clock reads in the
+  box's bottom-right corner on every surface. It keeps `tabular-nums`, so a ticking
+  second never moves the line.
+- The live entry's border carries a highlight travelling counter-clockwise once
+  every three seconds, and stops under `prefers-reduced-motion`. The labels paint
+  over it, so the shimmer travels the visible rails only.
 - Frames are Live Preview only. Source mode is the file's own text, which is the
   point of it.
 
 ### The entry, in Reading view
 
 The same shape, from a post processor: a `<p>` starting with a marker becomes the
-frame's top label, each following sibling becomes `.weaver-entry-prose` inside the
-frame, and a `<p>` that is only a duration becomes the frame's bottom label — with
-the wrapper and the labels both drawn by CSS. The browser does the hugging: the
-frame is a real element, so `width: fit-content` is the whole measurement, with the
-same width floor and the same one-row gap between frames.
+frame's first child — the file's own marker characters, split into digit runs — each
+following sibling becomes `.weaver-entry-prose` inside the frame, and a `<p>` that is
+only a duration becomes its last child. The wrapper is a real element because a box
+needs one to enclose, and the browser needs no measurement at all to draw it.
 
-The wrapper is inserted on purpose; the older shape promised no wrapper at all.
+The frame's edges are the rails, so the first and last children *hang half a line
+over them*: `align-self` shrink-wraps each one to its own text, and a negative
+`margin-top`/`margin-bottom` of `0.675em` (half of the `1.35` line height) puts its
+centre on the edge. Neither gets padding — a label must never move a character — so
+the rail is cut by the label's own background and its 8 px shadow. The 1.8em vertical
+margin is the measured Live Preview gap between one entry's clock centre and the next
+marker centre, 58 px at 32 px type. A duration paragraph with no entry above it is
+never labelled: it has no rail to cut.
+
 Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
 Inline markup inside the prose is untouched, and only the marker's own characters
 leave the marker paragraph — a title typed after the clock, with its links and
 emphasis, stays in the DOM exactly as Obsidian made it.
 
-### The entry palette
+### The navigator
 
-- Self-mounted overlay with the travel card's geometry (`.weaver-travel-modal` for
-  position, its own `.weaver-palette-card`), and the same refusal of a `Scope`.
-- Rows are today's entries in document order: `D.C.N`, clock, title, `+N` children,
-  and `+` settled or `→` open. The selection starts on the entry the caret is in,
-  or the one directly above it.
-- `⏎` settles the selection and descends under it, `n` appends a root at the tip,
-  `x` deletes the selection's whole subtree in one undoable transaction. `n` and
-  `x` are commands only while the query is empty and no filter is locked: the key
-  event is left alone otherwise, so a bare letter reaches the input.
-- The query is the travel grammar — `1`, `1.2`, `.14`, `1.2.14` — from the same
-  `parseDcnQuery`/`filterRows` pair, locked with `⏎`. `Esc` clears the query, then
-  the filter, then closes and leaves the CM caret on the selection's prose.
-- Every action re-reads the index from the live document: the card never caches a
-  line number across a write.
-- Opening pauses the stopwatch, like the travel card.
+One component, one list, on both platforms: append, descend and jump in the same
+card, with the return stack inside it.
 
-### The travel card
-
-- Self-mounted overlay, centred with `transform: translate(-50%, -50%)` from the
-  note pane's rect (the visible viewport on a phone), re-measured on resize, on
-  `visualViewport` changes and on `layout-change`.
-- **It never takes a `Scope`.** A scope is what swallowed `⌘,`; here any chord with
-  `⌘`/`⌃`/`⌥` is ignored before `preventDefault`.
-- Composition: query input, day chips (`2026.10.26 · 3`), rows
-  (`.weaver-travel-dcn` + clock + title), one hint line. Rows and chips are
-  `<button>`s, so touch works with no keyboard.
-- A locked filter regroups both axes: `←`/`→` walk only days that hold a match,
-  `↑`/`↓` walk the matches inside the current day.
-- Opening pauses the stopwatch. Travelling closes the card, focuses the editor and
-  sets the travel target; it does **not** start the session.
-
-### The travelled entry
-
-`.weaver-travel-rect` is an absolutely positioned overlay inside the editor,
-measured from `coordsAtPos` over the entry's prose lines. No padding, no border on
-lines, no margins — turning it on moves nothing. It re-measures on scroll because
-it lives outside the scroller, and it hides when the target's `N` is not in the
-document.
+- Self-mounted overlay, not a `Modal`: it must never take a `Scope`. A scope is what
+  swallowed `⌘,` and stopped Obsidian's own settings from opening. Keys are handled
+  on the card in the capture phase, and every chord it does not claim reaches
+  Obsidian untouched.
+- The first row is `＋ end of day`. Below it, when there are stops, a `return` block:
+  one row per place a move left — `↩ D.C.N` while that entry exists. Below that,
+  `today`: every entry in document order — `D.C.N`, clock, title, `+N` children — with
+  the caret's own entry marked `is-current` and the selection marked `is-selected`.
+- Keys: `↑`/`↓` move, `⏎` jump, `⇧⏎` settle and descend under the selection, `n`
+  append, `x` delete the selection's whole subtree, `⌘[` walk back one stop, `Esc`
+  close and put the caret back where the card opened. Every handled key is
+  prevented and stopped; `⌘[` is the only chord claimed.
+- Touch: a row taps to jump, the caret's own row taps to descend, and `✕` arms on
+  the first tap and deletes on the second. The footer names the gestures the
+  platform can make.
+- Opening pauses the stopwatch, like leaving the note. Every action re-reads the
+  document: the card never caches a line number across a write.
+- The list is today's note, the same target *Append an entry* writes to. Reaching
+  another day means opening that note.
+- The stack lives in `src/core/navigator-stack.ts`: eight stops, no duplicate top
+  (the same entry and the same caret), and a pop that hands the stop back.
 
 ### The close mark
 
@@ -186,20 +200,19 @@ document.
 Thirteen settings in four groups. **Writing** is the note's own convention, **Day**
 is where the day note lives, **Look** is how the note is drawn (including whether
 it is framed at all), **Advanced** is the past-day link and logging. There is no
-palette mode, no depth cap, no per-level size field and no travel default level:
-colour is a function of `D` alone, and the travel card always starts at the first
-day holding a draft.
+navigator mode, no depth cap and no per-level size field: colour is a function of
+`D` alone, and the navigator always opens on today's note with the caret's entry
+selected.
 
 ## Mobile matrix
 
 | Surface | Desktop | Phone |
 | --- | --- | --- |
-| Entry | marker on the frame's top rail, digits in the text colour, punctuation coloured | same, with `--weaver-indent-step-mobile` |
-| Frame | hugs the text, one row of air between frames | same; the width floor and the pane edge are the only limits |
-| Duration | block widget, ticks while live, drawn on the frame's bottom rail | same, pinned to the bottom of the writing band after each keystroke |
-| Travel card | centred in the pane, 420 px | full width − 24 px, rows ≥ 44 px, centred on the visible viewport |
-| Entry palette | same geometry, travel's row and query rules | same, rows ≥ 44 px, centred on the visible viewport |
-| Travel keys | arrows, `⏎`, `Esc` | same keys plus tap targets; the soft keyboard never covers the selected row |
+| Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured | same, with `--weaver-indent-step-mobile` |
+| Frame | rails through the marker and duration rows' centres, cut behind their labels | same, identically: one layer, one rule, no platform branch |
+| Duration | block widget, ticks while live, the bottom rail's label at the frame's bottom-right | same, pinned to the bottom of the writing band after each keystroke |
+| Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
+| Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |
 
 The phone pinning runs one pure decision — `shouldPinStopwatch` — that requires all
 four of: a phone, the live session, the caret on the entry's last prose line, and a
@@ -215,7 +228,11 @@ the first prose line is the title, the rest is the entry
 ```
 
 - Marker: `{ D.C.N } - HH:MM:SS`, matched as a prefix. `{1.2.3}-13:27` reads as
-  13:27:00. A marker in frontmatter or a fenced block is text.
+  13:27:00. A marker in frontmatter or a fenced block is text. In a frame it is the
+  box's top rail label; the hyphen is ordinary punctuation of that label.
+- `C` is the thread: a depth-1 entry's `C` is its position among depth-1 entries, and
+  everything under it carries that same `C` all the way down. An insert inherits it;
+  deleting a root renumbers the survivors, in the same undoable transaction.
 - Prose: everything after the marker up to the next marker or duration line,
   trimmed of blank lines at both ends.
 - Duration: `[+-=] HH:MM:SS`, the same shape as the marker's clock. `-` is open and

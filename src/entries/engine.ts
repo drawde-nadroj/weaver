@@ -2,27 +2,30 @@
  * The only writer of entry text.
  *
  * Every surface that changes an entry goes through here, so the rules live in one
- * place: `+` is final, `N` is only appended, `C` is renumbered on insert, and a
- * write never guesses — it re-reads the file inside `Vault.process` and skips the
- * write when the entry it was aiming at is gone.
+ * place: `+` is final, `N` is only appended, `C` is a branch's thread id, and a
+ * write never guesses — the plan is built from the exact text the attempt is
+ * about to replace, by `writer.ts`, and skipped when the entry it was aiming at
+ * is gone.
+ *
+ * A move — append, descend, jump — pushes the place it left onto the plugin's
+ * return stack before it goes, and carries `programmaticWrite`, so no move starts
+ * a clock.
  */
 
-import { MarkdownView, Notice, TFile, type App, type Editor } from "obsidian";
-import { Transaction, type StateEffect } from "@codemirror/state";
+import { MarkdownView, Notice, TFile, type App } from "obsidian";
 import { EditorView } from "@codemirror/view";
+import { Transaction, type StateEffect } from "@codemirror/state";
 
 import { ensureDayNote, resolveDayNote } from "../core/day-note";
 import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
   findEntryAtOffset,
-  nextSeq,
   parseEntries,
   type Entry,
   type EntryIndex
 } from "../core/entries";
 import {
-  applyPlanToSource,
   cmChanges,
   offsetToLineCh,
   planChildEntry,
@@ -31,24 +34,19 @@ import {
   planStartEntry,
   type InsertPlan
 } from "../core/insert";
-import type { TravelRow } from "../core/travel-model";
+import { pushStop, type Stop } from "../core/navigator-stack";
 import { editorPathOf } from "../editor/editor-path";
 import { entryIndexField, programmaticWrite, refreshEntriesEffect } from "../editor/entry-field";
-import { clearTravelTarget, setTravelTarget } from "../editor/travel-target";
-import {
-  findActiveEditorView,
-  findEditorViewForFile,
-  registeredEditorViews
-} from "../editor/view-registry";
+import { findEditorViewForFile, registeredEditorViews } from "../editor/view-registry";
 import {
   NOTICE_NO_DAY_NOTE,
-  NOTICE_NO_ENTRY,
   NOTICE_REFUSAL_MS,
   noticeCloseCodeBlock,
   noticeCloseFrontmatter
 } from "../notices";
 import type WeaverPlugin from "../main";
 import { EntrySession } from "./session";
+import { planRewrite, rewriteDay } from "./writer";
 
 export class EntryEngine {
   constructor(private readonly plugin: WeaverPlugin) {}
@@ -61,8 +59,8 @@ export class EntryEngine {
     return this.plugin.app;
   }
 
-  /** Starts an entry at the tip of today's note, opening it when needed. */
-  async startToday(now: Date): Promise<void> {
+  /** Appends an entry at the tip of today's note, opening it when needed. */
+  async appendEntry(now: Date): Promise<void> {
     const resolved = resolveDayNote(this.app, this.plugin.settings, now);
 
     let file = resolved.file;
@@ -77,70 +75,32 @@ export class EntryEngine {
       }
     }
 
+    // Source mode first, so the write lands in an editor when one can hold the
+    // file: the caret has to end up in the new entry either way.
     const open = this.openViewFor(file);
-    if (open !== null) {
-      // Reading view on screen still ends with the caret in the new entry's
-      // prose, so the writer never has to switch modes after starting.
-      await this.ensureSourceMode(open);
-      const view = findEditorViewForFile(file);
-      if (view !== null) {
-        // The note is already on screen: one undo removes the whole entry.
-        this.startInView(view, now);
-        return;
-      }
-    }
+    if (open !== null) await this.ensureSourceMode(open);
 
-    let written = "";
-    let caret: number | null = null;
-    let refusal: EntryIndex | null = null;
+    this.pushStopFrom(findEditorViewForFile(file));
 
-    await this.app.vault.process(file, (data) => {
-      const index = parseEntries(data);
-      const plan = planStartEntry(data, index, now);
-      if (plan === null) {
-        refusal = index;
-        return data;
-      }
+    const result = await rewriteDay(
+      this.app,
+      file,
+      planRewrite((source) => planStartEntry(source, parseEntries(source), now)),
+      true
+    );
 
-      const next = applyPlanToSource(data, plan);
-      written = next.source;
-      caret = next.selection.from;
-      return next.source;
-    });
-
-    if (refusal !== null) {
-      this.notifyRefusal(refusal, "starting an entry");
+    if (result === null) {
+      this.notifyRefusal(parseEntries(await this.app.vault.cachedRead(file)), "appending an entry");
       return;
     }
 
-    await this.revealDayNote(file, written, caret);
-  }
-
-  /** Inserts a child under the entry at the caret. Writes nothing if there is none. */
-  startFromCursor(view: MarkdownView, now: Date): void {
-    const editor = view.editor;
-    const source = editor.getValue();
-    const index = parseEntries(source);
-    const parent = findEntryAtOffset(index, editor.posToOffset(editor.getCursor()));
-
-    if (parent === null) {
-      new Notice(NOTICE_NO_ENTRY, NOTICE_REFUSAL_MS);
-      return;
-    }
-
-    const plan = planChildEntry(source, index, parent, now);
-    if (plan === null) {
-      this.notifyRefusal(index, "inserting an entry");
-      return;
-    }
-
-    this.applyPlanToEditor(editor, source, plan);
+    await this.revealDayNote(file, result.source, result.caret);
   }
 
   /**
-   * The palette's `Enter`: settle the entry if it is open, then open a child
-   * under it. Two transactions, each undoable — the same two writes `Enter` in
-   * the note makes when it lands on an open entry and is pressed again.
+   * The navigator's `⇧⏎`: settle the entry if it is open, then open a child under
+   * it. Two transactions, each undoable — the same two writes `Enter` in the note
+   * makes when it lands on an open entry and is pressed again.
    */
   settleAndDescend(view: EditorView, entry: Entry): void {
     if (entry.state === "draft") this.settle(view, entry);
@@ -155,8 +115,7 @@ export class EntryEngine {
    * Deletes an entry and its whole subtree, one undoable transaction.
    *
    * A clock running in the entry being deleted is dropped, never written: the
-   * line it would have settled no longer exists. A travel target on the deleted
-   * entry is cleared, so the rectangle cannot outlive the text it pointed at.
+   * line it would have settled no longer exists.
    */
   deleteEntry(view: EditorView, entry: Entry): void {
     const path = editorPathOf(view);
@@ -171,12 +130,6 @@ export class EntryEngine {
     if (plan === null) return;
 
     if (this.session.activeFor(path, current.n)) this.session.clear();
-
-    const target = this.plugin.travelTarget;
-    if (target !== null && target.path === path && target.seq === current.n) {
-      this.plugin.travelTarget = null;
-      view.dispatch({ effects: clearTravelTarget.of(null) });
-    }
 
     this.writePlan(view, plan);
     view.focus();
@@ -197,8 +150,8 @@ export class EntryEngine {
     const current = entryBySeq(index, entry.n);
     if (current === null || current.state === "settled") return;
 
-    // A live session holds the elapsed time; a paused or travelled entry holds
-    // its own stored time, so settling never restarts a clock it never had.
+    // A live session holds the elapsed time; a paused entry holds its own stored
+    // time, so settling never restarts a clock it never had.
     const ms = this.session.activeFor(path, current.n)
       ? this.session.elapsed(Date.now())
       : current.durationMs;
@@ -218,9 +171,6 @@ export class EntryEngine {
    * the caret in its prose. The parent's duration line is not touched.
    */
   descend(view: EditorView, entry: Entry): void {
-    const path = editorPathOf(view);
-    if (path === null) return;
-
     const now = new Date();
     const source = view.state.doc.toString();
     const index = this.indexOf(view, source);
@@ -230,9 +180,8 @@ export class EntryEngine {
     const child = planChildEntry(source, index, parent, now);
     if (child === null) return;
 
-    const seq = nextSeq(index);
-    this.plugin.travelTarget = { path, seq };
-    this.writePlan(view, child, [setTravelTarget.of({ seq }), refreshEntriesEffect.of(undefined)]);
+    this.pushStopFrom(view);
+    this.writePlan(view, child);
     view.focus();
   }
 
@@ -285,95 +234,58 @@ export class EntryEngine {
     this.refreshSoon(view);
   }
 
-  /** Opens an entry and puts the caret in its prose, without starting the clock. */
-  async travelTo(row: TravelRow): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(row.path);
-    if (!(file instanceof TFile)) return;
-
-    const workspace = this.app.workspace;
-    const leaf = workspace
-      .getLeavesOfType("markdown")
-      .find(
-        (candidate) =>
-          candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path
-      );
-
-    if (leaf !== undefined) {
-      workspace.setActiveLeaf(leaf, { focus: true });
-      await workspace.revealLeaf(leaf);
-    } else {
-      await workspace.getLeaf("tab").openFile(file);
-    }
-
-    const view = this.openViewFor(file);
-    if (view === null) return;
-
-    await this.ensureSourceMode(view);
-
-    const editor = findEditorViewForFile(file) ?? findActiveEditorView(this.app);
+  /**
+   * Puts the caret in an entry of today's note, without starting the clock.
+   *
+   * `restore` is a stop from the return stack: its caret and scroll position are
+   * exact, where a bare `N` only knows the entry's first prose line.
+   */
+  async jumpTo(n: number | null, restore?: Stop): Promise<void> {
+    const editor = await this.revealToday(new Date());
     if (editor === null) return;
 
-    const entry = entryBySeq(this.indexOf(editor, editor.state.doc.toString()), row.n);
-    if (entry === null) return;
+    this.pushStopFrom(editor);
+    this.session.clear();
 
-    this.plugin.travelTarget = { path: file.path, seq: entry.n };
+    const index = this.indexOf(editor, editor.state.doc.toString());
+    const caret = restore?.caret ?? (n === null ? null : (entryBySeq(index, n)?.proseFrom ?? null));
+    if (caret === null) return;
+
     editor.dispatch({
-      selection: { anchor: entry.proseFrom },
-      effects: [setTravelTarget.of({ seq: entry.n }), refreshEntriesEffect.of(undefined)],
-      scrollIntoView: true
+      selection: { anchor: caret },
+      effects: [
+        EditorView.scrollIntoView(caret, { y: restore === undefined ? "center" : "start" })
+      ],
+      annotations: programmaticWrite.of(true)
     });
+
+    // The scroll container is laid out for the first time in the next frame, so
+    // a restored offset set now would be overwritten by the scroll into view.
+    if (restore !== undefined) {
+      const { scroll } = restore;
+      requestAnimationFrame(() => {
+        editor.scrollDOM.scrollTop = scroll;
+      });
+    }
+
     editor.focus();
   }
 
-  /**
-   * Writes a duration. Through the editor when the note is on screen, so the
-   * write is undoable; through `Vault.process` otherwise, re-reading first and
-   * skipping the write when the entry it aimed at is gone.
-   */
+  /** Writes a duration through the one writer. */
   writeDuration(path: string, n: number, sigil: DurationSigil, ms: number, undoable: boolean): void {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return;
 
-    const view = findEditorViewForFile(file);
-    if (view !== null) {
-      const source = view.state.doc.toString();
-      const index = this.indexOf(view, source);
-      const entry = entryBySeq(index, n);
-      if (entry === null) return;
-
-      const plan = planDuration(source, index, entry, sigil, ms);
-      if (plan === null) return;
-
-      view.dispatch({
-        changes: cmChanges(plan.changes),
-        annotations: [Transaction.addToHistory.of(undoable), programmaticWrite.of(true)]
-      });
-      return;
-    }
-
-    void this.app.vault.process(file, (data) => {
-      const index = parseEntries(data);
-      const entry = entryBySeq(index, n);
-      if (entry === null) return data;
-
-      const plan = planDuration(data, index, entry, sigil, ms);
-      if (plan === null) return data;
-      return applyPlanToSource(data, plan).source;
-    });
-  }
-
-  private startInView(view: EditorView, now: Date): void {
-    const source = view.state.doc.toString();
-    const index = this.indexOf(view, source);
-    const plan = planStartEntry(source, index, now);
-
-    if (plan === null) {
-      this.notifyRefusal(index, "starting an entry");
-      return;
-    }
-
-    this.writePlan(view, plan);
-    view.focus();
+    void rewriteDay(
+      this.app,
+      file,
+      planRewrite((source) => {
+        const index = parseEntries(source);
+        const entry = entryBySeq(index, n);
+        return entry === null ? null : planDuration(source, index, entry, sigil, ms);
+      }),
+      undoable
+    );
   }
 
   /**
@@ -396,6 +308,19 @@ export class EntryEngine {
       selection: { anchor: plan.selection.from },
       effects: [...effects, EditorView.scrollIntoView(plan.selection.from, { y: "nearest" })],
       annotations: [Transaction.addToHistory.of(false), programmaticWrite.of(true)]
+    });
+  }
+
+  /** Pushes the place `view` is about to leave onto the return stack. */
+  private pushStopFrom(view: EditorView | null): void {
+    if (view === null) return;
+
+    const caret = view.state.selection.main.head;
+    const current = findEntryAtOffset(this.indexOf(view, view.state.doc.toString()), caret);
+    this.plugin.stack.stops = pushStop(this.plugin.stack.stops, {
+      n: current?.n ?? null,
+      caret,
+      scroll: view.scrollDOM.scrollTop
     });
   }
 
@@ -471,7 +396,7 @@ export class EntryEngine {
 
   /**
    * Today's day note on screen, in source mode, for a surface that edits it —
-   * the palette. `null` when the note cannot be found, opened, or reached as an
+   * the navigator. `null` when the note cannot be found, opened, or reached as an
    * editor: the one refusal every caller would have to repeat.
    */
   async revealToday(now: Date): Promise<EditorView | null> {
@@ -494,25 +419,6 @@ export class EntryEngine {
       return null;
     }
     return editor;
-  }
-
-  /** Applies a plan as one transaction, then puts the caret in the new entry. */
-  private applyPlanToEditor(editor: Editor, source: string, plan: InsertPlan): void {
-    const changes = plan.changes.map((change) => ({
-      from: editor.offsetToPos(change.from),
-      to: editor.offsetToPos(change.to),
-      text: change.text
-    }));
-
-    const nextSource = applyPlanToSource(source, plan).source;
-    const selection = {
-      from: offsetToLineCh(nextSource, plan.selection.from),
-      to: offsetToLineCh(nextSource, plan.selection.to)
-    };
-
-    editor.transaction({ changes, selection });
-    editor.focus();
-    editor.scrollIntoView(selection, true);
   }
 
   private notifyRefusal(index: EntryIndex, action: string): void {

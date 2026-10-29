@@ -12,18 +12,16 @@ export const NOTICE_PARTIAL_MS = 8000;
 export const NOTICE_NOTHING_WRITTEN = "Nothing was written.";
 
 export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. ${NOTICE_NOTHING_WRITTEN}`;
-export const NOTICE_NO_ENTRY = `Weaver: put the cursor in an entry first. ${NOTICE_NOTHING_WRITTEN}`;
-export const NOTICE_NO_DRAFTS = "Weaver: no drafts to travel to.";
 export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at ${time}.`;
 export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. ${NOTICE_NOTHING_WRITTEN}`;
 export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. ${NOTICE_NOTHING_WRITTEN}`;
 
-/** The modal's footer: the whole key map, where the keys are being pressed. */
-export const TRAVEL_HINT =
-  "←→ day · ↑↓ draft · 1 / 1.2 / .14 then ↵ to lock · ↵ travel · esc close";
+/** The navigator's footer on a desk: the whole key map, where it is pressed. */
+export const NAVIGATOR_HINT_KEYS =
+  "↑↓ move · ⏎ jump · ⇧⏎ descend · n append · x delete · ⌘[ back · esc close";
 
-/** The palette's footer, in the same voice and order. */
-export const PALETTE_HINT = "↑↓ select · 1 / .14 then ↵ to lock · ↵ settle and descend · n new · x delete · esc caret";
+/** The navigator's footer on a phone: the same three gestures, as taps. */
+export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes";
 
 export function noticeCloseFrontmatter(action: string): string {
   return `Weaver: close the frontmatter before ${action}. ${NOTICE_NOTHING_WRITTEN}`;

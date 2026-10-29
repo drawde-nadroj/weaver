@@ -1,118 +1,121 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  durationLabel,
-  durationRuns,
-  frameGeometry,
-  labelRuns,
-  markerLabel,
-  markerRuns
-} from "../src/core/frame";
+import { frameBox, frameSpan, type FrameColumn, type FrameSpan } from "../src/core/frame";
 
-const COLUMN = { left: 100, right: 500 };
-const GUTTER = 14;
-const MIN_WIDTH = 140;
-const FLOOR = 120;
+const COLUMN: FrameColumn = { left: 100, right: 500 };
+/** Corner 10 + stub 14 + label pad 8: where the marker's ink starts inside its rail. */
+const GUTTER = 32;
 
-function frame(text: { left: number; right: number } | null, column = COLUMN) {
-  return frameGeometry({ column, text, gutter: GUTTER, minWidth: MIN_WIDTH, floorWidth: FLOOR });
+function box(textLeft: number | null, column: FrameColumn = COLUMN) {
+  return frameBox({ column, textLeft, gutter: GUTTER });
 }
 
-describe("frameGeometry", () => {
-  it("hugs a short entry instead of filling the pane", () => {
-    const geometry = frame({ left: 120, right: 300 });
+describe("frameBox", () => {
+  it("puts the left rail one label inset outside the marker's ink", () => {
+    const frame = box(160);
 
-    expect(geometry.drawn).toBe(true);
-    // The rail sits one gutter outside the text on both sides.
-    expect(geometry.left).toBe(106);
-    expect(geometry.width).toBe(208);
-    expect(geometry.left + geometry.width).toBe(314);
+    expect(frame.drawn).toBe(true);
+    expect(frame.left).toBe(128);
+    expect(frame.width).toBe(372);
+    expect(frame.left + frame.width).toBe(COLUMN.right);
   });
 
-  it("grows with the text and stops at the edge", () => {
-    expect(frame({ left: 120, right: 380 }).width).toBe(288);
-    expect(frame({ left: 120, right: 900 }).width).toBe(394);
-    expect(frame({ left: 120, right: 900 }).left + frame({ left: 120, right: 900 }).width).toBe(
-      COLUMN.right
-    );
+  it("stops at the pane's own edge rather than running outside it", () => {
+    const frame = box(110);
+
+    expect(frame.left).toBe(100);
+    expect(frame.width).toBe(400);
   });
 
-  it("never gets narrower than its minimum", () => {
-    expect(frame({ left: 120, right: 140 }).width).toBe(MIN_WIDTH);
+  it("nests by the entry's own indent", () => {
+    const frame = box(200);
+
+    expect(frame.left).toBe(168);
+    expect(frame.width).toBe(332);
   });
 
-  it("follows the entry's indent, so a deeper entry nests", () => {
-    const geometry = frame({ left: 180, right: 300 });
+  it("draws in a narrow pane, narrow", () => {
+    const frame = box(110, { left: 100, right: 180 });
 
-    expect(geometry.left).toBe(166);
-    expect(geometry.width).toBe(148);
+    expect(frame.drawn).toBe(true);
+    expect(frame.width).toBe(80);
   });
 
-  it("does not leave the column when the indent is past the edge", () => {
-    const geometry = frame({ left: 460, right: 480 });
+  it("draws nothing only before anything has been measured", () => {
+    const frame = box(null);
 
-    expect(geometry.left).toBe(446);
-    expect(geometry.left).toBeGreaterThanOrEqual(COLUMN.left);
-  });
-
-  it("draws nothing when the pane cannot carry a frame", () => {
-    expect(frame({ left: 110, right: 170 }, { left: 100, right: 180 }).drawn).toBe(false);
-  });
-
-  it("draws nothing when nothing could be measured", () => {
-    const geometry = frame(null);
-
-    expect(geometry.drawn).toBe(false);
-    expect(geometry.left).toBe(COLUMN.left);
+    expect(frame.drawn).toBe(false);
+    expect(frame.left).toBe(COLUMN.left);
+    expect(frame.width).toBe(400);
   });
 });
 
-describe("frame labels", () => {
-  it("writes the marker in its canonical shape", () => {
-    expect(markerLabel({ d: 2, c: 1, n: 3, time: "13:27:43" })).toBe("{ 2.1.3 } - 13:27:43");
+const AIR = 8;
+
+function span(firstRail: number, lastRail: number, nextRail: number | null = null) {
+  return frameSpan({ firstRail, lastRail, nextRail, air: AIR });
+}
+
+/**
+ * Every number here was measured off a live screenshot of a 32 px entry: the
+ * marker's ink ran 40..63 (centre 51.5), the clock's 177..199 (centre 188), and
+ * the next entry's marker 235..258 (centre 246.5). In that build the top rail sat
+ * at 23 — five pixels above the marker's own line — and the bottom rail at 200,
+ * through the clock's descenders.
+ */
+describe("frameSpan", () => {
+  it("runs each rail through the centre of the row that labels it", () => {
+    const frame = span(51, 188);
+
+    expect(frame.drawn).toBe(true);
+    expect(frame.top).toBe(51);
+    expect(frame.bottom).toBe(188);
   });
 
-  it("writes the sigil and the clock", () => {
-    expect(durationLabel("+", 252_000)).toBe("+ 00:04:12");
+  it("reproduces the screenshot's rails exactly", () => {
+    const frame = span(51.5, 188, 246.5);
+
+    expect(frame.top).toBe(51.5);
+    expect(frame.bottom).toBe(188);
+    // 58.5 px of clear space between one entry's clock centre and the next
+    // marker's — the gap Reading view's margin is built to match.
+    expect(246.5 - frame.bottom).toBeGreaterThanOrEqual(AIR);
   });
 
-  it("splits a label into digit runs and ink runs", () => {
-    expect(labelRuns("{ 2.1.3 } - 13:27:43")).toEqual([
-      { text: "{ ", num: false },
-      { text: "2", num: true },
-      { text: ".", num: false },
-      { text: "1", num: true },
-      { text: ".", num: false },
-      { text: "3", num: true },
-      { text: " } - ", num: false },
-      { text: "13", num: true },
-      { text: ":", num: false },
-      { text: "27", num: true },
-      { text: ":", num: false },
-      { text: "43", num: true }
-    ]);
+  it("needs exactly its air before the next entry's rail", () => {
+    expect(span(51, 188, 196).drawn).toBe(true);
+    expect(span(51, 188, 195).drawn).toBe(false);
   });
 
-  it("keeps exactly three digit runs in a duration, so the clock can tick", () => {
-    const digits = durationRuns("-", 3_723_000).filter((run) => run.num);
-
-    expect(digits.map((run) => run.text)).toEqual(["01", "02", "03"]);
+  it("draws no box when the rails touch or cross", () => {
+    // A single row's centre cannot sit above itself: no interior, no box.
+    expect(span(200, 200).drawn).toBe(false);
+    expect(span(200, 180).drawn).toBe(false);
   });
 
-  it("carries the marker's own numbers", () => {
-    expect(markerRuns({ d: 7, c: 12, n: 140, time: "09:05:00" }).map((run) => run.text)).toEqual([
-      "{ ",
-      "7",
-      ".",
-      "12",
-      ".",
-      "140",
-      " } - ",
-      "09",
-      ":",
-      "05",
-      ":",
-      "00"
-    ]);
+  it("is never capped by the next entry", () => {
+    // A rail is a label's centre or it is nothing: the box is withheld rather
+    // than trimmed to a height that cuts its own clock.
+    const frame = span(51, 188, 400);
+
+    expect(frame.drawn).toBe(true);
+    expect(frame.bottom).toBe(188);
+  });
+
+  it("keeps every box clear of the next one in a run", () => {
+    const rails: Array<[number, number]> = [
+      [51.5, 188],
+      [246.5, 383],
+      [441.5, 578]
+    ];
+    const boxes: FrameSpan[] = rails.map(([top, bottom], index) =>
+      span(top, bottom, rails[index + 1]?.[0] ?? null)
+    );
+
+    for (let index = 0; index + 1 < boxes.length; index += 1) {
+      const upper = boxes[index] as FrameSpan;
+      const lower = boxes[index + 1] as FrameSpan;
+      expect(lower.top - upper.bottom).toBeGreaterThanOrEqual(AIR);
+    }
   });
 });

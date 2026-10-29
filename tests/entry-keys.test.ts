@@ -8,12 +8,10 @@ import {
   ENTRY_KEYS,
   enterableEntry,
   handleEnterKey,
-  handleEscapeKey,
   handleStartKey,
   shouldPinStopwatch,
   type EntryKeyHost
 } from "../src/editor/entry-keys";
-import { clearTravelTarget } from "../src/editor/travel-target";
 import { EntrySession } from "../src/entries/session";
 import { createFile } from "../test-support/harness";
 
@@ -35,16 +33,10 @@ interface Harness {
   deleted: number[];
   starts: number;
   pauses: number;
-  dispatched: unknown[];
   host: EntryKeyHost;
 }
 
-function harness(
-  anchor: number,
-  travelTarget: EntryKeyHost["travelTarget"] = null,
-  active = false,
-  doc = DOC
-): Harness {
+function harness(anchor: number, active = false, doc = DOC): Harness {
   const state = EditorState.create({
     doc,
     selection: { anchor },
@@ -54,7 +46,6 @@ function harness(
   const settled: number[] = [];
   const descended: number[] = [];
   const deleted: number[] = [];
-  const dispatched: unknown[] = [];
   const session = new EntrySession();
   if (active) session.start(PATH, 1, 90_000, Date.now());
 
@@ -62,9 +53,8 @@ function harness(
   let pauses = 0;
   const host: EntryKeyHost = {
     session,
-    travelTarget,
     entries: {
-      startToday: () => {
+      appendEntry: () => {
         starts += 1;
         return Promise.resolve();
       },
@@ -84,20 +74,13 @@ function harness(
   };
 
   // A test double: only `state`, `dispatch` and `focus` are read on this path.
-  const view = {
-    state,
-    dispatch: (spec: unknown) => {
-      dispatched.push(spec);
-    },
-    focus: () => {}
-  } as unknown as EditorView;
+  const view = { state, dispatch: () => {}, focus: () => {} } as unknown as EditorView;
 
   return {
     view,
     settled,
     descended,
     deleted,
-    dispatched,
     host,
     get starts(): number {
       return starts;
@@ -111,12 +94,12 @@ function harness(
 const PROSE = DOC.indexOf("prose");
 
 describe("Enter", () => {
-  it("binds Mod-Shift-E, Enter and Escape, and nothing else", () => {
-    expect(ENTRY_KEYS).toEqual(["Mod-Shift-E", "Enter", "Escape"]);
+  it("binds Mod-Shift-E and Enter, and nothing else", () => {
+    expect(ENTRY_KEYS).toEqual(["Mod-Shift-E", "Enter"]);
   });
 
   it("settles the open entry the live session is writing", () => {
-    const run = harness(PROSE, null, true);
+    const run = harness(PROSE, true);
 
     expect(enterableEntry(run.view, run.host)?.n).toBe(1);
     expect(handleEnterKey(run.view, run.host)).toBe(true);
@@ -124,7 +107,7 @@ describe("Enter", () => {
     expect(run.descended).toEqual([]);
   });
 
-  it("settles an open entry with no session, travel target or caret condition", () => {
+  it("settles an open entry with no session and no caret condition", () => {
     const run = harness(PROSE);
 
     expect(handleEnterKey(run.view, run.host)).toBe(true);
@@ -132,14 +115,14 @@ describe("Enter", () => {
   });
 
   it("settles an entry the writer paused at `=`", () => {
-    const run = harness(PAUSED.indexOf("prose"), null, false, PAUSED);
+    const run = harness(PAUSED.indexOf("prose"), false, PAUSED);
 
     expect(handleEnterKey(run.view, run.host)).toBe(true);
     expect(run.settled).toEqual([1]);
   });
 
   it("descends from a settled entry, opening a child instead of a newline", () => {
-    const run = harness(SETTLED.indexOf("prose"), null, false, SETTLED);
+    const run = harness(SETTLED.indexOf("prose"), false, SETTLED);
 
     expect(enterableEntry(run.view, run.host)?.n).toBe(1);
     expect(handleEnterKey(run.view, run.host)).toBe(true);
@@ -148,8 +131,8 @@ describe("Enter", () => {
   });
 
   it("settles from any line of an open entry, on every platform", () => {
-    const first = harness(TWO_LINES.indexOf("first"), null, false, TWO_LINES);
-    const second = harness(TWO_LINES.indexOf("second"), null, false, TWO_LINES);
+    const first = harness(TWO_LINES.indexOf("first"), false, TWO_LINES);
+    const second = harness(TWO_LINES.indexOf("second"), false, TWO_LINES);
 
     for (const run of [first, second]) {
       expect(handleEnterKey(run.view, run.host)).toBe(true);
@@ -190,29 +173,6 @@ describe("Mod-Enter", () => {
 
     expect(handleStartKey(run.view, run.host)).toBe(true);
     expect(run.starts).toBe(1);
-  });
-});
-
-describe("Escape", () => {
-  it("clears an existing target and pauses", () => {
-    const run = harness(PROSE, { path: PATH, seq: 1 });
-
-    expect(handleEscapeKey(run.view, run.host)).toBe(true);
-    expect(run.pauses).toBe(1);
-    expect(run.dispatched.length).toBe(1);
-
-    const spec = run.dispatched[0] as { effects?: unknown };
-    const effects = Array.isArray(spec.effects) ? spec.effects : [spec.effects];
-    expect(
-      effects.some((effect) => (effect as { is: (other: unknown) => boolean }).is(clearTravelTarget))
-    ).toBe(true);
-  });
-
-  it("is not handled when there is nothing to clear", () => {
-    const run = harness(PROSE);
-
-    expect(handleEscapeKey(run.view, run.host)).toBe(false);
-    expect(run.dispatched).toEqual([]);
   });
 });
 

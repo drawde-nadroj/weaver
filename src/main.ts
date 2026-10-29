@@ -2,34 +2,31 @@
  * Weaver: a day note is a linear list of entries.
  *
  * An entry is `{ D.C.N } - HH:MM:SS`, its prose, and one duration line. The note
- * and the travel card are the whole surface: nothing else navigates, and nothing
- * else writes.
+ * and the navigator are the whole surface: nothing else navigates, and every
+ * write of a day note goes through one writer.
  */
 
-import { MarkdownView, Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 
 import { formatClock } from "./core/clock";
 import { parseClose, planCloseDay } from "./core/close";
-import { applyDayStats, recountDay, writeDayStats } from "./core/day-stats";
+import { applyDayStats, recountDay } from "./core/day-stats";
 import { dayKey, resolveDayNote } from "./core/day-note";
-import { parseEntries } from "./core/entries";
 import { applyPlanToSource } from "./core/insert";
-import type { TravelRow } from "./core/travel-model";
+import type { Stop } from "./core/navigator-stack";
 import { closeDecorationsExtension } from "./editor/close-decorations";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
 import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, refreshEntriesEffect } from "./editor/entry-field";
-import { travelTargetExtension } from "./editor/travel-target";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
-import { DayIndex } from "./entries/day-index";
 import { EntryEngine } from "./entries/engine";
 import { EntrySession } from "./entries/session";
+import { minimalChange, rewriteDay } from "./entries/writer";
 import {
   NOTICE_DAY_ALREADY_CLOSED,
   NOTICE_DAY_CLOSED,
   NOTICE_NO_DAY_NOTE,
-  NOTICE_NO_DRAFTS,
   NOTICE_NOOP_MS,
   NOTICE_REFUSAL_MS
 } from "./notices";
@@ -38,9 +35,8 @@ import { createEntryProcessor } from "./reading/entry-processor";
 import { normalizeData, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
-import { EntryPalette } from "./ui/entry-palette";
+import { Navigator } from "./ui/navigator";
 import { isMobile, isPhone, isTablet } from "./ui/platform";
-import { TravelModal } from "./ui/travel-modal";
 
 /** Hand edits in the day note settle for this long before the stats follow. */
 const DAY_STATS_DELAY_MS = 2000;
@@ -48,7 +44,6 @@ const DAY_STATS_DELAY_MS = 2000;
 const BODY_CLASSES = [
   "weaver-no-emphasis",
   "weaver-unequal",
-  "weaver-frames",
   "weaver-platform-mobile",
   "weaver-phone",
   "weaver-tablet"
@@ -60,12 +55,10 @@ export default class WeaverPlugin extends Plugin {
 
   session = new EntrySession();
   entries!: EntryEngine;
-  dayIndex!: DayIndex;
-  /** The entry travel last opened, mirrored into the editor's own field. */
-  travelTarget: { path: string; seq: number } | null = null;
+  /** Where the navigator's last moves came from, oldest first. */
+  stack: { stops: Stop[] } = { stops: [] };
 
-  private travelModal: TravelModal | null = null;
-  private palette: EntryPalette | null = null;
+  private navigator: Navigator | null = null;
   private dayStatsTimer: number | null = null;
 
   async onload(): Promise<void> {
@@ -91,21 +84,14 @@ export default class WeaverPlugin extends Plugin {
       entryFrameExtension({
         settings: () => this.settings,
         session: () => this.session,
-        fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? "",
-        openDayLink: (target, sourcePath) => {
-          void this.app.workspace.openLinkText(target, sourcePath, false);
-        }
+        fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? ""
       }),
-      travelTargetExtension(() => this.app.workspace.getActiveFile()?.path ?? ""),
       entryKeysExtension(this),
       entryEditExtension(this)
     ]);
 
     this.registerMarkdownPostProcessor(createEntryProcessor(this));
     this.registerMarkdownPostProcessor(createCloseProcessor());
-
-    this.dayIndex = new DayIndex(this.app, () => this.settings);
-    this.dayIndex.start();
 
     this.registerEvent(
       this.app.vault.on("modify", (file) => this.scheduleDayStats(file instanceof TFile ? file : null))
@@ -127,11 +113,8 @@ export default class WeaverPlugin extends Plugin {
       this.dayStatsTimer = null;
     }
 
-    this.travelModal?.close();
-    this.travelModal = null;
-    this.palette?.close();
-    this.palette = null;
-    this.dayIndex?.stop();
+    this.navigator?.close();
+    this.navigator = null;
     removeCss();
     document.body.classList.remove(...BODY_CLASSES);
   }
@@ -143,10 +126,6 @@ export default class WeaverPlugin extends Plugin {
 
   log(...args: unknown[]): void {
     if (this.settings.debug) console.log("[Weaver]", ...args);
-  }
-
-  activeMarkdownView(): MarkdownView | null {
-    return this.app.workspace.getActiveViewOfType(MarkdownView);
   }
 
   /**
@@ -161,7 +140,6 @@ export default class WeaverPlugin extends Plugin {
     const body = document.body.classList;
     body.toggle("weaver-no-emphasis", !this.settings.portEmphasisColors);
     body.toggle("weaver-unequal", !this.settings.equalizeHeadingSizes);
-    body.toggle("weaver-frames", this.settings.entryFrames);
     body.toggle("weaver-platform-mobile", isMobile());
     body.toggle("weaver-phone", isPhone());
     body.toggle("weaver-tablet", isTablet());
@@ -175,62 +153,20 @@ export default class WeaverPlugin extends Plugin {
     for (const view of registeredEditorViews()) {
       view.dispatch({ effects: refreshEntriesEffect.of(undefined) });
     }
-
-    this.travelModal?.recenter();
-  }
-
-  /** Opens the travel card over every draft in the day-note folder. */
-  async openTravel(): Promise<void> {
-    const days = await this.dayIndex.drafts();
-
-    const rows: TravelRow[] = [];
-    for (const day of days) {
-      for (const entry of day.entries) {
-        rows.push({
-          path: day.path,
-          dayKey: day.dayKey,
-          line: entry.line,
-          d: entry.d,
-          c: entry.c,
-          n: entry.n,
-          time: entry.time,
-          durationMs: entry.durationMs,
-          title: entry.title
-        });
-      }
-    }
-
-    if (rows.length === 0) {
-      new Notice(NOTICE_NO_DRAFTS, NOTICE_NOOP_MS);
-      return;
-    }
-
-    if (this.travelModal?.isOpen === true) {
-      this.travelModal.recenter();
-      return;
-    }
-
-    this.travelModal = new TravelModal(this, this.activeMarkdownView());
-    this.travelModal.open(rows);
   }
 
   /**
-   * Opens the entry palette over today's entries, on the note as it is on disk.
+   * Opens the navigator over today's entries, on the note as it is on screen.
    *
    * The engine speaks for a missing note — one refusal, in one place — so this
    * returns quietly when there is nothing to show.
    */
-  async openPalette(): Promise<void> {
+  async openNavigator(): Promise<void> {
     const view = await this.entries.revealToday(new Date());
-    if (view === null) return;
+    if (view === null || this.navigator?.isOpen === true) return;
 
-    if (this.palette?.isOpen === true) return;
-
-    const index = parseEntries(view.state.doc.toString());
-    const caretLine = view.state.doc.lineAt(view.state.selection.main.head).number - 1;
-
-    this.palette = new EntryPalette(this);
-    this.palette.open(index, view, caretLine);
+    this.navigator = new Navigator(this);
+    this.navigator.open(view);
   }
 
   /** Closes today's day note: one mark, then the day's own stats. */
@@ -243,17 +179,20 @@ export default class WeaverPlugin extends Plugin {
       return;
     }
 
-    let closed = false;
-    await this.app.vault.process(file, (data) => {
-      const plan = planCloseDay(data, now);
-      if (plan === null) return data;
+    const result = await rewriteDay(
+      this.app,
+      file,
+      (source) => {
+        const plan = planCloseDay(source, now);
+        if (plan === null) return null;
 
-      closed = true;
-      const next = applyPlanToSource(data, plan).source;
-      return this.withDayStats(next, now);
-    });
+        const next = this.withDayStats(applyPlanToSource(source, plan).source, now);
+        return { changes: minimalChange(source, next), source: next, caret: null };
+      },
+      true
+    );
 
-    if (!closed) {
+    if (result === null) {
       new Notice(NOTICE_DAY_ALREADY_CLOSED, NOTICE_REFUSAL_MS);
       return;
     }
@@ -264,41 +203,25 @@ export default class WeaverPlugin extends Plugin {
   private registerCommands(): void {
     // Every command carries an icon so Obsidian's mobile toolbar can show it.
     this.addCommand({
-      id: "start-entry",
-      name: "Start an entry",
+      id: "append-entry",
+      name: "Append an entry",
       icon: "plus",
       // `Mod+Enter` is taken by the core "Open link under cursor in new tab",
       // whose scope runs before any plugin keymap — see `ENTRY_KEYS`.
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "E" }],
       // Not an editor callback: today's note is the target even from Reading
       // view, and from no note at all.
-      callback: () => void this.entries.startToday(new Date())
+      callback: () => void this.entries.appendEntry(new Date())
     });
 
+    // The one navigation: append, descend and jump in a single list, with the
+    // return stack inside it.
     this.addCommand({
-      id: "insert-entry",
-      name: "Insert a child entry",
-      icon: "indent-increase",
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "J" }],
-      editorCallback: (_editor, view) => {
-        if (view instanceof MarkdownView) this.entries.startFromCursor(view, new Date());
-      }
-    });
-
-    this.addCommand({
-      id: "travel",
-      name: "Travel to a draft",
-      icon: "compass",
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "Enter" }],
-      callback: () => void this.openTravel()
-    });
-
-    this.addCommand({
-      id: "palette",
-      name: "Entry palette",
+      id: "navigate",
+      name: "Today's entries",
       icon: "list",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "P" }],
-      callback: () => void this.openPalette()
+      callback: () => void this.openNavigator()
     });
 
     this.addCommand({
@@ -350,11 +273,24 @@ export default class WeaverPlugin extends Plugin {
     }, DAY_STATS_DELAY_MS);
   }
 
+  /**
+   * The stats pass, through the same writer as every other day-note write: the
+   * open editor when there is one, so a hand edit and the counters cannot cross.
+   */
   private async refreshDayStats(file: TFile): Promise<void> {
     const today = resolveDayNote(this.app, this.settings, new Date()).file;
     if (today === null || today.path !== file.path) return;
 
-    const source = await this.app.vault.cachedRead(file);
-    await writeDayStats(this.app, file, recountDay(source, parseClose(source).closedAt));
+    const now = new Date();
+    await rewriteDay(
+      this.app,
+      file,
+      (source) => {
+        const next = this.withDayStats(source, now);
+        const changes = minimalChange(source, next);
+        return changes.length === 0 ? null : { changes, source: next, caret: null };
+      },
+      false
+    );
   }
 }

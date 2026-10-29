@@ -1,19 +1,26 @@
 #!/usr/bin/env node
 /**
- * Migrates a day note from hashes to entry markers.
+ * Migrates a day note from hashes to entry markers, and threads the markers of a
+ * note that already has them.
  *
  *   node scripts/migrate-dcn.mjs --dry-run <file…>
  *   node scripts/migrate-dcn.mjs --verify [--from <original>] <file…>
  *   node scripts/migrate-dcn.mjs <file…>
+ *   node scripts/migrate-dcn.mjs --threads [--dry-run|--verify [--from <copy>]] <file…>
  *
  * The old grammar: the hash run is `D`, the text after it carries an optional
  * leading clock (sometimes after a `{ N }` that only repeats the hash count), and
  * the body is every line up to the next heading. The new grammar: one marker
  * line, the title on its own line, the body verbatim, and `+ 00:00:00`.
  *
- * `D` is the hash count, `C` the 1-based ordinal among siblings in document
- * order, `N` the rank by clock across the file (ties by document order). A file
- * whose lines already start with a marker is left untouched.
+ * `D` is the hash count, `C` the thread id (a root's 1-based position among
+ * roots, carried unchanged by everything under it), `N` the rank by clock across
+ * the file (ties by document order). A file whose lines already start with a
+ * marker is left untouched by the first pass.
+ *
+ * `--threads` is the second pass, for a note already written in the old
+ * per-parent numbering: it rewrites only the `C` field of markers, onto the
+ * thread id, and leaves every other byte alone.
  *
  * Plain Node, no dependencies.
  */
@@ -25,6 +32,9 @@ const HASH = /^(#{1,6})[ \t]+(.*)$/;
 /** A line that lost its newline in front of a heading still holds its heading. */
 const REPAIR = /^([^\w\s#]{0,8})(#{1,6}[ \t]+\d{1,2}:\d{2}(?::\d{2})?.*)$/;
 const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)/;
+/** The same marker with the `C` field's span marked, for the `--threads` pass. */
+const MARKER_SPAN =
+  /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)/d;
 const BRACE = /^\{\s*\d{1,3}\s*\}(?:[ \t]*-[ \t]*)?/;
 const CLOCK = /^(\d{1,2}:\d{2}(?::\d{2})?)\b/;
 const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
@@ -136,7 +146,7 @@ function parseOld(body) {
   return { preamble, entries };
 }
 
-/** `D.C.N` per entry, in document order. */
+/** `D.C.N` per entry, in document order: `N` by clock, `C` by thread. */
 function number(entries) {
   const timed = entries
     .map((entry, index) => ({ entry, index }))
@@ -157,20 +167,20 @@ function number(entries) {
   }
 
   const stack = [];
-  const counts = new Map([[-1, 0]]);
+  let roots = 0;
 
-  for (const entry of entries) {
+  entries.forEach((entry, index) => {
     while (stack.length > 0) {
       const top = stack[stack.length - 1];
       if (entries[top].d < entry.d) break;
       stack.pop();
     }
-    const parent = stack.length > 0 ? stack[stack.length - 1] : -1;
-    const ordinal = (counts.get(parent) ?? 0) + 1;
-    counts.set(parent, ordinal);
-    entry.c = ordinal;
-    stack.push(entries.indexOf(entry));
-  }
+
+    // A root is its own 1-based position; everything under it carries that id,
+    // however deep the branch goes.
+    entry.c = stack.length === 0 ? ++roots : entries[stack[stack.length - 1]].c;
+    stack.push(index);
+  });
 
   return entries;
 }
@@ -271,6 +281,141 @@ function frontmatterValue(source, key) {
   return null;
 }
 
+/**
+ * The markers of a note, with each one's `C` span, in document order.
+ *
+ * Frontmatter and fenced code are skipped exactly as the parser in
+ * `src/core/entries.ts` skips them, so a marker the plugin does not read is a
+ * marker this pass does not touch.
+ */
+function markerLines(lines) {
+  const { block, body } = splitFrontmatter(lines);
+  const offset = block === null ? 0 : block.length;
+  const marked = [];
+  let fence = null;
+
+  body.forEach((line, index) => {
+    if (fence !== null) {
+      const closing = /^( {0,3})(`{3,}|~{3,})[ \t]*$/.exec(line);
+      const run = closing?.[2];
+      if (run !== undefined && run[0] === fence.character && run.length >= fence.length) fence = null;
+      return;
+    }
+
+    const open = FENCE.exec(line);
+    if (open !== null) {
+      const run = open[2] ?? "`";
+      fence = { character: run[0], length: run.length };
+      return;
+    }
+
+    const match = MARKER_SPAN.exec(line);
+    if (match === null) return;
+
+    marked.push({
+      line: offset + index,
+      d: Number(match[1]),
+      c: Number(match[2]),
+      span: match.indices[2]
+    });
+  });
+
+  return marked;
+}
+
+/** Every marker's thread id, and whether it is a root, from the `d` stack. */
+function threadMarkers(marked) {
+  const stack = [];
+  let roots = 0;
+
+  for (const marker of marked) {
+    while (stack.length > 0 && stack[stack.length - 1].d >= marker.d) stack.pop();
+
+    marker.root = stack.length === 0;
+    marker.thread = marker.root ? ++roots : stack[stack.length - 1].thread;
+    stack.push(marker);
+  }
+
+  return marked;
+}
+
+/**
+ * `--threads`: walks the markers and rewrites only the `C` field, onto the
+ * branch's thread id. Roots already hold theirs, so the pass is a no-op on a
+ * note that has been threaded once.
+ */
+function threadPass(source) {
+  const lines = source.split("\n");
+  const marked = threadMarkers(markerLines(lines));
+  let changed = false;
+
+  for (const marker of marked) {
+    if (marker.c === marker.thread) continue;
+    const line = lines[marker.line];
+    lines[marker.line] =
+      line.slice(0, marker.span[0]) + String(marker.thread) + line.slice(marker.span[1]);
+    changed = true;
+  }
+
+  return { source: lines.join("\n"), changed, count: marked.length };
+}
+
+/**
+ * The `--threads` checks: same lines, same `D` and `N`, every root's `C` kept,
+ * every deeper `C` equal to its root's, and no non-marker byte touched.
+ */
+function verifyThreads(before, after) {
+  const problems = [];
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+
+  if (beforeLines.length !== afterLines.length) {
+    problems.push(`line count changed from ${beforeLines.length} to ${afterLines.length}`);
+  }
+
+  const was = new Map(markerLines(beforeLines).map((marker) => [marker.line, marker]));
+  const now = new Map(markerLines(afterLines).map((marker) => [marker.line, marker]));
+
+  if (was.size !== now.size) problems.push(`${now.size} marker(s) for ${was.size} before`);
+
+  const limit = Math.min(beforeLines.length, afterLines.length);
+  for (let line = 0; line < limit; line += 1) {
+    const previous = was.get(line);
+    const current = now.get(line);
+
+    if (previous === undefined && current === undefined) {
+      if (beforeLines[line] !== afterLines[line]) problems.push(`line ${line + 1} changed outside a marker`);
+      continue;
+    }
+    if (previous === undefined || current === undefined) {
+      problems.push(`line ${line + 1} became or stopped being a marker`);
+      continue;
+    }
+
+    const before = MARKER.exec(beforeLines[line] ?? "");
+    const after = MARKER.exec(afterLines[line] ?? "");
+    if (before?.[1] !== after?.[1]) problems.push(`line ${line + 1}: D changed`);
+    if (before?.[3] !== after?.[3]) problems.push(`line ${line + 1}: N changed`);
+  }
+
+  const threaded = threadMarkers(markerLines(afterLines));
+  for (const marker of threaded) {
+    if (marker.c !== marker.thread) {
+      problems.push(`line ${marker.line + 1}: C is ${marker.c}, thread is ${marker.thread}`);
+      continue;
+    }
+
+    if (!marker.root) continue;
+    const previous = was.get(marker.line);
+    if (previous !== undefined && previous.c !== marker.c) {
+      problems.push(`line ${marker.line + 1}: a root's C moved`);
+    }
+  }
+
+  return problems;
+}
+
+/** The first pass's checks: markers, durations, stats and survivor lines. */
 function verify(source, original) {
   const problems = [];
   const lines = source.split("\n");
@@ -323,6 +468,7 @@ function verify(source, original) {
 
 const args = process.argv.slice(2);
 const mode = args.includes("--verify") ? "verify" : args.includes("--dry-run") ? "dry-run" : "write";
+const threads = args.includes("--threads");
 const fromIndex = args.indexOf("--from");
 const originalPath = fromIndex >= 0 ? args[fromIndex + 1] : null;
 
@@ -333,7 +479,9 @@ const files = args.filter((arg, index) => {
 });
 
 if (files.length === 0) {
-  console.error("usage: migrate-dcn.mjs [--dry-run|--verify [--from <original>]] <file…>");
+  console.error(
+    "usage: migrate-dcn.mjs [--threads] [--dry-run|--verify [--from <original>]] <file…>"
+  );
   process.exit(2);
 }
 
@@ -341,6 +489,39 @@ let failed = false;
 
 for (const file of files) {
   const source = readFileSync(file, "utf8");
+
+  if (threads) {
+    const result = threadPass(source);
+
+    if (mode === "dry-run") {
+      process.stdout.write(result.source);
+      continue;
+    }
+
+    if (mode === "verify") {
+      // Without a copy of the note as it was, the file is its own baseline: the
+      // checks that survive are the ones a note must satisfy on its own.
+      const before = originalPath === null ? source : readFileSync(originalPath, "utf8");
+      const problems = verifyThreads(before, source);
+      if (problems.length > 0) {
+        failed = true;
+        console.error(`${file}: ${problems.join("; ")}`);
+      } else {
+        console.log(`${file}: ok`);
+      }
+      continue;
+    }
+
+    if (!result.changed) {
+      console.log(`${file}: already threaded, left untouched`);
+      continue;
+    }
+
+    writeFileSync(file, result.source);
+    console.log(`${file}: ${result.count} markers threaded`);
+    continue;
+  }
+
   const result = migrate(source, file);
 
   if (mode === "dry-run") {

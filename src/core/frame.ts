@@ -1,18 +1,20 @@
 /**
- * The frame around one entry: its geometry, and the runs a label is made of.
+ * The frame around one entry: a box, and nothing else.
  *
- * The rules are pi-frame's (`pi-egregore/packages/pi-frame`, `frameRail`), ported
- * from terminal cells to pixels: a frame starts at a limited width, grows with
- * the content it encloses, and stops at the edge it is allowed to occupy. A label
- * sits in a corner of the rail, and a pane too narrow for a frame is drawn
- * without one.
+ * The layer that uses this draws a border and the live highlight. It draws no
+ * text: the entry's own first row — the marker line — is the box's top-left
+ * label, and its own duration row is the box's bottom-right, so the label is
+ * read once, from the file, in the place a label would sit. Nothing is hidden
+ * and nothing is duplicated.
  *
- * pi-frame truncates a label by measuring cells. Here the DOM does it with
- * `text-overflow: ellipsis`, so this module measures nothing, touches no DOM and
- * is pure enough to test without a browser.
+ * Both rails run through the centre of the row that labels them, and the label's
+ * own background cuts the rail behind it, so the box reads as running into its
+ * own text rather than enclosing it. The box therefore spans from one label inset
+ * outside the marker's ink to the right edge of the text column: a taller box
+ * could not put a clock in its own corner without a second rendering of the row.
+ *
+ * Pure — no DOM, no measurement — so the geometry is testable without a browser.
  */
-
-import { formatClock } from "./duration";
 
 /** The column a frame may occupy, in the layer's own coordinates. */
 export interface FrameColumn {
@@ -20,90 +22,68 @@ export interface FrameColumn {
   right: number;
 }
 
-/** The ink a frame encloses: where the text actually ends, not its line boxes. */
-export interface FrameExtent {
-  left: number;
-  right: number;
-}
-
-export interface FrameGeometryInput {
+export interface FrameBoxInput {
+  /** pane-left … column-right, in scroller coordinates. */
   column: FrameColumn;
-  /** `null` when nothing on screen could be measured: no frame is drawn. */
-  text: FrameExtent | null;
-  /** Air between the rail and the text it encloses. */
+  /** The first line's left ink; `null` only before anything has been measured. */
+  textLeft: number | null;
   gutter: number;
-  /** The narrowest a frame may be; it grows from here with the text. */
-  minWidth: number;
-  /** Below this the pane cannot carry a frame at all. */
-  floorWidth: number;
 }
 
-export interface FrameGeometry {
+export interface FrameBox {
   left: number;
   width: number;
   drawn: boolean;
 }
 
 /**
- * A frame hugs its text, never reflows it.
+ * The box spans one label inset outside the entry's first row's ink to the
+ * column's right edge.
  *
- * `left` follows the entry's own indent, so a deeper entry nests inside its
- * parent's column. `width` is the text plus one gutter on each side, held between
- * `minWidth` and the edge of the column — which is what makes a short entry a
- * narrow frame and a long one a frame that reaches the edge.
+ * There is no width below which a box is withheld: a narrow pane gets a narrow
+ * box. The only way to get no box is to have measured nothing yet.
  */
-export function frameGeometry(input: FrameGeometryInput): FrameGeometry {
-  const left =
-    input.text === null
-      ? input.column.left
-      : Math.max(input.column.left, input.text.left - input.gutter);
-
-  const available = Math.max(0, input.column.right - left);
-  const drawn = input.text !== null && available >= input.floorWidth;
-  const wanted = input.text === null ? 0 : input.text.right + input.gutter - left;
-
-  return {
-    left,
-    width: Math.min(available, Math.max(Math.min(input.minWidth, available), wanted)),
-    drawn
-  };
+export function frameBox(input: FrameBoxInput): FrameBox {
+  const left = Math.max(input.column.left, (input.textLeft ?? input.column.left) - input.gutter);
+  const width = Math.max(0, input.column.right - left);
+  return { left, width, drawn: input.textLeft !== null };
 }
 
-/** One run of a label: digits stay white, punctuation keeps the entry's colour. */
-export interface LabelRun {
-  text: string;
-  num: boolean;
+export interface FrameSpanInput {
+  /** The top rail: the centre of the entry's marker row. */
+  firstRail: number;
+  /** The bottom rail: the centre of its duration row, or below its last prose row. */
+  lastRail: number;
+  /** The next entry's top rail; `null` for the last entry in the note. */
+  nextRail: number | null;
+  /** Clear space required between two rails. */
+  air: number;
 }
 
-/** Alternating runs, exactly as the marker line itself is split. */
-export function labelRuns(text: string): LabelRun[] {
-  const runs: LabelRun[] = [];
-  for (const part of text.split(/(\d+)/)) {
-    if (part === "") continue;
-    runs.push({ text: part, num: /^\d+$/.test(part) });
-  }
-  return runs;
+export interface FrameSpan {
+  top: number;
+  bottom: number;
+  drawn: boolean;
 }
 
-/** `{ 1.2.3 } - 13:27:43`, in the marker's canonical shape. */
-export function markerLabel(entry: { d: number; c: number; n: number; time: string }): string {
-  return `{ ${entry.d}.${entry.c}.${entry.n} } - ${entry.time}`;
-}
-
-/** `+ 00:01:30`, the sigil and the clock. */
-export function durationLabel(sigil: string, ms: number): string {
-  return `${sigil} ${formatClock(ms)}`;
-}
-
-export function markerRuns(entry: {
-  d: number;
-  c: number;
-  n: number;
-  time: string;
-}): LabelRun[] {
-  return labelRuns(markerLabel(entry));
-}
-
-export function durationRuns(sigil: string, ms: number): LabelRun[] {
-  return labelRuns(durationLabel(sigil, ms));
+/**
+ * The box's vertical extent: from one rail to the other, and nothing more.
+ *
+ * The rails are the label lines, so there is no padding to add and no cap to
+ * apply. The old version derived both ends from the text's edges and padded them,
+ * which put the top rail 5 px above the marker's own row and the bottom rail 5 px
+ * below the clock's — so the labels sat inside the box instead of on it, and the
+ * clock row was clipped by the rail under it.
+ *
+ * The only judgement left is whether two rails are far enough apart: a box is
+ * withheld when the next entry's rail is closer than {@link FrameSpanInput.air},
+ * because two labels would then share the space and neither would read. There is
+ * no trimming — a rail is a label's centre or it is nothing — and no padding cap.
+ * When the rails cross, there is no interior and no box.
+ */
+export function frameSpan(input: FrameSpanInput): FrameSpan {
+  const top = input.firstRail;
+  const bottom = input.lastRail;
+  const clear = input.nextRail === null || input.nextRail - bottom >= input.air;
+  return { top, bottom, drawn: bottom > top && clear };
 }

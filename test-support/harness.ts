@@ -1,7 +1,9 @@
 /* Typed access to the runtime stub. Tests import from here instead of poking
  * at stub-only members through the real `obsidian` typings. */
 
-import type { App, MarkdownView, TFile } from "obsidian";
+import { EditorState } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import { editorInfoField, type App, type MarkdownFileInfo, type MarkdownView, type TFile } from "obsidian";
 
 import { resetDom, shimDocument, ShimElement } from "./dom";
 import {
@@ -22,6 +24,40 @@ export function createApp(files: TFile[] = []): App {
 
 export function createFile(path: string, content: string): TFile {
   return new StubTFile(path, content) as unknown as TFile;
+}
+
+/** A CodeMirror view double that really applies what it is dispatched. */
+export interface LiveEditor {
+  state: EditorState;
+  dispatches: number;
+  dispatch(spec: Parameters<EditorState["update"]>[0]): void;
+  focus(): void;
+  hasFocus: boolean;
+  scrollDOM: { scrollTop: number };
+}
+
+/** The view a live editor would be, over `doc`, holding `file`. Register it with
+ * `registerEditorView` for the paths that look a view up by file. */
+export function liveEditor(file: TFile, doc: string, anchor = 0): EditorView & LiveEditor {
+  const initial = EditorState.create({
+    doc,
+    selection: { anchor },
+    extensions: [editorInfoField.init(() => ({ file }) as unknown as MarkdownFileInfo)]
+  });
+
+  const view = {
+    state: initial,
+    dispatches: 0,
+    dispatch(this: LiveEditor, spec: Parameters<EditorState["update"]>[0]) {
+      this.state = this.state.update(spec).state;
+      this.dispatches += 1;
+    },
+    focus() {},
+    hasFocus: true,
+    scrollDOM: { scrollTop: 0 }
+  };
+
+  return view as unknown as EditorView & LiveEditor;
 }
 
 /** The stub vault keeps a file's text on the `TFile` itself, not behind `read`. */

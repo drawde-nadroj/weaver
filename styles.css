@@ -58,11 +58,16 @@ body {
 }
 
 .weaver-duration {
-  /* A block, so the padding below is the air under the line: a span cannot take
-   * vertical padding, and nothing else separates the stopwatch from what
-   * follows it. */
+  /* The bottom rail's label: a block shrink-wrapped to the clock and pushed to
+   * the right edge, so the clock's own box — not a separate element — is what
+   * paints over the rail behind it. A span cannot take vertical padding, and the
+   * right padding is the same inset the raw duration line keeps. */
   display: block;
-  padding-bottom: 6px;
+  width: fit-content;
+  margin-left: auto;
+  padding: 0 10px 6px;
+  background: var(--background-primary);
+  border-radius: 4px;
   /* Explicit, so the block's height is a function of the line height and not of
    * its own content: the digits change every second and the line does not move. */
   line-height: var(--weaver-entry-line-height);
@@ -71,8 +76,9 @@ body {
 }
 
 .weaver-entry-daylink {
-  color: var(--weaver-dcolor);
-  opacity: 0.75;
+  /* A translucent colour, never `opacity`: the link is part of the top rail's
+   * label, and a translucent label would let the rail show through it. */
+  color: color-mix(in oklab, var(--weaver-dcolor) 75%, transparent);
   cursor: pointer;
 }
 
@@ -100,10 +106,11 @@ body.weaver-phone .weaver-duration {
  * note and a scroll costs no measurement. Every box is `pointer-events: none`,
  * so editing, selection and touch are exactly what they were.
  *
- * The rail runs through the middle of the row it names, and the label that
- * breaks it is a chip of page colour sitting on the rail. A raw marker or
- * duration row is cut out of the rail the same way, so the file's own text is
- * never struck through. */
+ * The file's own text labels the box: the marker row is the top rail's label,
+ * the duration row the bottom rail's, and each rail runs through the centre of
+ * the row it names. Nothing is hidden and nothing is painted twice: the label's
+ * own background is what cuts the rail, so no second rendering of the row is
+ * needed to make the box read as running into it. */
 
 .weaver-frame-layer {
   position: absolute;
@@ -113,21 +120,17 @@ body.weaver-phone .weaver-duration {
   height: 0;
   /* Below the note's text, above the scroller's own background: the scroller is
    * a stacking context (`z-index: 0` in CodeMirror's base theme), so a negative
-   * layer paints under every line. That is what lets a chip sit *behind* the raw
-   * marker while the caret is on the row, instead of covering it. */
+   * layer paints under every line, and the border never covers a character. */
   z-index: -1;
   pointer-events: none;
 }
 
 .weaver-frame {
-  /* The chip's colour is the page's; a theme with a textured or transparent note
-   * background can name its own here and the rail will cut cleanly. */
-  --weaver-frame-cut: var(--weaver-frame-cut-color, var(--background-primary));
   position: absolute;
   font-size: var(--weaver-entry-size);
   border-radius: 10px;
-  /* An inset shadow rather than a border: the rail sits exactly on the box's
-   * edge, so the label centred on that edge is centred on the rail. */
+  /* An inset shadow rather than a border: the ring sits exactly on the box's
+   * edge, so no layout is affected and no pixel of text moves. */
   box-shadow: inset 0 0 0 1px
     color-mix(in oklab, var(--weaver-dcolor, var(--text-faint)) 45%, transparent);
   pointer-events: none;
@@ -136,64 +139,7 @@ body.weaver-phone .weaver-duration {
     height 120ms ease;
 }
 
-.weaver-frame-label {
-  position: absolute;
-  right: 10px;
-  display: block;
-  box-sizing: border-box;
-  max-width: calc(100% - 20px);
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--weaver-frame-cut);
-  color: var(--weaver-dcolor, var(--text-muted));
-  font-family: var(--font-text);
-  font-size: 0.82em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.weaver-frame-label-top {
-  top: 0;
-  transform: translateY(-50%);
-}
-
-.weaver-frame-label-bottom {
-  bottom: 0;
-  transform: translateY(50%);
-}
-
-/* The day link is the one part of a frame that is clicked rather than read. Its
- * label is painted under the note's text, so the click target lives in a second
- * layer, above the text and over the link only. */
-.weaver-frame-hit-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.weaver-frame-dayhit {
-  position: absolute;
-  display: none;
-  border-radius: 4px;
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-/* Behind the file's own text, while the caret is on that rail row. */
-.weaver-frame-chip {
-  position: absolute;
-  border-radius: 4px;
-  background: var(--weaver-frame-cut);
-}
-
-/* The entry being written: a highlight travels the rails, counter-clockwise,
+/* The entry being written: a highlight travels the border, counter-clockwise,
  * once every three seconds. Motion is the running clock's, not decoration's. */
 .weaver-frame.is-live::after {
   content: "";
@@ -241,26 +187,17 @@ body.weaver-phone .weaver-duration {
   }
 }
 
-/* The marker's row is fully transparent, not hidden: it keeps its layout, its
- * caret and its place in the accessibility tree, and stops painting only while
- * the frame draws it on the rail. Hovering or tapping the row puts the caret on
- * it, which removes this class and brings the raw text back.
- *
- * `weaver-frames-live` is set by the frame layer on the scroller, and only while
- * it has frames drawn: a pane too narrow for a frame, or a surface the layer
- * does not run on, keeps the file's own words visible. */
-.weaver-frames-live .weaver-entry-head-framed {
-  opacity: 0;
+/* A corner label paints the note's own background over the rail it names, so
+ * the rail stops at the label. No padding: a label must never move a character.
+ * The shadow is the padding it cannot have. */
+.weaver-frame-label {
+  background: var(--background-primary);
+  border-radius: 4px;
+  box-shadow: 0 0 0 8px var(--background-primary);
 }
 
-/* The same for the duration widget: the frame's bottom rail is the visible
- * clock, and the widget keeps the row's height and its raw-text contract. */
-body.weaver-frames .weaver-frames-live .weaver-duration {
-  opacity: 0;
-}
-
-/* Reading view draws the same box, but the browser does the hugging: the frame
- * is a real element, so `fit-content` is the whole measurement. */
+/* Reading view draws the same box as a real element, so it needs no measurement
+ * at all — only the same border, and the same span: the whole text column. */
 .markdown-rendered .weaver-frame.is-static {
   --weaver-frame-indent: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
@@ -268,14 +205,14 @@ body.weaver-frames .weaver-frames-live .weaver-duration {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: fit-content;
-  /* The rail must be long enough to carry its own label, and two frames need
-   * one row of air: the labels hang half a line off each rail, so a tighter gap
-   * would put one entry's clock in the next entry's border row. */
-  min-width: min(280px, calc(100% - var(--weaver-frame-indent)));
-  max-width: calc(100% - var(--weaver-frame-indent));
-  margin: 12px 0 12px var(--weaver-frame-indent);
-  padding: 0.85em 0.9em;
+  /* The frame's edges are the label centres. The measured Live Preview gap
+   * between one entry's clock centre and the next marker centre is 58 px at
+   * 32 px type; 1.8em reproduces it, and adjacent labels sit on opposite sides
+   * of the frame, so they do not collide. */
+  margin: 1.8em 0 1.8em var(--weaver-frame-indent);
+  /* Horizontal only: vertical space belongs to the rows, which hang over the
+   * rails by half a line each. */
+  padding: 0 0.9em;
   border-radius: 10px;
   font-size: var(--weaver-entry-size);
   box-shadow: inset 0 0 0 1px
@@ -289,6 +226,20 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   );
 }
 
+/* The raw duration line keeps the inset the widget's padding gives the clock, so
+ * crossing the row with the caret does not move it. The clock's label is the mark
+ * over the row, whose 8 px shadow cuts the rail. */
+.weaver-duration-raw {
+  text-align: right;
+  padding-right: 10px;
+}
+
+.markdown-rendered .weaver-frame.is-static {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
 /* The frame carries the indent, so the text inside it does not carry it twice. */
 .markdown-rendered .weaver-frame.is-static .weaver-entry-prose,
 .markdown-rendered .weaver-frame.is-static .weaver-entry-head,
@@ -297,9 +248,22 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   padding-left: 0;
 }
 
-.markdown-rendered .weaver-frame.is-static .weaver-frame-label {
-  right: 12px;
-  max-width: calc(100% - 24px);
+/* The first and last rows are the box's rails, so each hangs half a line over the
+ * frame's edge until its centre is on the edge. `align-self` shrink-wraps them:
+ * a stretched block would paint a full-width band over the rail it names. The
+ * negative margin moves the box edge, never a character. */
+.markdown-rendered .weaver-frame.is-static .weaver-entry-head {
+  align-self: flex-start;
+  margin-top: -0.675em;
+  line-height: var(--weaver-entry-line-height);
+}
+
+.markdown-rendered .weaver-frame.is-static .weaver-duration {
+  align-self: flex-end;
+  width: fit-content;
+  margin: 0 0 -0.675em auto;
+  padding: 0;
+  text-align: left;
 }
 
 /* ── Closing the day ───────────────────────────────────────────────────── */
@@ -316,81 +280,48 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   color: var(--text-faint);
 }
 
-/* ── Travel ────────────────────────────────────────────────────────────── */
+/* ── The navigator ─────────────────────────────────────────────────────── */
 
-/* The rectangle never touches layout: no padding, no border on lines, no
- * margins. Turning it on moves nothing. */
-.weaver-travel-rect {
-  position: absolute;
-  pointer-events: none;
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 1.5px var(--weaver-dcolor);
-  background: color-mix(in oklab, var(--weaver-dcolor) 8%, transparent);
-}
+/* One card over the note on a desk, one full-height sheet on a phone: the same
+ * component, the same rows, the same three gestures. The phone's differences are
+ * geometry and row height, never behaviour. */
 
-.weaver-travel-modal {
+.weaver-navigator {
   position: fixed;
+  inset: 0;
   z-index: var(--layer-modal);
-  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 25%);
 }
 
-.weaver-travel-card,
-.weaver-palette-card {
+.weaver-navigator-card {
   display: flex;
   flex-direction: column;
   gap: var(--size-2-2);
-  width: min(420px, calc(100vw - 48px));
-  max-height: 60vh;
+  width: min(440px, 100vw - 32px);
+  max-height: 70vh;
   padding: var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l, 12px);
   background: var(--background-primary);
   box-shadow: var(--shadow-l, 0 8px 24px rgb(0 0 0 / 25%));
-  /* The cards are outside `.markdown-rendered`, so they name the note's font
+  /* The card is outside `.markdown-rendered`, so it names the note's font
    * instead of inheriting the interface one: one typeface, every surface. */
   font-family: var(--font-text);
+  outline: none;
 }
 
-.weaver-travel-query {
-  width: 100%;
-  font-variant-numeric: tabular-nums;
-}
-
-.weaver-travel-days,
-.weaver-travel-rows {
+.weaver-navigator-list {
   display: flex;
-  gap: var(--size-2-1);
-}
-
-.weaver-travel-days {
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.weaver-travel-rows {
   flex-direction: column;
-  max-height: 52vh;
+  gap: var(--size-2-1);
+  min-height: 0;
   overflow-y: auto;
 }
 
-.weaver-travel-day {
-  flex: 0 0 auto;
-  padding: 2px var(--size-2-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 4px);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  box-shadow: none;
-}
-
-.weaver-travel-day.is-current {
-  border-color: var(--text-accent);
-  color: var(--text-normal);
-}
-
-.weaver-travel-row,
-.weaver-palette-row {
+.weaver-navigator-row {
   display: flex;
   gap: var(--size-2-2);
   align-items: baseline;
@@ -403,28 +334,52 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   box-shadow: none;
 }
 
-.weaver-travel-row.is-current,
-.weaver-palette-row.is-current {
+/* The row's own tap target: everything but the delete, so a press on `✕` can
+ * never be read as a jump. */
+.weaver-navigator-open {
+  display: flex;
+  flex: 1;
+  gap: var(--size-2-2);
+  align-items: baseline;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.weaver-navigator-row.is-selected {
   background: var(--background-modifier-hover);
+}
+
+/* The entry the caret is in: the row a tap descends from. */
+.weaver-navigator-row.is-current {
   box-shadow: inset 0 0 0 1px var(--weaver-dcolor);
 }
 
-.weaver-travel-dcn,
-.weaver-palette-dcn {
+.weaver-navigator-append {
+  color: var(--text-accent);
+}
+
+.weaver-navigator-label {
+  padding: 2px var(--size-2-2) 0;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  letter-spacing: 0.04em;
+}
+
+.weaver-navigator-dcn {
   font-variant-numeric: tabular-nums;
 }
 
-.weaver-travel-time,
-.weaver-palette-time,
-.weaver-palette-count,
-.weaver-palette-state {
+.weaver-navigator-time,
+.weaver-navigator-count {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
 
-.weaver-travel-title,
-.weaver-palette-title {
+.weaver-navigator-title {
   overflow: hidden;
   color: var(--text-normal);
   font-size: var(--font-ui-small);
@@ -432,20 +387,49 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   white-space: nowrap;
 }
 
-.weaver-travel-hint,
-.weaver-palette-hint {
+.weaver-navigator-delete {
+  flex: 0 0 auto;
+  min-width: 24px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
 }
 
-body.weaver-phone .weaver-travel-card {
-  width: calc(100vw - 24px);
-  max-height: 56vh;
+.weaver-navigator-delete:hover {
+  color: var(--text-error);
 }
 
-body.weaver-phone .weaver-travel-row,
-body.weaver-phone .weaver-palette-row {
+.weaver-navigator-hint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+body.weaver-phone .weaver-navigator {
+  align-items: stretch;
+}
+
+body.weaver-phone .weaver-navigator-card {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+}
+
+body.weaver-phone .weaver-navigator-row {
   min-height: 44px;
+}
+
+body.weaver-phone .weaver-navigator-hint-keys {
+  display: none;
+}
+
+body:not(.weaver-phone) .weaver-navigator-hint-touch {
+  display: none;
 }
 
 /* ── Settings tab ──────────────────────────────────────────────────────── */

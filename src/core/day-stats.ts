@@ -6,10 +6,7 @@
  * which is what keeps a `modify` listener from writing on its own write.
  */
 
-import type { App, TFile } from "obsidian";
-
 import { scanFrontmatter } from "./document";
-import { dayKeyFromName } from "./day-note";
 import { formatClock } from "./duration";
 import { parseEntries, type EntryIndex } from "./entries";
 
@@ -83,17 +80,6 @@ export function applyDayStats(
 
   const next = [...out, ...lines.slice(frontmatter.end + 1)].join("\n");
   return { source: next, changed: next !== source };
-}
-
-/** Writes the stats through `Vault.process`; false when nothing needed writing. */
-export async function writeDayStats(app: App, file: TFile, stats: DayStats): Promise<boolean> {
-  let changed = false;
-  await app.vault.process(file, (data) => {
-    const result = applyDayStats(data, stats, dayKeyFromName(file.basename));
-    changed = result.changed;
-    return result.source;
-  });
-  return changed;
 }
 
 /** Recomputes a day note's stats from its own text. */

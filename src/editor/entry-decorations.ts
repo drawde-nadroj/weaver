@@ -10,9 +10,14 @@
  * The duration line is replaced by a block widget unless the selection touches
  * it; then it goes back to raw text. Block widgets may not come from a plugin,
  * which is why everything here is a `StateField`.
+ *
+ * Each of those two rows is also a rail's label and carries two extra pieces of
+ * markup: a `weaver-frame-label` mark over the row's own characters, whose
+ * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
+ * the frame layer finds the row without asking for a DOM position.
  */
 
-import { editorInfoField, editorLivePreviewField } from "obsidian";
+import { editorInfoField } from "obsidian";
 import {
   StateField,
   type EditorState,
@@ -31,12 +36,21 @@ import { dayKey, dayKeyFromName } from "../core/day-note";
 import type { DurationSigil } from "../core/duration";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
+import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
 import { DurationWidget } from "./stopwatch-widget";
 
-const NUM = Decoration.mark({ class: "weaver-dcn-num" });
-const INK = Decoration.mark({ class: "weaver-dcn-ink" });
-const DIGITS = /\d+/g;
+const RUNS: Record<string, Decoration> = {
+  [NUM_CLASS]: Decoration.mark({ class: NUM_CLASS }),
+  [INK_CLASS]: Decoration.mark({ class: INK_CLASS })
+};
+
+/**
+ * The class that makes a row a rail's label: its own background covers the rail
+ * behind it, so the box appears to stop at the text that names it. Spans share it
+ * with the mark over a whole row.
+ */
+const LABEL_CLASS = "weaver-frame-label";
 
 /** True when the caret or selection touches this range, so it stays raw. */
 function touches(state: EditorState, from: number, to: number): boolean {
@@ -44,27 +58,14 @@ function touches(state: EditorState, from: number, to: number): boolean {
   return selection.from <= to && selection.to >= from;
 }
 
-/** Alternating runs: digits white, punctuation in the dimension's colour. */
-function addDigitRuns(
-  ranges: Range<Decoration>[],
-  from: number,
-  to: number,
-  text: string
-): void {
-  DIGITS.lastIndex = 0;
-  let cursor = 0;
-  let match = DIGITS.exec(text);
-
-  while (match !== null) {
-    if (match.index > cursor) {
-      ranges.push({ from: from + cursor, to: from + match.index, value: INK });
-    }
-    ranges.push({ from: from + match.index, to: from + match.index + match[0].length, value: NUM });
-    cursor = match.index + match[0].length;
-    match = DIGITS.exec(text);
+/** The marker's runs, in place: digits white, punctuation coloured. */
+function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string): void {
+  let cursor = from;
+  for (const slice of markerSlices(text)) {
+    const to = cursor + slice.text.length;
+    ranges.push({ from: cursor, to, value: RUNS[slice.cls] as Decoration });
+    cursor = to;
   }
-
-  if (cursor < text.length) ranges.push({ from: from + cursor, to, value: INK });
 }
 
 /** ` - [[2026.10.26]]` after the clock, on any day that is not today. */
@@ -83,7 +84,9 @@ class DayLinkWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.className = "weaver-entry-daylink";
+    // Part of the marker's own row, so it is part of the top rail's label: its
+    // background cuts the rail behind it like the rest of the label.
+    span.className = "weaver-entry-daylink weaver-frame-label";
     span.textContent = ` - [[${this.target}]]`;
     span.addEventListener("click", (event: Event) => {
       event.preventDefault();
@@ -128,33 +131,35 @@ export function entryDecorationSet(
   const fileDay = dayKeyFromName(basename);
   const today = dayKey(new Date(now));
   const showDayLink = settings.entryDayLink && fileDay !== null && fileDay !== today;
-  // Frames are drawn over the note by `entry-frame.ts`, which also draws the
-  // marker on the top rail. The line keeps its text — laid out, announced, still
-  // the record — and only its paint is removed. Source mode never hides it: the
-  // raw mark is the point of that mode, and the layer does not run there either.
-  const framed = settings.entryFrames && state.field(editorLivePreviewField, false) === true;
 
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
-    const headRaw = touches(state, head.from, head.to);
-    const headClasses = ["weaver-entry-head"];
-    if (headRaw) headClasses.push("weaver-entry-head-raw");
-    else if (framed) headClasses.push("weaver-entry-head-framed");
 
+    // The marker keeps its own text, always: the frame is drawn beside it, never
+    // over it, so there is no class to swap when the caret arrives. The stamp is
+    // how the frame layer finds this row without asking for a DOM position.
     ranges.push({
       from: head.from,
       to: head.from,
       value: Decoration.line({
-        class: headClasses.join(" "),
-        attributes: { style: vars }
+        class: "weaver-entry-head",
+        attributes: { style: vars, "data-weaver-n": String(entry.n) }
       })
     });
 
     const prefixTo = Math.min(entry.markerEnd, head.to);
-    addDigitRuns(ranges, head.from, prefixTo, state.doc.sliceString(head.from, prefixTo));
+    // The marker's characters are the top rail's label: its background covers the
+    // rail behind them, so the box appears to run into its own first row. No
+    // padding, so no character moves.
+    ranges.push({
+      from: head.from,
+      to: prefixTo,
+      value: Decoration.mark({ class: LABEL_CLASS })
+    });
+    addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
 
     if (showDayLink) {
       ranges.push({
@@ -184,7 +189,17 @@ export function entryDecorationSet(
       ranges.push({
         from: duration.from,
         to: duration.from,
-        value: Decoration.line({ class: "weaver-duration-raw", attributes: { style: vars } })
+        value: Decoration.line({
+          class: "weaver-duration-raw",
+          attributes: { style: vars, "data-weaver-n": String(entry.n) }
+        })
+      });
+      // The bottom rail's label, exactly as the widget is: the same row, in the
+      // file's own text.
+      ranges.push({
+        from: duration.from,
+        to: duration.to,
+        value: Decoration.mark({ class: LABEL_CLASS })
       });
       continue;
     }
@@ -202,6 +217,7 @@ export function entryDecorationSet(
       value: Decoration.replace({
         block: true,
         widget: new DurationWidget({
+          n: entry.n,
           sigil,
           ms,
           active,
