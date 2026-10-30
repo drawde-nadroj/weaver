@@ -1,5 +1,5 @@
 /**
- * The generated stylesheet: the six numbers a note is drawn with, and the two
+ * The generated stylesheet: the five numbers a note is drawn with, and the two
  * emphasis colours. Nothing is generated per level — depth rides on the
  * `--weaver-d` custom property a line carries, so a deeper entry costs nothing.
  */
@@ -13,12 +13,10 @@ export const STYLE_ID = "weaver-style";
 /** The whole generated stylesheet for these settings. */
 export function buildCss(settings: WeaverSettings): string {
   const size = isValidEntrySize(settings.entrySize) ? settings.entrySize.trim() : "1em";
-  const weight = Math.round(settings.entryWeight);
   const indentMax = Math.max(1, Math.round(settings.indentMaxLevel));
 
   const variables = [
     `--weaver-entry-size: ${size};`,
-    `--weaver-entry-weight: ${weight};`,
     "--weaver-entry-line-height: 1.35;",
     `--weaver-indent-step: ${Math.max(0, Math.round(settings.indentStep))}px;`,
     `--weaver-indent-step-mobile: ${Math.max(0, Math.round(settings.mobileIndentStep))}px;`,

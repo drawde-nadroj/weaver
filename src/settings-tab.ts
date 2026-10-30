@@ -120,19 +120,6 @@ export class WeaverSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Entry weight")
-      .addSlider((slider) => {
-        slider
-          .setLimits(300, 800, 50)
-          .setValue(this.plugin.settings.entryWeight)
-          .setDynamicTooltip()
-          .onChange((value) => {
-            this.plugin.settings.entryWeight = Math.round(value);
-            this.commit();
-          });
-      });
-
-    new Setting(containerEl)
       .setName("Indent step (desktop)")
       .setDesc("Pixels added per dimension level.")
       .addSlider((slider) => {
@@ -185,10 +172,20 @@ export class WeaverSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Frame each entry")
-      .setDesc("Draw a rounded frame around every entry: the marker row is its top rail label, and its clock row labels the bottom edge with the moment at the left corner and the duration at the right, each rail cut behind its label.")
+      .setDesc("Draw a rounded frame around every entry: the marker row is its top rail label, and its clock row labels the bottom edge with the moment at the left and the duration at the right.")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.entryFrames).onChange((value) => {
           this.plugin.settings.entryFrames = value;
+          this.commit();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Frame follows the indent")
+      .setDesc("On, a nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.frameFollowsIndent).onChange((value) => {
+          this.plugin.settings.frameFollowsIndent = value;
           this.commit();
         });
       });
@@ -196,16 +193,6 @@ export class WeaverSettingTab extends PluginSettingTab {
 
   private renderAdvanced(containerEl: HTMLElement): void {
     containerEl.createEl("h3", { text: "Advanced" });
-
-    new Setting(containerEl)
-      .setName("Link past days")
-      .setDesc("Show - [[day]] after the clock on any note that is not today's.")
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.entryDayLink).onChange((value) => {
-          this.plugin.settings.entryDayLink = value;
-          this.commit();
-        });
-      });
 
     new Setting(containerEl)
       .setName("Debug logging")

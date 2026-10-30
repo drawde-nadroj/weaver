@@ -1,6 +1,6 @@
 /* Weaver — the entry, drawn.
  *
- * The six numbers a note is drawn with are injected at runtime into one
+ * The five numbers a note is drawn with are injected at runtime into one
  * `<style id="weaver-style">` element by `src/ui/css.ts`; the values below are
  * the fallbacks used before that happens. Nothing is generated per level: a line
  * carries `--weaver-d` (its depth) and `--weaver-dcolor` (its colour), so depth 7
@@ -9,7 +9,6 @@
 
 body {
   --weaver-entry-size: 1em;
-  --weaver-entry-weight: 600;
   --weaver-entry-line-height: 1.35;
   --weaver-indent-step: 18px;
   --weaver-indent-step-mobile: 12px;
@@ -28,6 +27,17 @@ body {
 .weaver-duration {
   /* Prose reads in the dimension's colour; the digits below opt back out. */
   color: var(--weaver-dcolor, var(--text-normal));
+}
+
+/* The indent: an entry at level 3 starts two steps further right than one at
+ * level 1. Obsidian sets `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }`,
+ * which is three classes, so a single class never won and the marker and the
+ * prose sat at the pane's left edge at every level while the clock row — a block
+ * widget, not a `.cm-line` — indented alone. Four classes, so the padding is
+ * declared rather than competed for. */
+.weaver-duration,
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head,
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
   );
@@ -35,7 +45,6 @@ body {
 
 .weaver-entry-head {
   font-size: var(--weaver-entry-size);
-  font-weight: var(--weaver-entry-weight);
 }
 
 .weaver-entry-prose {
@@ -58,15 +67,25 @@ body {
 }
 
 .weaver-duration {
-  /* The bottom edge's two labels: the moment at the left corner, the duration
-   * at the right. One row, two boxes, and the rail visible between them — each
-   * label's own background cuts the rail, so neither half paints over the other.
-   * The row itself is transparent: a background here would erase the rail all the
-   * way across and the gap between the labels is the point. */
-  display: flex;
+  /* The bottom edge's two labels: the moment at the left corner, the duration at
+   * the right. One row, two boxes, and the rail visible between them — each label's
+   * own background cuts the rail, so neither half paints over the other. The row
+   * itself is transparent: a background here would erase the rail all the way across
+   * and the gap between the labels is the point.
+   *
+   * `display: flex` is stated with `!important` because Obsidian's
+   * `.cm-content > *` rule sets `display: block` at higher specificity, which turns
+   * `justify-content` and `margin-left: auto` into no-ops. The `3px` above and below
+   * is the air that keeps each label's paint inside the box CodeMirror's block
+   * widget paints in — that containment clips at the row's padding box, so a font
+   * whose ascent and descent overrun the 1.35 line box, and the label's own
+   * background and 8 px shadow, would otherwise lose their bottom pixels. */
+  display: flex !important;
   justify-content: space-between;
   align-items: baseline;
   width: 100%;
+  padding-top: 3px;
+  padding-bottom: 3px;
   background: transparent;
   /* Explicit, so the block's height is a function of the line height and not of
    * its own content: the digits change every second and the line does not move. */
@@ -75,54 +94,67 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* The moment hangs onto the left rail: the frame's edge is one label inset
- * outside the marker's ink, so the label extends that far left while its text
- * stays exactly where the marker's does. */
-.weaver-duration-moment {
-  margin-left: -32px;
-  padding-left: 32px;
-}
-
 .weaver-duration-moment:empty {
   display: none;
 }
 
-/* The duration reaches the right edge the same way: its padding is the label's
- * overhang, so the rail stops at the box's corner rather than at the digits.
- * `margin-left: auto` is what keeps it there when the row carries no moment: the
- * moment span is hidden when empty, and a lone duration must still label the
- * right corner rather than the left. */
+/* `margin-left: auto` is what keeps the duration at the right corner when the row
+ * carries no moment: the moment span is hidden when empty, and a lone duration
+ * must still label the right corner rather than the left. */
 .weaver-duration-clock {
   margin-left: auto;
-  padding-right: 10px;
-  padding-bottom: 6px;
 }
 
-.weaver-entry-daylink {
-  /* A translucent colour, never `opacity`: the link is part of the top rail's
-   * label, and a translucent label would let the rail show through it. */
-  color: color-mix(in oklab, var(--weaver-dcolor) 75%, transparent);
-  cursor: pointer;
-}
-
-/* Raw while the caret is on the line: the file's own text is the record. The
- * classes carry no colour of their own — a raw line keeps the dimension's
- * colour, so clicking one does not flash it back to plain text. A raw marker
- * line is `.weaver-entry-head` too; a raw clock row is not `.weaver-duration`
- * (the widget is gone), so it needs the colour and the indent named again. */
-.weaver-duration-raw {
+/* Raw while the caret is on the row: the file's own text in the row the widget
+ * also draws — the same line height, the same air, the same indent — so crossing
+ * the row with the caret moves nothing. The classes carry no colour of their own:
+ * a raw line keeps the dimension's colour, so clicking one does not flash it back
+ * to plain text. A raw marker line is `.weaver-entry-head` too; a raw clock row is
+ * not `.weaver-duration` (the widget is gone), so it needs the colour, the air and
+ * the indent named again. Obsidian's `.markdown-source-view.mod-cm6 .cm-line`
+ * sets `padding: 0` at three classes, so this selector carries four: equal
+ * specificity would leave the outcome to stylesheet order, and the row would jump
+ * by the air whenever the caret crossed it. */
+.markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   color: var(--weaver-dcolor, var(--text-normal));
+  padding-top: 3px;
+  padding-bottom: 3px;
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
   );
+  line-height: var(--weaver-entry-line-height);
 }
 
-body.weaver-phone .weaver-entry-head,
-body.weaver-phone .weaver-entry-prose,
+/* Two ways to start an entry, and the settings toggle picks one.
+ *
+ * Default: the marker, the prose and the clock row all take the indent, and the
+ * frame's left edge is placed a fixed air left of the marker — so the boxes step
+ * right with the nesting.
+ *
+ * `weaver-frame-fixed`: the marker and the clock row stay in the left margin and
+ * only the prose moves right. The frame's left edge follows the marker, so every
+ * box starts in the same place and the markers and the times form one column each
+ * down the note. Five classes for the line rules, so they beat the four-class
+ * indent above rather than tying with it. */
+body.weaver-frame-fixed .weaver-duration,
+body.weaver-frame-fixed .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head,
+body.weaver-frame-fixed .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
+  padding-left: 0;
+}
+
+/* Same four classes on a phone, so the narrower step wins there too. */
 body.weaver-phone .weaver-duration,
-body.weaver-phone .weaver-duration-raw {
+body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head,
+body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step-mobile)
+  );
+}
+
+body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
+  padding-left: calc(
+    min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
+      var(--weaver-indent-step-mobile)
   );
 }
 
@@ -216,9 +248,7 @@ body.weaver-phone .weaver-duration-raw {
 
 /* A corner label paints the note's own background over the rail it names, so
  * the rail stops at the label. This class adds no padding, because padding here
- * would move a character; the shadow is the padding it cannot have. A label that
- * needs an overhang — the clock row's two corners — pairs its padding with an
- * equal negative margin instead, so only the box edge moves. */
+ * would move a character; the shadow is the padding it cannot have. */
 .weaver-frame-label {
   background: var(--background-primary);
   border-radius: 4px;
@@ -240,8 +270,9 @@ body.weaver-phone .weaver-duration-raw {
    * of the frame, so they do not collide. */
   margin: 1.8em 0 1.8em var(--weaver-frame-indent);
   /* Horizontal only: vertical space belongs to the rows, which hang over the
-   * rails by half a line each. */
-  padding: 0 0.9em;
+   * rails by half a line each. Half a line's worth either side, so the frame keeps
+   * the same air as Live Preview's `LEFT_GUTTER`/`RIGHT_GUTTER`. */
+  padding: 0 0.45em;
   border-radius: 10px;
   font-size: var(--weaver-entry-size);
   box-shadow: inset 0 0 0 1px
@@ -255,12 +286,22 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   );
 }
 
-/* The raw clock row sits where its widget does: the moment at the left inset the
- * widget's own moment keeps, so crossing the row with the caret moves nothing.
- * The clock's label is the mark over the whole row, whose 8 px shadow cuts the
- * rail. */
-.weaver-duration-raw {
-  padding-right: 10px;
+/* The fixed frame: the box starts in the left margin for every level, and the
+ * indent moves inside it as the prose's padding — the same two modes as Live
+ * Preview, expressed the way this surface does geometry. */
+body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static {
+  margin-left: 0;
+}
+
+body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose {
+  padding-left: var(--weaver-frame-indent);
+}
+
+body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose {
+  padding-left: calc(
+    min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
+      var(--weaver-indent-step-mobile)
+  );
 }
 
 .markdown-rendered .weaver-frame.is-static {
@@ -292,23 +333,11 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
 .markdown-rendered .weaver-frame.is-static .weaver-duration {
   align-self: stretch;
   width: auto;
-  margin: 0 0 -0.675em;
-  padding: 0;
+  /* Half a line plus the row's own 3 px: the frame's edge lands on the glyphs'
+   * centre, which is the rail. */
+  margin: 0 0 calc(-0.675em - 3px);
+  padding: 3px 0;
   text-align: left;
-}
-
-/* Here the frame's own padding is the label's overhang: the row reaches the
- * box's edge so both labels cut the rail at their corners, while their text
- * keeps the same inset as the marker and the prose. */
-.markdown-rendered .weaver-frame.is-static .weaver-duration-moment {
-  margin-left: -0.9em;
-  padding-left: 0.9em;
-}
-
-.markdown-rendered .weaver-frame.is-static .weaver-duration-clock {
-  margin-right: -0.9em;
-  padding-right: 0.9em;
-  padding-bottom: 0;
 }
 
 /* ── Closing the day ───────────────────────────────────────────────────── */

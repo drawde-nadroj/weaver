@@ -7,10 +7,11 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("defaults the past-day link on", () => {
-    expect(DEFAULT_SETTINGS.entryDayLink).toBe(true);
-    expect(normalizeSettings({ debug: true }).entryDayLink).toBe(true);
-    expect(normalizeSettings({ entryDayLink: false }).entryDayLink).toBe(false);
+  it("starts a frame at the entry's own indent unless the vault says otherwise", () => {
+    expect(DEFAULT_SETTINGS.frameFollowsIndent).toBe(true);
+    expect(normalizeSettings({ debug: true }).frameFollowsIndent).toBe(true);
+    expect(normalizeSettings({ frameFollowsIndent: false }).frameFollowsIndent).toBe(false);
+    expect(normalizeSettings({ frameFollowsIndent: "no" }).frameFollowsIndent).toBe(true);
   });
 
   it("frames every entry unless the vault says otherwise", () => {
@@ -28,7 +29,10 @@ describe("normalizeSettings", () => {
       travelWrap: true,
       sparkTarget: "note",
       inPageDrafts: false,
-      headingLevelSizes: { 3: "2em" }
+      headingLevelSizes: { 3: "2em" },
+      entryWeight: 700,
+      entryDate: true,
+      entryDayLink: false
     });
 
     for (const key of [
@@ -38,7 +42,10 @@ describe("normalizeSettings", () => {
       "travelWrap",
       "sparkTarget",
       "inPageDrafts",
-      "headingLevelSizes"
+      "headingLevelSizes",
+      "entryWeight",
+      "entryDate",
+      "entryDayLink"
     ]) {
       expect(key in normalized).toBe(false);
     }
@@ -49,18 +56,20 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ entrySize: "huge" }).entrySize).toBe(DEFAULT_SETTINGS.entrySize);
     expect(normalizeSettings({ indentStep: 900 }).indentStep).toBe(48);
     expect(normalizeSettings({ indintStep: 4 }).indentStep).toBe(DEFAULT_SETTINGS.indentStep);
-    expect(normalizeSettings({ entryWeight: 12 }).entryWeight).toBe(300);
     expect(normalizeSettings({ indentMaxLevel: 400 }).indentMaxLevel).toBe(24);
   });
 });
 
 describe("normalizeData", () => {
   it("wraps a bare v2 settings object and keeps its values under the current names", () => {
-    const data = normalizeData({ headingWeight: 700, debug: true });
+    const data = normalizeData({ headingSize: "18px", equalizeHeadingSizes: false, debug: true });
 
     expect(data.version).toBe(3);
-    expect(data.settings.entryWeight).toBe(700);
+    expect(data.settings.entrySize).toBe("18px");
+    expect(data.settings.equalizeEntrySizes).toBe(false);
     expect(data.settings.debug).toBe(true);
+    // The weight slider is gone from the model, so a stored weight is dropped.
+    expect("entryWeight" in data.settings).toBe(false);
   });
 
   it("carries every renamed v2 field across without losing it", () => {
@@ -75,7 +84,7 @@ describe("normalizeData", () => {
 
     expect(data.settings.equalizeEntrySizes).toBe(false);
     expect(data.settings.entrySize).toBe("18px");
-    expect(data.settings.entryWeight).toBe(400);
+    expect("entryWeight" in data.settings).toBe(false);
     expect("headingSize" in data.settings).toBe(false);
     expect("headingWeight" in data.settings).toBe(false);
   });

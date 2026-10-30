@@ -89,8 +89,8 @@ Two consequences follow, and both are implemented as such:
   the writer's own input and on nothing else — the vault reloading a note starts
   nothing — and it stops at every interruption of writing: a caret move, a blur, a
   wheel, a finger, another leaf, a card opening.
-- **A day link is rendered, never written.** The filename already carries the day;
-  rewriting yesterday's file every day is not acceptable.
+- **The day is never written into an entry.** The filename carries it and the note's
+  own header shows it; rewriting yesterday's file every day is not acceptable.
 
 ## Progression
 

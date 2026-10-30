@@ -7,7 +7,7 @@ import { entryDecorationSet } from "../src/editor/entry-decorations";
 import { entryIndexField } from "../src/editor/entry-field";
 import { DurationWidget } from "../src/editor/stopwatch-widget";
 import { EntrySession } from "../src/entries/session";
-import { DEFAULT_SETTINGS, type WeaverSettings } from "../src/settings";
+
 
 const DOC = ["{ 2.1.1 }", "prose here", "10:00:00 + 00:01:00"].join("\n");
 // Not today: the run below is dated 27 October 2026.
@@ -33,11 +33,10 @@ interface ShimNode {
 
 function collect(
   state: EditorState,
-  settings: WeaverSettings = DEFAULT_SETTINGS,
   session = new EntrySession(),
   path = PATH
 ): Found[] {
-  const set = entryDecorationSet(state, settings, session, path, NOW);
+  const set = entryDecorationSet(state, session, path, NOW);
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -58,6 +57,11 @@ function stateAt(anchor = DOC.indexOf("prose"), doc = DOC): EditorState {
     selection: { anchor },
     extensions: [entryIndexField, editorLivePreviewField]
   });
+}
+
+function texts(root: unknown, selector: string): string[] {
+  const node = root as { querySelectorAll: (q: string) => Array<{ textContent: string }> };
+  return Array.from(node.querySelectorAll(selector)).map((each) => each.textContent);
 }
 
 function clockWidget(found: Found[]): DurationWidget | undefined {
@@ -122,9 +126,7 @@ describe("the entry decorations", () => {
 
   it("draws no duration half for a row that carries only a moment", () => {
     const doc = ["{ 1.1.1 }", "prose here", "10:00:00"].join("\n");
-    const widget = clockWidget(
-      collect(stateAt(doc.indexOf("prose"), doc), { ...DEFAULT_SETTINGS, entryDayLink: false })
-    );
+    const widget = clockWidget(collect(stateAt(doc.indexOf("prose"), doc)));
 
     // The file has no duration half, so the row must not label its right corner
     // with one: the frame shows what the note holds.
@@ -150,24 +152,21 @@ describe("the entry decorations", () => {
   });
 
   it("keeps the marker's own text on the line whatever the caret does", () => {
-    const headClass = (state: EditorState, settings: WeaverSettings = DEFAULT_SETTINGS): string =>
-      collect(state, settings).find((range) => range.spec.class?.startsWith("weaver-entry-head"))
-        ?.spec.class ?? "";
+    const headClass = (state: EditorState): string =>
+      collect(state).find((range) => range.spec.class?.startsWith("weaver-entry-head"))?.spec
+        .class ?? "";
 
-    // Caret in the prose, caret on the marker row, and framing turned off: one
-    // class, because nothing swaps the line's text for a drawn label any more.
+    // Caret in the prose and caret on the marker row: one class, because nothing
+    // swaps the line's text for a drawn label any more.
     expect(headClass(stateAt())).toBe("weaver-entry-head");
     expect(headClass(stateAt(2))).toBe("weaver-entry-head");
-    expect(headClass(stateAt(), { ...DEFAULT_SETTINGS, entryFrames: false })).toBe(
-      "weaver-entry-head"
-    );
   });
 
   it("ticks a live session instead of showing the stored time", () => {
     const session = new EntrySession();
     session.start(PATH, 1, 65_000, NOW - 1000);
 
-    const widget = clockWidget(collect(stateAt(), DEFAULT_SETTINGS, session));
+    const widget = clockWidget(collect(stateAt(), session));
 
     // Writing is always a draft, whatever sigil the file holds.
     expect(widget?.input.sigil).toBe("-");
@@ -194,46 +193,20 @@ describe("the entry decorations", () => {
       ms: 66_000,
       active: false,
       color: "#f97316",
-      d: 2,
-      dayLink: null,
-      openDayLink: null,
-      sourcePath: PATH
+      d: 2
     });
     const root = widget.toDOM() as unknown as {
       querySelectorAll: (selector: string) => Array<{ textContent: string }>;
     };
 
-    expect(root.querySelectorAll(".weaver-duration-num").map((node) => node.textContent)).toEqual([
+    // Scoped to the clock half: the moment carries the same grammar beside it.
+    expect(texts(root, ".weaver-duration-clock .weaver-duration-num")).toEqual([
       "00",
       "01",
       "06"
     ]);
-    expect(root.querySelectorAll(".weaver-duration-ink").map((node) => node.textContent)).toEqual([
-      ":",
-      ":"
-    ]);
+    expect(texts(root, ".weaver-duration-clock .weaver-duration-ink")).toEqual([":", ":"]);
     widget.destroy();
-  });
-
-  it("carries the day link on the clock row, beside the moment", () => {
-    expect(clockWidget(collect(stateAt()))?.input.dayLink).toBe("2026-10-26");
-
-    const today = collect(stateAt(), DEFAULT_SETTINGS, new EntrySession(), "Chronomancer/2026-10-27.md");
-    expect(clockWidget(today)?.input.dayLink).toBeNull();
-  });
-
-  it("honours the setting that turns the day link off", () => {
-    const off: WeaverSettings = { ...DEFAULT_SETTINGS, entryDayLink: false };
-    expect(clockWidget(collect(stateAt(), off))?.input.dayLink).toBeNull();
-  });
-
-  it("keeps the day link on the marker when the entry has no clock row", () => {
-    const doc = "{ 2.1.1 }\nprose here";
-    const link = collect(stateAt(doc.indexOf("prose"), doc)).find(
-      (range) => range.spec.widget !== undefined && !range.spec.block
-    );
-
-    expect(link?.spec.widget?.toDOM?.().className).toBe("weaver-entry-daylink weaver-frame-label");
   });
 
   it("decorates nothing when the note has no entries", () => {

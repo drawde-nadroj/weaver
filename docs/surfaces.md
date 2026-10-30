@@ -56,6 +56,14 @@ Every surface must answer three questions; one that cannot is not a surface.
   aligned by `font-variant-numeric: tabular-nums` instead of by a monospace face.
 - The marker line and the prose lines carry `--weaver-dcolor` and `--weaver-d`, so
   the stylesheet needs no per-level rule: colour and indent are one `calc()`.
+- That `calc()` is stated at four classes —
+  `.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head` and the same for the
+  prose — because Obsidian's `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }`
+  is three classes. At one class the indent never painted: the marker and the prose
+  sat at the pane's left edge at every level while the clock row, a block widget and
+  not a `.cm-line`, indented alone, so the time drifted right of the text it
+  belonged to. Measured at an 8 px step: level 1 at 52 px, level 2 at 60 px, level 3
+  at 68 px, marker, prose and moment agreeing at every level.
 - The marker keeps its text. Only its runs are marked up: digits are
   `.weaver-dcn-num` (the note's own text colour), punctuation `.weaver-dcn-ink`
   (the dimension's colour). The line therefore stays typable.
@@ -64,8 +72,10 @@ Every surface must answer three questions; one that cannot is not a surface.
   from a plugin throws.
 - The widget ticks itself whenever the session is live, whatever sigil the file
   holds: while writing, the row's duration reads `-` whether the file says `-` or
-  not. It mutates the three `.weaver-duration-num` spans every second and nothing
-  else, so there is no transaction, no re-render and no undo entry.
+  not. It mutates the duration half's three digit spans every second and nothing
+  else — the query is scoped to `.weaver-duration-clock`, because the moment carries
+  `.weaver-duration-num` spans too — so there is no transaction, no re-render and no
+  undo entry.
 - Its `eq` ignores the elapsed time, so a refresh after a keystroke finds the same
   widget and leaves the DOM alone; the sigil, the liveness, the colour and the
   moment are repainted in place by `updateDOM`. The row's top stays identical to
@@ -75,19 +85,43 @@ Every surface must answer three questions; one that cannot is not a surface.
   interval, and one writer per element is what keeps the digits from counting
   twice. `duration-ticker.ts` is the one writer; the frame draws no clock of its
   own.
-- The two `.weaver-duration-ink` colons are separate spans because they take the
-  dimension's colour while the digits keep the text colour.
-- The widget is one flex row with two labels: the moment at the left corner and the
-  duration at the right, each `.weaver-frame-label` with its own background. The
-  row itself is transparent, so the rail runs visibly between them. The moment
-  hangs `32 px` left of its text and pads back, which is the frame's label inset;
-  the duration carries `10 px` of right padding and `6 px` below, and is pushed
-  right whatever else the row holds, so a duration-only row still labels the right
-  corner. A half the row does not carry is not drawn: the frame labels only what
-  the note holds, never an invented `00:00:00`.
-- On a past-day note, `[[2026.10.26]]` is rendered after the moment and is never
-  written to the file. It is part of the moment's label, so it is part of the
-  bottom-left corner and cuts the rail behind itself.
+- Each half is three digit spans around two `.weaver-duration-ink` colons: digits in
+  the note's own text colour, colons in the dimension's. `appendClockRuns` builds
+  both halves from one grammar, the same one the marker uses, so the moment reads
+  exactly like the stopwatch beside it.
+- The widget is one flex row with two labels: the moment at the left corner and
+  the duration at the right, each `.weaver-frame-label` with its own background. The
+  row itself is transparent, so the rail runs visibly between them. `display: flex`
+  is stated `!important`, because Obsidian's `.cm-content > *` rule sets
+  `display: block` at higher specificity and would inert `justify-content` and
+  `margin-left: auto`. `margin-left: auto` on the clock half is what keeps a
+  duration-only row's label at the right corner.
+- Neither half overhangs the row: Obsidian's `contain: paint` on a block widget clips
+  at the row's padding box, so a `-32px` margin or a `padding-right` never painted
+  past the text column. Instead the row carries `3px` of padding above and below —
+  the air that keeps each label's background and 8 px shadow inside the clip — and
+  the frame's own gutter is the stub beside the corner. The raw row, which is what
+  the file's text is while the caret sits on it, carries the same `3px` and the same
+  line height, so crossing the row with the caret moves nothing. Its selector is
+  `.markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw` — four classes on
+  purpose: at three it would only tie Obsidian's `.cm-line { padding: 0 }`, and the
+  row would jump by the air whenever the caret crossed it, depending on stylesheet
+  order.
+- A half the row does not carry is not drawn: the frame labels only what the note
+  holds, never an invented `00:00:00`.
+- The day is not drawn into an entry. The filename *is* the day and the note's own
+  header shows it permanently, so a per-entry date would print one word on every box.
+- The frame's three labels — marker, moment, stopwatch — carry the note's own weight;
+  nothing sets one, and there is no weight setting. They are told apart from the prose
+  by colour, tabular figures and position, not by weight.
+- Where a frame starts is a setting. *Frame follows the indent* (on by default) gives
+  the marker, the prose and the clock row the same indent, and because the frame's left
+  edge sits a fixed air left of the marker, the boxes step right with the nesting. Off,
+  only the prose is indented: the marker and the clock row stay in the left margin, the
+  frame's edge follows them, and markers and times form one column each down the note.
+  The body class is `weaver-frame-fixed`. Measured at a 12 px step, level 3: on, the
+  marker, prose, raw row and clock widget all at `24 px`; off, the marker, raw row and
+  clock widget at `0` with only the prose at `24 px`.
 - The marker's characters are the top rail's label, punctuation and all: one
   `.weaver-frame-label` mark over the whole marker, whose background covers the rail
   behind it. No character of the label belongs to the box instead of the text.
@@ -107,10 +141,10 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   paints over the rail behind it. That is the whole mechanism: no second rendering of
   the row, no masked rail, no character moved. The rails keep a short stub beside
   each corner, which is what makes the box read as a frame rather than a box.
-- The box spans the text column: one label inset (`32 px`: corner `10` + stub `14` +
-  label pad `8`) outside the marker's ink on the left, and `20 px` past the text
-  column's right edge. A box that hugged its text could not put the moment at one
-  bottom corner and the duration at the other without a second rendering of the
+- The box spans the text column: `16 px` outside the marker's ink on the left and
+  `10 px` past the text column's right edge — the air beside each corner, and the
+  stub the rail leaves there. A box that hugged its text could not put the moment at
+  one bottom corner and the duration at the other without a second rendering of the
   row. `src/core/frame.ts` is the whole geometry, two pure functions: `frameBox` and
   `frameSpan`.
 - Nothing reflows: the box catches up to the text, never the other way round.
@@ -161,6 +195,15 @@ margin is the measured Live Preview gap between one entry's clock centre and the
 marker centre, 58 px at 32 px type. A duration paragraph with no entry above it is
 never labelled: it has no rail to cut.
 
+The frame's horizontal air is `0.45em` either side, the same on both platforms, and
+the clock row's `3px` of vertical padding is carried in its own negative margin
+(`calc(-0.675em - 3px)`) so the rail still lands on the glyphs' centre. No label
+overhangs: the padding *is* the stub beside each corner, exactly as `LEFT_GUTTER` and
+`RIGHT_GUTTER` are in Live Preview. In the fixed mode the frame's `margin-left` goes to
+`0` and the indent moves onto the prose's padding, which is how this surface expresses
+the same two modes — that is the one place the geometry differs between the two
+modes rather than being a single shared rule.
+
 Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
 Inline markup inside the prose is untouched, and only the marker's own characters
@@ -204,7 +247,7 @@ card, with the return stack inside it.
 
 The groups are **Writing** (the note's own convention), **Day** (where the day note
 lives), **Look** (how the note is drawn, including whether it is framed at all) and
-**Advanced** (the past-day link and logging). The fields, their defaults and every
+**Advanced** (logging only). The fields, their defaults and every
 reader are the generated settings table in `SYSTEM-DESIGN.md`; this page does not
 restate them. There is no navigator mode, no depth cap and no per-level size field:
 colour is a function of `D` alone, and the navigator always opens on today's note
@@ -215,7 +258,7 @@ with the caret's entry selected.
 | Surface | Desktop | Phone |
 | --- | --- | --- |
 | Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured | same, with `--weaver-indent-step-mobile` |
-| Frame | rails through the marker and clock rows' centres, cut behind their labels | same, identically: one layer, one rule, no platform branch |
+| Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
 | Clock row | flex widget, ticks while live, the moment at the bottom-left corner and the duration at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |

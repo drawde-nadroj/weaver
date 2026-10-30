@@ -33,11 +33,13 @@ address went stale, and nothing failed when it did.
   `ensureDayNote`, `resolveDayNote`, the Daily Notes lookup — is
   `src/entries/day-note.ts`. Imports and tests were moved with it, and the old
   path was deleted rather than kept as a re-export.
-- The `heading*` settings names became `entry*`: `entrySize`, `entryWeight`,
+- The `heading*` settings names became `entry*`: `entrySize`,
   `equalizeEntrySizes`, `isValidEntrySize`. `heading` now names Markdown syntax
   and nothing else. The persisted v2 spellings are read in exactly one place,
-  `LEGACY_SETTING_KEYS`, so an upgrade keeps a writer's size and weight instead
-  of silently resetting them. The data model is `version: 3`.
+  `LEGACY_SETTING_KEYS`, so an upgrade keeps a writer's size instead of silently
+  resetting it. The weight slider was deleted with them: the frame's four labels
+  carry the note's own weight, so a per-entry weight setting had nothing left to
+  set. The data model is `version: 3`.
 - `tests/fixtures/day-note.md` is the record example, and
   `tests/record-format.test.ts` parses it: three entries, a title on the first
   prose line, two settled and one draft, one close, and frontmatter that

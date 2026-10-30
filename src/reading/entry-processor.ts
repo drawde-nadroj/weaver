@@ -11,17 +11,18 @@
  *
  * The marker's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
- * the marker stays in the DOM untouched, links and emphasis included.
+ * the marker stays in the DOM untouched, links and emphasis included. The day is
+ * not drawn into the entry: the day is the file's name, and the note's own header
+ * shows it. The clock row's two halves are digit and punctuation runs, exactly as
+ * in the editor.
  */
 
-import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidian";
+import type { MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseMarkerPrefix } from "../core/entries";
-import type WeaverPlugin from "../main";
-import { appendDigitRuns } from "../ui/dcn";
+import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
 
 /** Containers whose paragraphs must never be rewritten. */
 const SKIP_SELECTOR = "blockquote, .callout, .markdown-embed, li, table, pre, code";
@@ -47,7 +48,7 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
   moment.className = labelled
     ? "weaver-duration-moment weaver-frame-label"
     : "weaver-duration-moment";
-  moment.textContent = parsed.time ?? "";
+  if (parsed.time !== null) appendClockRuns(moment, parsed.time);
   root.appendChild(moment);
 
   if (parsed.duration === null) return root;
@@ -62,36 +63,19 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
   sigil.textContent = parsed.duration.sigil;
   clock.appendChild(sigil);
 
-  formatClock(parsed.duration.ms)
-    .split(":")
-    .forEach((part, index) => {
-      if (index > 0) {
-        const colon = document.createElement("span");
-        colon.className = "weaver-duration-ink";
-        colon.textContent = ":";
-        clock.appendChild(colon);
-      }
-
-      const span = document.createElement("span");
-      span.className = "weaver-duration-num";
-      span.textContent = part;
-      clock.appendChild(span);
-    });
+  appendClockRuns(clock, formatClock(parsed.duration.ms));
 
   root.appendChild(clock);
   return root;
 }
 
-/** Builds the post processor that frames entries in Reading view. */
-export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor {
-  return (element: HTMLElement, context: MarkdownPostProcessorContext): void => {
-    const sourcePath = context.sourcePath ?? "";
-    const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
-
-    const fileDay = dayKeyFromName(basename);
-    const showLink =
-      plugin.settings.entryDayLink && fileDay !== null && fileDay !== dayKey(new Date());
-
+/**
+ * Builds the post processor that frames entries in Reading view. It reads the
+ * paragraph text and nothing else — no settings, no vault access — so it takes no
+ * arguments.
+ */
+export function createEntryProcessor(): MarkdownPostProcessor {
+  return (element: HTMLElement): void => {
     // The nearest marker above a duration is simply the last one met, because
     // paragraphs arrive in document order.
     let depth: number | null = null;
@@ -124,17 +108,6 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
       head.setAttribute(PROCESSED, "true");
 
       appendDigitRuns(head, text.slice(0, prefix.length));
-
-      if (showLink) {
-        const link = document.createElement("span");
-        link.className = "weaver-entry-daylink";
-        link.textContent = ` [[${basename}]]`;
-        link.addEventListener("click", (event: Event) => {
-          event.preventDefault();
-          void plugin.app.workspace.openLinkText(basename, sourcePath, false);
-        });
-        head.appendChild(link);
-      }
 
       // Only the marker characters leave the paragraph; a title written after
       // the clock, with its links and emphasis, stays exactly as Obsidian made
@@ -170,11 +143,7 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
         if (sibling.classList.contains("weaver-frame")) break;
         const parsed = parseClockRow((sibling.textContent ?? "").trim());
         if (parsed !== null) {
-          const clock = clockElement(parsed, prefix.d, true);
-          // The day link belongs beside the moment, and the moment is here.
-          const link = head.querySelector(".weaver-entry-daylink");
-          if (link !== null) clock.querySelector(".weaver-duration-moment")?.appendChild(link);
-          frame.appendChild(clock);
+          frame.appendChild(clockElement(parsed, prefix.d, true));
           sibling.remove();
           break;
         }

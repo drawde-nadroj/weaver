@@ -77,12 +77,8 @@ export default class WeaverPlugin extends Plugin {
       viewRegistryExtension,
       entryIndexExtension(),
       entryDecorationsExtension(
-        () => this.settings,
         () => this.session,
-        () => this.app.workspace.getActiveFile()?.path ?? "",
-        (target, sourcePath) => {
-          void this.app.workspace.openLinkText(target, sourcePath, false);
-        }
+        () => this.app.workspace.getActiveFile()?.path ?? ""
       ),
       closeDecorationsExtension(),
       entryFrameExtension({
@@ -94,7 +90,7 @@ export default class WeaverPlugin extends Plugin {
       entryEditExtension(this)
     ]);
 
-    this.registerMarkdownPostProcessor(createEntryProcessor(this));
+    this.registerMarkdownPostProcessor(createEntryProcessor());
     this.registerMarkdownPostProcessor(createCloseProcessor());
 
     this.registerEvent(
@@ -144,6 +140,7 @@ export default class WeaverPlugin extends Plugin {
     const body = document.body.classList;
     body.toggle("weaver-no-emphasis", !this.settings.portEmphasisColors);
     body.toggle("weaver-unequal", !this.settings.equalizeEntrySizes);
+    body.toggle("weaver-frame-fixed", !this.settings.frameFollowsIndent);
     body.toggle("weaver-platform-mobile", isMobile());
     body.toggle("weaver-phone", isPhone());
     body.toggle("weaver-tablet", isTablet());

@@ -51,20 +51,22 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   split exists for exactly that reason.
 - **Nothing reflows.** Decorations and frames paint around text; the duration
   row's top must stay identical across insertions.
-- **Colour and indent are functions of `D`.** No per-level CSS rules.
+- **Colour and indent are functions of `D`.** No per-level CSS rules. Layout
+  declared on a `.cm-line` needs four classes: Obsidian sets
+  `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }` at three.
 - **The marker stays plain text.** A prefix, never a widget or a heading.
 - **One surface per intent.** The navigator is the only navigation.
 - **The frame:** the marker row is the top-left rail label; the clock row labels the
   bottom edge at both corners — the moment left, the duration right. The rails pass
   through those rows' centres and are cut behind their labels; rows are found by
   `data-weaver-n`, not DOM position; the extent is `frameSpan`. No fact is rendered
-  twice.
+  twice, and the day is not drawn into an entry: the filename is the day and the
+  note's header shows it.
 - **Mobile is not a fork.** One implementation; platform differences are
   geometry and row height only.
 - **Vocabulary:** entry, dimension (`1D`…`nD`), marker, duration, thread, stop,
   settle, navigator. "Heading" is Markdown syntax only; no filing words. The v2
-  `heading*` settings spellings survive in `LEGACY_SETTING_KEYS` and nowhere
-  else.
+  older spellings (`heading*`) survive in `LEGACY_SETTING_KEYS` and nowhere else.
 
 ## Commands (repo root)
 

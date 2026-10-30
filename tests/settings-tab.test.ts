@@ -27,12 +27,11 @@ describe("the settings tab", () => {
     expect(names).toContain("Day note format");
     expect(names).toContain("Equalize entry sizes");
     expect(names).toContain("Entry size");
-    expect(names).toContain("Entry weight");
     expect(names).toContain("Indent step (desktop)");
     expect(names).toContain("Indent step (mobile)");
     expect(names).toContain("Indent maximum level");
     expect(names).toContain("Port em/strong colours");
-    expect(names).toContain("Link past days");
+    expect(names).toContain("Frame follows the indent");
     expect(names).toContain("Debug logging");
 
     plugin.onunload();
@@ -51,7 +50,9 @@ describe("the settings tab", () => {
       "Current palette",
       "Travel default level",
       "Travel wraps around",
-      "Render drafts in the note"
+      "Render drafts in the note",
+      "Entry weight",
+      "Entry date"
     ]) {
       expect(names).not.toContain(gone);
     }
@@ -66,8 +67,9 @@ describe("the settings tab", () => {
     expect(plugin.settings.equalizeEntrySizes).toBe(false);
     expect(document.body.classList.contains("weaver-unequal")).toBe(true);
 
-    uiSetting("Link past days")?.controls[0]?.change(false);
-    expect(plugin.settings.entryDayLink).toBe(false);
+    uiSetting("Frame follows the indent")?.controls[0]?.change(false);
+    expect(plugin.settings.frameFollowsIndent).toBe(false);
+    expect(document.body.classList.contains("weaver-frame-fixed")).toBe(true);
 
     plugin.onunload();
   });

@@ -33,6 +33,9 @@ describe("platform body classes", () => {
     expect(bodyHasClass("weaver-platform-mobile")).toBe(false);
     expect(bodyHasClass("weaver-phone")).toBe(false);
     expect(bodyHasClass("weaver-tablet")).toBe(false);
+    // The default frame sits at the entry's own indent, so the fixed-frame mode
+    // is off until the setting says otherwise.
+    expect(bodyHasClass("weaver-frame-fixed")).toBe(false);
 
     plugin.onunload();
   });

@@ -137,8 +137,9 @@ own text is what names the box.
 optional duration `[+-=] HH:MM:SS`. Either half may be absent, so a hand-written
 `09:14:22` and a stray `+ 00:04:12` are both clock rows. When both are there the
 row reads as one line, `09:14:22 + 00:04:12`: the moment at the left corner of the
-frame's bottom edge, the duration at the right. A half that is absent labels no
-corner, so the frame never shows a value the file does not hold. The moment is
+frame's bottom edge, the duration at the right. Both halves read alike — white
+digits around dimension-coloured colons, the same grammar as the marker, and at the
+note's own weight. A half that is absent labels no corner, so the frame never shows a value the file does not hold. The moment is
 written once, when the entry is created, and never moves; settling rewrites only
 the tail. Minutes and seconds are `0–59`; hours are unbounded. One sigil decides
 what the entry is: `-` is open and being written, `=` is open and paused, and `+`
@@ -168,13 +169,12 @@ changes, and only when *Write day counters* is on.
 | Day | Day note format | `YYYY.MM.DD` | Same fallback, for the filename. |
 | Look | Equalize entry sizes | on | One size for every entry, whatever its depth. Off steps deeper entries down. |
 | Look | Entry size | `1em` | CSS length for the entry text. |
-| Look | Entry weight | 600 | Font weight of the marker line. |
 | Look | Indent step (desktop) | 18px | Left padding added per dimension level. |
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
 | Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the moment labels the bottom-left corner, the duration the bottom-right, each running through the middle of the row and cut behind its label. |
-| Advanced | Link past days | on | Render `[[2026.10.26]]` after the moment on any note that is not today's. |
+| Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note. |
 | Advanced | Debug logging | off | Verbose console output. |
 
 No setting is read while colouring: `dimensionColor(7)` is the same value in every
@@ -347,19 +347,28 @@ card open.
   the screen, and *Append an entry* lands the caret in the new entry's prose even
   from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
+- Frames, the start column: with *Frame follows the indent* off, every box starts in
+  the same place and the markers and the times run down one column each; only the
+  prose steps right. With it on, the boxes step right with the nesting.
 - Frames, Live Preview: every entry is enclosed by one unbroken box spanning the
   text column; the box's top rail runs through the middle of the entry's own marker
   row and its bottom edge through the middle of its own clock row, each exactly
   once and never dimmed. The bottom edge is labelled twice: the moment at the
-  left corner, the duration at the right, with the rail visible between them. Both
-  rails are cut behind their labels, with a short stub left beside each corner, so
-  the box reads as running into its own text. Scroll to the middle of a long entry:
+  left corner, the duration at the right, with the rail visible between them, and
+  both labels read as white digits around dimension-coloured colons. The day's date
+  Marker, moment and stopwatch all read at the note's own weight — no bold, and no
+  date: the filename is the day. Both rails are cut behind their labels,
+  with a short stub left beside each corner — `16 px` on the left, `10 px` on the
+  right — so the box reads as running into its own text, and no glyph or label
+  background is clipped at the row's bottom. Scroll to the middle of a long entry:
   the box stays whole with its last line still off-screen. Two neighbouring boxes
   never overlap — 8 px of clear space, at least, between one entry's clock centre
   and the next entry's marker centre.
 - Frames, the caret: put the caret on the marker row or on the clock row — the
   text stays exactly where it is, both labels keep cutting their rails, and nothing
-  steps aside. Turning *Frame each entry* off removes every box and leaves the lines
+  steps aside. On the clock row the raw line keeps the widget's air, so crossing it
+  moves nothing vertically either. *Frame each entry* applies in Live Preview at once;
+  Reading view redraws its frames when the note is rendered, not on the settings change. Turning *Frame each entry* off removes every box and leaves the lines
   untouched; Source mode never draws one.
 - Frames, live: while an entry is being written its border shimmers counter-
   clockwise along the visible rails, and the shimmer is hidden behind the labels; a
@@ -367,7 +376,8 @@ card open.
 - Frames, Reading view: the same boxes, one per entry, with the prose inside and no
   second indent; a nested entry's frame starts one indent step further right; the
   marker hangs half a line over the top rail and the clock half a line over the
-  bottom one, both centred on their rails.
+  bottom one, both centred on their rails, with the frame's air halved to `0.45em`
+  either side.
 - Frames, phone: the box reaches the pane's edge, and the moment and the duration
   read on one line at the bottom two corners.
 

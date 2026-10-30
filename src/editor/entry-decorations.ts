@@ -15,6 +15,10 @@
  * markup: a `weaver-frame-label` mark over the row's own characters, whose
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
+ *
+ * The marker row carries a second piece of markup and nothing else: the day is not
+ * drawn into the entry at all. The day *is* the file's name, and a note's own
+ * header already shows it, so a per-entry date would print one word on every box.
  */
 
 import { editorInfoField } from "obsidian";
@@ -24,17 +28,10 @@ import {
   type Extension,
   type Range
 } from "@codemirror/state";
-import {
-  Decoration,
-  EditorView,
-  WidgetType,
-  type DecorationSet
-} from "@codemirror/view";
+import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName } from "../core/day";
 import type { EntrySession } from "../entries/session";
-import type { WeaverSettings } from "../settings";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
 import { DurationWidget } from "./stopwatch-widget";
@@ -67,46 +64,9 @@ function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string):
   }
 }
 
-/** ` [[2026.10.26]]` after the moment, on any day that is not today. */
-class DayLinkWidget extends WidgetType {
-  constructor(
-    readonly target: string,
-    readonly sourcePath: string,
-    readonly open: (target: string, sourcePath: string) => void
-  ) {
-    super();
-  }
-
-  eq(other: DayLinkWidget): boolean {
-    return other.target === this.target && other.sourcePath === this.sourcePath;
-  }
-
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    // Part of the marker's own row, so it is part of the top rail's label: its
-    // background cuts the rail behind it like the rest of the label.
-    span.className = "weaver-entry-daylink weaver-frame-label";
-    span.textContent = ` [[${this.target}]]`;
-    span.addEventListener("click", (event: Event) => {
-      event.preventDefault();
-      this.open(this.target, this.sourcePath);
-    });
-    return span;
-  }
-
-  /** The click is the link's; the editor must not move the caret instead. */
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
 function pathOfState(state: EditorState, fallback: () => string): string {
   const info = state.field(editorInfoField, false);
   return info?.file?.path ?? fallback();
-}
-
-function basenameOf(path: string): string {
-  return (path.split("/").pop() ?? path).replace(/\.md$/, "");
 }
 
 /**
@@ -115,21 +75,14 @@ function basenameOf(path: string): string {
  */
 export function entryDecorationSet(
   state: EditorState,
-  settings: WeaverSettings,
   session: EntrySession,
   path: string,
-  now: number,
-  openDayLink?: (target: string, sourcePath: string) => void
+  now: number
 ): DecorationSet {
   const index = state.field(entryIndexField, false);
   if (index === undefined || index.entries.length === 0) return Decoration.none;
 
   const ranges: Range<Decoration>[] = [];
-
-  const basename = basenameOf(path);
-  const fileDay = dayKeyFromName(basename);
-  const today = dayKey(new Date(now));
-  const showDayLink = settings.entryDayLink && fileDay !== null && fileDay !== today;
 
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
@@ -159,19 +112,6 @@ export function entryDecorationSet(
       value: Decoration.mark({ class: LABEL_CLASS })
     });
     addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
-
-    // The day link belongs beside the moment, on the clock row. An entry with no
-    // clock row has no other home for it, so it stays on the marker.
-    if (showDayLink && entry.clockLine === null) {
-      ranges.push({
-        from: prefixTo,
-        to: prefixTo,
-        value: Decoration.widget({
-          side: 1,
-          widget: new DayLinkWidget(basename, path, openDayLink ?? (() => {}))
-        })
-      });
-    }
 
     for (const line of entry.proseLines) {
       if (line >= state.doc.lines) continue;
@@ -225,10 +165,7 @@ export function entryDecorationSet(
           ms,
           active,
           color: dimensionColor(entry.d),
-          d: entry.d,
-          dayLink: showDayLink ? basename : null,
-          openDayLink: openDayLink ?? null,
-          sourcePath: path
+          d: entry.d
         })
       })
     });
@@ -239,20 +176,11 @@ export function entryDecorationSet(
 
 /** Publishes the entry decorations as one state field. */
 export function entryDecorationsExtension(
-  getSettings: () => WeaverSettings,
   getSession: () => EntrySession,
-  getPath: () => string,
-  openDayLink?: (target: string, sourcePath: string) => void
+  getPath: () => string
 ): Extension {
   const build = (state: EditorState): DecorationSet =>
-    entryDecorationSet(
-      state,
-      getSettings(),
-      getSession(),
-      pathOfState(state, getPath),
-      Date.now(),
-      openDayLink
-    );
+    entryDecorationSet(state, getSession(), pathOfState(state, getPath), Date.now());
 
   const field = StateField.define<DecorationSet>({
     create: build,

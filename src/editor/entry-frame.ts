@@ -23,6 +23,10 @@
  * running into the text that names it. Nothing is at `opacity: 0`, nothing is
  * painted twice, and the frame survives its ends scrolling out of the render
  * range because a row that is not rendered falls back to the line block's centre.
+ *
+ * The date labels the top-right corner on every entry, and it is drawn by the
+ * entry decoration in the marker row — never by this layer, which paints no text
+ * at all.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -35,10 +39,10 @@ import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { entryIndexField } from "./entry-field";
 
-/** The marker's ink sits this far inside the left rail: corner 10 + stub 14 + label pad 8. */
-const LEFT_GUTTER = 32;
-/** Air between the text column's right edge and the right rail. */
-const RIGHT_GUTTER = 20;
+/** Air between the marker's ink and the left rail, and the stub the frame leaves beside each corner. */
+const LEFT_GUTTER = 16;
+/** Air between the text column's right edge and the right rail, and the stub that labels the corner. */
+const RIGHT_GUTTER = 10;
 /** Clear space required between two entries' rails. */
 const MIN_AIR = 8;
 /** Air below the last prose row when an entry has no clock row. */

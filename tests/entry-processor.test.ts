@@ -3,27 +3,7 @@ import type { MarkdownPostProcessorContext } from "obsidian";
 
 import { createCloseProcessor } from "../src/reading/close-processor";
 import { createEntryProcessor } from "../src/reading/entry-processor";
-import { DEFAULT_SETTINGS } from "../src/settings";
-import type WeaverPlugin from "../src/main";
 import { ShimElement } from "../test-support/dom";
-
-/** A plugin stand-in: the processors read settings and open links, nothing else. */
-function host(overrides: Partial<typeof DEFAULT_SETTINGS> = {}): WeaverPlugin {
-  const opened: string[] = [];
-  const stub = {
-    settings: { ...DEFAULT_SETTINGS, ...overrides },
-    app: {
-      workspace: {
-        openLinkText: (target: string) => {
-          opened.push(target);
-          return Promise.resolve();
-        }
-      }
-    },
-    opened
-  };
-  return stub as unknown as WeaverPlugin;
-}
 
 function context(sourcePath: string): MarkdownPostProcessorContext {
   return { sourcePath, frontmatter: {}, docId: "1", addChild: () => {} } as unknown as MarkdownPostProcessorContext;
@@ -47,7 +27,7 @@ describe("the entry processor", () => {
     const root = container();
     paragraph(root, "{ 1.2.3 }");
 
-    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     const head = root.querySelector(".weaver-entry-head");
     expect(head).not.toBeNull();
@@ -68,21 +48,25 @@ describe("the entry processor", () => {
     paragraph(root, "{ 1.2.3 }");
     paragraph(root, "13:27:43 + 00:04:12");
 
-    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     const row = root.querySelector(".weaver-duration");
     expect(row).not.toBeNull();
+    // Both halves are three white digit spans around two coloured colons.
+    expect(
+      row?.querySelectorAll(".weaver-duration-moment .weaver-duration-num").map((n) => n.textContent)
+    ).toEqual(["13", "27", "43"]);
+    expect(
+      row?.querySelectorAll(".weaver-duration-moment .weaver-duration-ink").map((n) => n.textContent)
+    ).toEqual([":", ":"]);
     expect(row?.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
     expect(row?.querySelector(".weaver-duration-sigil")?.textContent).toBe("+");
-    // Digits white, colons in the dimension's colour: two spans either side of
-    // them, in the order the file has.
-    expect(row?.querySelectorAll(".weaver-duration-num").map((node) => node.textContent)).toEqual(
-      ["00", "04", "12"]
-    );
-    expect(row?.querySelectorAll(".weaver-duration-ink").map((node) => node.textContent)).toEqual([
-      ":",
-      ":"
-    ]);
+    expect(
+      row?.querySelectorAll(".weaver-duration-clock .weaver-duration-num").map((n) => n.textContent)
+    ).toEqual(["00", "04", "12"]);
+    expect(
+      row?.querySelectorAll(".weaver-duration-clock .weaver-duration-ink").map((n) => n.textContent)
+    ).toEqual([":", ":"]);
     expect(root.querySelectorAll("p").length).toBe(0);
   });
 
@@ -91,7 +75,7 @@ describe("the entry processor", () => {
     paragraph(root, "{ 1.2.3 }");
     paragraph(root, "13:27:43");
 
-    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     const row = root.querySelector(".weaver-duration");
     expect(row?.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
@@ -106,7 +90,7 @@ describe("the entry processor", () => {
     paragraph(root, "the thought this one opened");
     paragraph(root, "13:27:43 + 00:04:12");
 
-    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     const frame = root.querySelector(".weaver-frame");
     expect(frame?.hasClass("is-static")).toBe(true);
@@ -133,7 +117,7 @@ describe("the entry processor", () => {
     const root = container();
     paragraph(root, "{ 1.2.3 } a title");
 
-    createEntryProcessor(host({ entryDayLink: false }))(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     // The label is the canonical marker, never the title: a rail cannot ellipsize
     // away a line of the entry.
@@ -145,7 +129,7 @@ describe("the entry processor", () => {
     const root = container();
     paragraph(root, "+ 00:04:12");
 
-    createEntryProcessor(host())(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     const row = root.querySelector(".weaver-duration");
     expect(row).not.toBeNull();
@@ -164,45 +148,18 @@ describe("the entry processor", () => {
     prose.createEl("strong").setText("bold");
     paragraph(root, "13:27:43 + 00:04:12");
 
-    createEntryProcessor(host())(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     expect(root.querySelector(".weaver-entry-prose")?.querySelector("strong")?.textContent).toBe("bold");
     // The clock row is an entry element, not prose.
     expect(root.querySelectorAll(".weaver-entry-prose").length).toBe(1);
   });
 
-  it("carries the day link beside the moment, not on the marker", () => {
-    const past = container();
-    paragraph(past, "{ 1.1.1 }");
-    paragraph(past, "a thought");
-    paragraph(past, "13:27:43 + 00:04:12");
-    createEntryProcessor(host({ entryDayLink: true }))(past as never, context(PATH));
-
-    const link = past.querySelector(".weaver-entry-daylink");
-    expect(link?.textContent).toBe(" [[2026.10.26]]");
-    expect(link?.parentElement?.hasClass("weaver-duration-moment")).toBe(true);
-
-    const today = new Date();
-    const name = [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, "0"),
-      String(today.getDate()).padStart(2, "0")
-    ].join(".");
-    const todays = container();
-    paragraph(todays, "{ 1.1.1 }");
-    paragraph(todays, "13:27:43 + 00:04:12");
-    createEntryProcessor(host({ entryDayLink: true }))(
-      todays as never,
-      context(`Chronomancer/${name}.md`)
-    );
-    expect(todays.querySelector(".weaver-entry-daylink")).toBeNull();
-  });
-
   it("leaves a paragraph that is not an entry alone", () => {
     const root = container();
     paragraph(root, "just a thought");
 
-    createEntryProcessor(host())(root as never, context(PATH));
+    createEntryProcessor()(root as never, context(PATH));
 
     expect(root.querySelectorAll("p").length).toBe(1);
     expect(root.querySelector(".weaver-entry-head")).toBeNull();

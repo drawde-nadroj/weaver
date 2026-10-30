@@ -9,11 +9,15 @@
  * no moment at its left. Each half carries its own background, so the rail is cut
  * twice and stays visible in the gap between them.
  *
- * While the session is live the widget ticks itself: it mutates the three digit
- * spans every second and dispatches nothing, so the document, the undo history
- * and the decoration set are all untouched by the clock. The two colons are
- * their own spans because they carry the dimension's colour while the digits
- * stay white.
+ * Each half is three white digit spans around two dimension-coloured colons — the
+ * same grammar the marker and the date label are drawn in, so the whole frame
+ * reads as one type. The day link no longer lives here: the date labels the top
+ * right corner and is drawn by the decoration.
+ *
+ * While the session is live the widget ticks itself: it mutates the duration
+ * half's three digit spans every second and dispatches nothing, so the document,
+ * the undo history and the decoration set are all untouched by the clock, and the
+ * moment's digits — which never change — are never written to.
  *
  * The clock never moves the line. `eq` ignores the elapsed time, so a per
  * keystroke refresh of the decoration set finds the widget unchanged and leaves
@@ -30,6 +34,7 @@
 import { WidgetType } from "@codemirror/view";
 
 import { formatClock, type DurationSigil } from "../core/duration";
+import { appendClockRuns } from "../ui/dcn";
 import { startTicking, stopTicking, writeDigits } from "./duration-ticker";
 
 /** Everything the widget renders from; none of it changes while the clock ticks. */
@@ -45,11 +50,6 @@ export interface DurationWidgetInput {
   color: string;
   /** The entry's depth, so the rendered line keeps the entry's indent. */
   d: number;
-  /** The day this entry continues, or null when it started today. */
-  dayLink: string | null;
-  /** Opens `dayLink`; never called when `dayLink` is null. */
-  openDayLink: ((target: string, sourcePath: string) => void) | null;
-  sourcePath: string;
 }
 
 /** The clock row as a widget: two labels, digits that tick without a transaction. */
@@ -64,9 +64,8 @@ export class DurationWidget extends WidgetType {
 
   /**
    * The elapsed time is not part of this comparison on purpose: the widget is
-   * the same widget while the moment, the sigil, the liveness, the colour, the
-   * depth and the day link are, and the seconds are the tick's business, not the
-   * redraw's.
+   * the same widget while the moment, the sigil, the liveness, the colour and the
+   * depth are, and the seconds are the tick's business, not the redraw's.
    */
   eq(other: DurationWidget): boolean {
     return (
@@ -75,8 +74,7 @@ export class DurationWidget extends WidgetType {
       other.input.sigil === this.input.sigil &&
       other.input.active === this.input.active &&
       other.input.color === this.input.color &&
-      other.input.d === this.input.d &&
-      other.input.dayLink === this.input.dayLink
+      other.input.d === this.input.d
     );
   }
 
@@ -84,20 +82,11 @@ export class DurationWidget extends WidgetType {
     const root = document.createElement("span");
     root.className = "weaver-duration";
 
-    // The bottom-left label: the moment, and the day it continues.
+    // The bottom-left label: the moment, in white digits and the dimension's
+    // colons — the same grammar as the stopwatch beside it.
     const moment = document.createElement("span");
     moment.className = "weaver-duration-moment weaver-frame-label";
-    moment.textContent = this.input.time ?? "";
-    if (this.input.dayLink !== null) {
-      const link = document.createElement("span");
-      link.className = "weaver-entry-daylink";
-      link.textContent = ` [[${this.input.dayLink}]]`;
-      link.addEventListener("click", (event: Event) => {
-        event.preventDefault();
-        this.input.openDayLink?.(this.input.dayLink ?? "", this.input.sourcePath);
-      });
-      moment.appendChild(link);
-    }
+    if (this.input.time !== null) appendClockRuns(moment, this.input.time);
     root.appendChild(moment);
 
     // The bottom-right label: the sigil, then the clock. A row that carries only
@@ -111,23 +100,7 @@ export class DurationWidget extends WidgetType {
       sigil.className = "weaver-duration-sigil";
       clock.appendChild(sigil);
 
-      this.digits = [];
-      formatClock(this.input.ms)
-        .split(":")
-        .forEach((part, index) => {
-          if (index > 0) {
-            const colon = document.createElement("span");
-            colon.className = "weaver-duration-ink";
-            colon.textContent = ":";
-            clock.appendChild(colon);
-          }
-
-          const span = document.createElement("span");
-          span.className = "weaver-duration-num";
-          span.textContent = part;
-          clock.appendChild(span);
-          this.digits.push(span);
-        });
+      this.digits = appendClockRuns(clock, formatClock(this.input.ms));
 
       root.appendChild(clock);
     } else {
@@ -145,7 +118,11 @@ export class DurationWidget extends WidgetType {
     this.root = dom;
     this.paint(dom);
 
-    this.digits = Array.from(dom.querySelectorAll<HTMLElement>(".weaver-duration-num"));
+    // Scoped to the clock half: the moment carries `.weaver-duration-num` spans
+    // too, and the ticker must write only into the duration.
+    this.digits = Array.from(
+      dom.querySelectorAll<HTMLElement>(".weaver-duration-clock .weaver-duration-num")
+    );
     writeDigits(this.digits, this.input.ms);
 
     if (this.input.active) startTicking(dom, this.digits, this.input.ms);

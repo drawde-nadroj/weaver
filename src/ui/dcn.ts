@@ -1,12 +1,13 @@
 /**
- * `D.C.N` as digits and punctuation: the digits stay white and the separators
- * take the entry's own colour, exactly as the marker reads in the note.
+ * The digit-and-ink grammar: `D.C.N`, the clock row and the date label all split
+ * the same way — digits in the note's own text colour, punctuation in the
+ * dimension's.
  *
- * Shared by the navigator and the Reading-view frame — one grammar, two surfaces.
- * The marker's hyphen is punctuation like every other separator, because on a
- * framed surface the whole marker is the top rail's label and its background
- * cuts the rail; there is no character that belongs to the box instead of the
- * text.
+ * Shared by the navigator, the Live Preview frames and the Reading-view frame —
+ * one grammar, every surface. The marker's hyphen is punctuation like every other
+ * separator, because on a framed surface the whole marker is the top rail's label
+ * and its background cuts the rail; there is no character that belongs to the box
+ * instead of the text.
  */
 
 const DIGITS = /^\d+$/;
@@ -42,4 +43,31 @@ export function appendDigitRuns(parent: HTMLElement, text: string): void {
     span.textContent = slice.text;
     parent.appendChild(span);
   }
+}
+
+/**
+ * Splits an `HH:MM:SS` clock into digit runs and separator runs inside `parent`:
+ * each colon is `.weaver-duration-ink` (the dimension's colour), each digit run
+ * `.weaver-duration-num` (the note's own text colour). Returns the digit spans in
+ * order, so a ticking clock can write into them.
+ */
+export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[] {
+  const spans: HTMLElement[] = [];
+
+  clock.split(":").forEach((part, index) => {
+    if (index > 0) {
+      const colon = document.createElement("span");
+      colon.className = "weaver-duration-ink";
+      colon.textContent = ":";
+      parent.appendChild(colon);
+    }
+
+    const span = document.createElement("span");
+    span.className = "weaver-duration-num";
+    span.textContent = part;
+    parent.appendChild(span);
+    spans.push(span);
+  });
+
+  return spans;
 }

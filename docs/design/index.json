@@ -3,7 +3,7 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 34,
-    "exports": 153,
+    "exports": 154,
     "classes": 41,
     "testFiles": 25
   },
@@ -375,12 +375,10 @@
           "hash": "62990fa9fb",
           "bytes": 129,
           "refs": [
-            "src/editor/entry-decorations.ts",
             "src/entries/day-note.ts",
-            "src/main.ts",
-            "src/reading/entry-processor.ts"
+            "src/main.ts"
           ],
-          "refCount": 8,
+          "refCount": 4,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -410,11 +408,8 @@
           "doc": "`2026.10.27` or `2026-10-27` becomes `2026-10-27`; anything else is null.",
           "hash": "9020197622",
           "bytes": 237,
-          "refs": [
-            "src/editor/entry-decorations.ts",
-            "src/reading/entry-processor.ts"
-          ],
-          "refCount": 4,
+          "refs": [],
+          "refCount": 0,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -679,7 +674,7 @@
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 19,
+          "refCount": 18,
           "testedBy": [
             "tests/settings-tab.test.ts"
           ]
@@ -1445,14 +1440,12 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 271,
-      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.",
+      "lines": 199,
+      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe marker row carries a second piece of markup and nothing else: the day is not\ndrawn into the entry at all. The day *is* the file's name, and a note's own\nheader already shows it, so a per-entry date would print one word on every box.",
       "obsidian": true,
       "imports": [
         "src/core/color",
-        "src/core/day",
         "src/entries/session",
-        "src/settings",
         "src/ui/dcn",
         "src/editor/entry-field",
         "src/editor/stopwatch-widget",
@@ -1464,11 +1457,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 116,
-          "signature": "export function entryDecorationSet( state: EditorState, settings: WeaverSettings, session: EntrySession, path: string, now: number, openDayLink?: (target: string, sourcePath: st...",
+          "line": 76,
+          "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number ): DecorationSet",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "5d0afbcb7c",
-          "bytes": 4087,
+          "hash": "f99ee93631",
+          "bytes": 3238,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1478,11 +1471,11 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 241,
-          "signature": "export function entryDecorationsExtension( getSettings: () => WeaverSettings, getSession: () => EntrySession, getPath: () => string, openDayLink?: (target: string, sourcePath: s...",
+          "line": 178,
+          "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string ): Extension",
           "doc": "Publishes the entry decorations as one state field.",
-          "hash": "e9280839c4",
-          "bytes": 902,
+          "hash": "7fba533e17",
+          "bytes": 733,
           "refs": [
             "src/main.ts"
           ],
@@ -1492,7 +1485,6 @@
       ],
       "classes": [
         "weaver-duration-raw",
-        "weaver-entry-daylink",
         "weaver-entry-head",
         "weaver-entry-prose",
         "weaver-frame-label"
@@ -1594,8 +1586,8 @@
     {
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
-      "lines": 351,
-      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its moment at the left corner, its duration at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.",
+      "lines": 355,
+      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its moment at the left corner, its duration at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nThe date labels the top-right corner on every entry, and it is drawn by the\nentry decoration in the marker row — never by this layer, which paints no text\nat all.",
       "obsidian": true,
       "imports": [
         "src/core/color",
@@ -1611,7 +1603,7 @@
         {
           "name": "FrameHost",
           "kind": "interface",
-          "line": 50,
+          "line": 54,
           "signature": "export interface FrameHost",
           "doc": "What the layer may ask the plugin: settings, the session, and a fallback path.",
           "hash": "1b97b2b12b",
@@ -1623,7 +1615,7 @@
         {
           "name": "entryFrameExtension",
           "kind": "function",
-          "line": 342,
+          "line": 346,
           "signature": "export function entryFrameExtension(host: FrameHost): Extension",
           "doc": "Draws one box per entry in a layer inside the scroller.",
           "hash": "049f956468",
@@ -1808,11 +1800,12 @@
     {
       "file": "src/editor/stopwatch-widget.ts",
       "layer": "editor",
-      "lines": 182,
-      "doc": "The rendered clock row.\n\nThe row is the frame's bottom edge, and its two ends are its two labels: the\nmoment at the left corner, the duration at the right. The widget renders the\nrow the file holds — the moment the parser read, the duration from its sigil\nand milliseconds — and a half the row does not carry is not drawn: a\nmoment-only row has no clock at its right corner, and a duration-only row has\nno moment at its left. Each half carries its own background, so the rail is cut\ntwice and stays visible in the gap between them.\n\nWhile the session is live the widget ticks itself: it mutates the three digit\nspans every second and dispatches nothing, so the document, the undo history\nand the decoration set are all untouched by the clock. The two colons are\ntheir own spans because they carry the dimension's colour while the digits\nstay white.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the liveness, the colour, the moment — `updateDOM`\nrewrites that DOM in place instead of rebuilding it, which is what used to make\nthe line hop a pixel on every keystroke.\n\n`n` is the entry it belongs to, so the frame layer can find the row by its\nstamp instead of by a DOM position. The ticker is keyed by the element, so\nwhichever surface owns the element owns the one interval.",
+      "lines": 159,
+      "doc": "The rendered clock row.\n\nThe row is the frame's bottom edge, and its two ends are its two labels: the\nmoment at the left corner, the duration at the right. The widget renders the\nrow the file holds — the moment the parser read, the duration from its sigil\nand milliseconds — and a half the row does not carry is not drawn: a\nmoment-only row has no clock at its right corner, and a duration-only row has\nno moment at its left. Each half carries its own background, so the rail is cut\ntwice and stays visible in the gap between them.\n\nEach half is three white digit spans around two dimension-coloured colons — the\nsame grammar the marker and the date label are drawn in, so the whole frame\nreads as one type. The day link no longer lives here: the date labels the top\nright corner and is drawn by the decoration.\n\nWhile the session is live the widget ticks itself: it mutates the duration\nhalf's three digit spans every second and dispatches nothing, so the document,\nthe undo history and the decoration set are all untouched by the clock, and the\nmoment's digits — which never change — are never written to.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the liveness, the colour, the moment — `updateDOM`\nrewrites that DOM in place instead of rebuilding it, which is what used to make\nthe line hop a pixel on every keystroke.\n\n`n` is the entry it belongs to, so the frame layer can find the row by its\nstamp instead of by a DOM position. The ticker is keyed by the element, so\nwhichever surface owns the element owns the one interval.",
       "obsidian": false,
       "imports": [
         "src/core/duration",
+        "src/ui/dcn",
         "src/editor/duration-ticker",
         "@codemirror/view"
       ],
@@ -1820,11 +1813,11 @@
         {
           "name": "DurationWidgetInput",
           "kind": "interface",
-          "line": 36,
+          "line": 41,
           "signature": "export interface DurationWidgetInput",
           "doc": "Everything the widget renders from; none of it changes while the clock ticks.",
-          "hash": "8e01207db9",
-          "bytes": 306,
+          "hash": "7000253dc7",
+          "bytes": 182,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1837,8 +1830,8 @@
           "line": 56,
           "signature": "export class DurationWidget extends WidgetType",
           "doc": "The clock row as a widget: two labels, digits that tick without a transaction.",
-          "hash": "ec7c01f8fc",
-          "bytes": 3693,
+          "hash": "4e71770ce2",
+          "bytes": 3018,
           "refs": [
             "src/editor/entry-decorations.ts"
           ],
@@ -1852,11 +1845,9 @@
       "classes": [
         "weaver-duration",
         "weaver-duration-clock",
-        "weaver-duration-ink",
         "weaver-duration-moment",
         "weaver-duration-num",
         "weaver-duration-sigil",
-        "weaver-entry-daylink",
         "weaver-frame-label"
       ],
       "dataAttrs": [
@@ -2211,7 +2202,7 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 306,
+      "lines": 303,
       "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.C.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
       "obsidian": true,
       "imports": [
@@ -2249,18 +2240,16 @@
           "line": 56,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the day-stats listener.",
-          "hash": "265332486a",
-          "bytes": 7219,
+          "hash": "fd8891a26d",
+          "bytes": 7140,
           "refs": [
             "src/entries/engine.ts",
-            "src/reading/entry-processor.ts",
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 8,
+          "refCount": 6,
           "testedBy": [
             "tests/append-entry.test.ts",
-            "tests/entry-processor.test.ts",
             "tests/navigator.test.ts",
             "tests/platform-classes.test.ts",
             "tests/plugin.test.ts",
@@ -2269,6 +2258,7 @@
         }
       ],
       "classes": [
+        "weaver-frame-fixed",
         "weaver-no-emphasis",
         "weaver-phone",
         "weaver-platform-mobile",
@@ -2508,15 +2498,13 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 190,
-      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its moment at the left corner and its duration at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included.",
+      "lines": 159,
+      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its moment at the left corner and its duration at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. The day is\nnot drawn into the entry: the day is the file's name, and the note's own header\nshows it. The clock row's two halves are digit and punctuation runs, exactly as\nin the editor.",
       "obsidian": true,
       "imports": [
         "src/core/color",
-        "src/core/day",
         "src/core/duration",
         "src/core/entries",
-        "src/main",
         "src/ui/dcn",
         "obsidian"
       ],
@@ -2524,11 +2512,11 @@
         {
           "name": "createEntryProcessor",
           "kind": "function",
-          "line": 86,
-          "signature": "export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor",
-          "doc": "Builds the post processor that frames entries in Reading view.",
-          "hash": "85ced77e71",
-          "bytes": 4472,
+          "line": 77,
+          "signature": "export function createEntryProcessor(): MarkdownPostProcessor",
+          "doc": "Builds the post processor that frames entries in Reading view. It reads the\nparagraph text and nothing else — no settings, no vault access — so it takes no\narguments.",
+          "hash": "5016308fa6",
+          "bytes": 3458,
           "refs": [
             "src/main.ts"
           ],
@@ -2541,11 +2529,8 @@
       "classes": [
         "weaver-duration",
         "weaver-duration-clock",
-        "weaver-duration-ink",
         "weaver-duration-moment",
-        "weaver-duration-num",
         "weaver-duration-sigil",
-        "weaver-entry-daylink",
         "weaver-entry-head",
         "weaver-entry-prose",
         "weaver-frame",
@@ -2559,7 +2544,7 @@
     {
       "file": "src/settings-tab.ts",
       "layer": "root",
-      "lines": 221,
+      "lines": 208,
       "doc": "The settings surface: four groups, every control applied live.\n\nThe tab owns no rules of its own — it writes the settings model and calls\n`commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.",
       "obsidian": true,
       "imports": [
@@ -2574,8 +2559,8 @@
           "line": 22,
           "signature": "export class WeaverSettingTab extends PluginSettingTab",
           "doc": "Settings UI, in four groups: what is written, where the day note is, how an\nentry looks, and the rest.\n\nEvery control writes through `commit()` so changes apply live.",
-          "hash": "6e79fa4751",
-          "bytes": 6449,
+          "hash": "b987869061",
+          "bytes": 6200,
           "refs": [
             "src/main.ts"
           ],
@@ -2593,7 +2578,7 @@
     {
       "file": "src/settings.ts",
       "layer": "root",
-      "lines": 186,
+      "lines": 188,
       "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
       "obsidian": false,
       "imports": [],
@@ -2604,24 +2589,21 @@
           "line": 15,
           "signature": "export interface WeaverSettings",
           "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
-          "hash": "87073b3b84",
-          "bytes": 427,
+          "hash": "b8e40f3148",
+          "bytes": 410,
           "refs": [
-            "src/editor/entry-decorations.ts",
             "src/editor/entry-frame.ts",
             "src/entries/day-note.ts",
             "src/main.ts",
             "src/ui/css.ts"
           ],
-          "refCount": 13,
-          "testedBy": [
-            "tests/entry-decorations.test.ts"
-          ]
+          "refCount": 10,
+          "testedBy": []
         },
         {
           "name": "WeaverData",
           "kind": "interface",
-          "line": 44,
+          "line": 48,
           "signature": "export interface WeaverData",
           "doc": "What is on disk: a version and one settings object.",
           "hash": "b361c9aab0",
@@ -2635,11 +2617,11 @@
         {
           "name": "DEFAULT_SETTINGS",
           "kind": "const",
-          "line": 50,
+          "line": 54,
           "signature": "export const DEFAULT_SETTINGS: WeaverSettings =",
           "doc": "Every field's value before a vault says otherwise.",
-          "hash": "78e60ea700",
-          "bytes": 362,
+          "hash": "5ef4d6038f",
+          "bytes": 348,
           "refs": [
             "src/settings-tab.ts"
           ],
@@ -2647,15 +2629,13 @@
           "testedBy": [
             "tests/append-entry.test.ts",
             "tests/day-note.test.ts",
-            "tests/entry-decorations.test.ts",
-            "tests/entry-processor.test.ts",
             "tests/settings.test.ts"
           ]
         },
         {
           "name": "isValidEntrySize",
           "kind": "function",
-          "line": 73,
+          "line": 76,
           "signature": "export function isValidEntrySize(value: string): boolean",
           "doc": "True for a CSS length Weaver will accept as an entry size.",
           "hash": "97ce16a28a",
@@ -2670,11 +2650,11 @@
         {
           "name": "normalizeSettings",
           "kind": "function",
-          "line": 131,
+          "line": 134,
           "signature": "export function normalizeSettings(data: unknown): WeaverSettings",
           "doc": "Normalizes any persisted payload into a complete, clamped settings object.\nUnknown fields are dropped; invalid values fall back to the defaults; a v2\nfield name keeps its value under the v3 name.",
-          "hash": "8ca468439f",
-          "bytes": 1313,
+          "hash": "fb3b51b396",
+          "bytes": 1248,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -2684,7 +2664,7 @@
         {
           "name": "normalizeData",
           "kind": "function",
-          "line": 171,
+          "line": 173,
           "signature": "export function normalizeData(data: unknown): WeaverData",
           "doc": "Normalizes persisted plugin data. A bare settings object written by an earlier\nbuild is wrapped instead of being discarded, and every payload is reported as\nthe current version — the migration is the normalization.",
           "hash": "33f8ccdc56",
@@ -2704,8 +2684,8 @@
     {
       "file": "src/ui/css.ts",
       "layer": "ui",
-      "lines": 73,
-      "doc": "The generated stylesheet: the six numbers a note is drawn with, and the two\nemphasis colours. Nothing is generated per level — depth rides on the\n`--weaver-d` custom property a line carries, so a deeper entry costs nothing.",
+      "lines": 71,
+      "doc": "The generated stylesheet: the five numbers a note is drawn with, and the two\nemphasis colours. Nothing is generated per level — depth rides on the\n`--weaver-d` custom property a line carries, so a deeper entry costs nothing.",
       "obsidian": false,
       "imports": [
         "src/core/color",
@@ -2730,8 +2710,8 @@
           "line": 14,
           "signature": "export function buildCss(settings: WeaverSettings): string",
           "doc": "The whole generated stylesheet for these settings.",
-          "hash": "627d9d6ac0",
-          "bytes": 1460,
+          "hash": "cc404ff204",
+          "bytes": 1368,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -2739,7 +2719,7 @@
         {
           "name": "applyCss",
           "kind": "function",
-          "line": 57,
+          "line": 55,
           "signature": "export function applyCss(settings: WeaverSettings): void",
           "doc": "Writes the stylesheet into a single `<style>` element in `<head>`. Reusing one\nelement keeps the DOM stable across settings changes.",
           "hash": "12a6a86fff",
@@ -2753,7 +2733,7 @@
         {
           "name": "removeCss",
           "kind": "function",
-          "line": 70,
+          "line": 68,
           "signature": "export function removeCss(): void",
           "doc": "Removes the injected stylesheet on unload.",
           "hash": "4bc00b673a",
@@ -2777,15 +2757,15 @@
     {
       "file": "src/ui/dcn.ts",
       "layer": "ui",
-      "lines": 46,
-      "doc": "`D.C.N` as digits and punctuation: the digits stay white and the separators\ntake the entry's own colour, exactly as the marker reads in the note.\n\nShared by the navigator and the Reading-view frame — one grammar, two surfaces.\nThe marker's hyphen is punctuation like every other separator, because on a\nframed surface the whole marker is the top rail's label and its background\ncuts the rail; there is no character that belongs to the box instead of the\ntext.",
+      "lines": 74,
+      "doc": "The digit-and-ink grammar: `D.C.N`, the clock row and the date label all split\nthe same way — digits in the note's own text colour, punctuation in the\ndimension's.\n\nShared by the navigator, the Live Preview frames and the Reading-view frame —\none grammar, every surface. The marker's hyphen is punctuation like every other\nseparator, because on a framed surface the whole marker is the top rail's label\nand its background cuts the rail; there is no character that belongs to the box\ninstead of the text.",
       "obsidian": false,
       "imports": [],
       "exports": [
         {
           "name": "NUM_CLASS",
           "kind": "const",
-          "line": 15,
+          "line": 16,
           "signature": "export const NUM_CLASS = \"weaver-dcn-num\"",
           "doc": "The class digits carry: the note's own text colour.",
           "hash": "38aa372089",
@@ -2799,7 +2779,7 @@
         {
           "name": "INK_CLASS",
           "kind": "const",
-          "line": 17,
+          "line": 18,
           "signature": "export const INK_CLASS = \"weaver-dcn-ink\"",
           "doc": "The class punctuation carries: the dimension's colour.",
           "hash": "8215ea0827",
@@ -2813,7 +2793,7 @@
         {
           "name": "Slice",
           "kind": "interface",
-          "line": 20,
+          "line": 21,
           "signature": "export interface Slice",
           "doc": "A piece of `D.C.N`: its text, and the class it carries.",
           "hash": "5f3e6b3c9f",
@@ -2825,7 +2805,7 @@
         {
           "name": "markerSlices",
           "kind": "function",
-          "line": 30,
+          "line": 31,
           "signature": "export function markerSlices(text: string): Slice[]",
           "doc": "The runs a marker is drawn in: digits white, punctuation coloured. Pure, so the\neditor's decoration set and the Reading view build the same runs from the same\nrule.",
           "hash": "d9579de124",
@@ -2839,7 +2819,7 @@
         {
           "name": "appendDigitRuns",
           "kind": "function",
-          "line": 38,
+          "line": 39,
           "signature": "export function appendDigitRuns(parent: HTMLElement, text: string): void",
           "doc": "Splits `D.C.N` into digit runs and separators inside `parent`.",
           "hash": "6c7063ef26",
@@ -2850,11 +2830,28 @@
           ],
           "refCount": 4,
           "testedBy": []
+        },
+        {
+          "name": "appendClockRuns",
+          "kind": "function",
+          "line": 54,
+          "signature": "export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]",
+          "doc": "Splits an `HH:MM:SS` clock into digit runs and separator runs inside `parent`:\neach colon is `.weaver-duration-ink` (the dimension's colour), each digit run\n`.weaver-duration-num` (the note's own text colour). Returns the digit spans in\norder, so a ticking clock can write into them.",
+          "hash": "c9369cbc6c",
+          "bytes": 556,
+          "refs": [
+            "src/editor/stopwatch-widget.ts",
+            "src/reading/entry-processor.ts"
+          ],
+          "refCount": 6,
+          "testedBy": []
         }
       ],
       "classes": [
         "weaver-dcn-ink",
-        "weaver-dcn-num"
+        "weaver-dcn-num",
+        "weaver-duration-ink",
+        "weaver-duration-num"
       ],
       "dataAttrs": []
     },
@@ -3031,14 +3028,6 @@
       ]
     },
     {
-      "field": "entryWeight",
-      "value": "600",
-      "readers": [
-        "src/settings-tab.ts",
-        "src/ui/css.ts"
-      ]
-    },
-    {
       "field": "indentStep",
       "value": "18",
       "readers": [
@@ -3079,11 +3068,10 @@
       ]
     },
     {
-      "field": "entryDayLink",
+      "field": "frameFollowsIndent",
       "value": "true",
       "readers": [
-        "src/editor/entry-decorations.ts",
-        "src/reading/entry-processor.ts",
+        "src/main.ts",
         "src/settings-tab.ts"
       ]
     },
@@ -3135,10 +3123,10 @@
       "weaver-duration-num",
       "weaver-duration-raw",
       "weaver-duration-sigil",
-      "weaver-entry-daylink",
       "weaver-entry-head",
       "weaver-entry-prose",
       "weaver-frame",
+      "weaver-frame-fixed",
       "weaver-frame-label",
       "weaver-frame-layer",
       "weaver-navigator",

@@ -11,17 +11,25 @@ function widget(overrides: Partial<DurationWidgetInput> = {}): DurationWidget {
     active: false,
     color: "#f97316",
     d: 1,
-    dayLink: null,
-    openDayLink: null,
-    sourcePath: "",
     ...overrides
   });
 }
 
+function texts(root: HTMLElement, selector: string): string[] {
+  return Array.from(root.querySelectorAll(selector)).map((node) => node.textContent ?? "");
+}
+
+function runs(root: HTMLElement, selector: string): string {
+  return texts(root, selector).join(":");
+}
+
+/** The clock half's digits only: the moment carries digits too. */
 function digits(root: HTMLElement): string {
-  return Array.from(root.querySelectorAll(".weaver-duration-num"))
-    .map((node) => node.textContent ?? "")
-    .join(":");
+  return runs(root, ".weaver-duration-clock .weaver-duration-num");
+}
+
+function momentDigits(root: HTMLElement): string {
+  return runs(root, ".weaver-duration-moment .weaver-duration-num");
 }
 
 beforeEach(() => {
@@ -41,6 +49,25 @@ describe("the duration widget", () => {
     expect(widget().eq(widget({ d: 3 }))).toBe(false);
     // A different entry is a different row: its stamp has to be repainted.
     expect(widget().eq(widget({ n: 2 }))).toBe(false);
+  });
+
+  it("draws the moment in the stopwatch's own grammar", () => {
+    const root = widget().toDOM();
+    const moment = root.querySelector<HTMLElement>(".weaver-duration-moment");
+    if (moment === null) throw new Error("no moment half");
+
+    // White digits around dimension-coloured colons, exactly like the clock.
+    expect(texts(moment, ".weaver-duration-num")).toEqual(["09", "14", "22"]);
+    expect(texts(moment, ".weaver-duration-ink")).toEqual([":", ":"]);
+  });
+
+  it("writes the tick into the clock half and never into the moment", () => {
+    const root = widget({ active: true, ms: 0 }).toDOM();
+
+    vi.advanceTimersByTime(3_000);
+
+    expect(momentDigits(root)).toBe("09:14:22");
+    expect(digits(root)).toBe("00:00:03");
   });
 
   it("stamps its element with the entry it belongs to", () => {

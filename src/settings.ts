@@ -26,17 +26,21 @@ export interface WeaverSettings {
   // Look
   equalizeEntrySizes: boolean;
   entrySize: string;
-  entryWeight: number;
   indentStep: number;
   mobileIndentStep: number;
   indentMaxLevel: number;
   portEmphasisColors: boolean;
   /** Draw a frame around every entry: the rails run through the middle of the marker and clock rows, cut behind those labels. */
   entryFrames: boolean;
+  /**
+   * Start a frame at the entry's own indent. On, a nested entry's frame begins
+   * further right, so nesting reads as a staircase; off, every frame begins in the
+   * left margin and only the prose carries the indent, so the markers and the
+   * times line up down the note.
+   */
+  frameFollowsIndent: boolean;
 
   // Advanced
-  /** Render `[[2026.10.26]]` after the moment on any day but today's. */
-  entryDayLink: boolean;
   debug: boolean;
 }
 
@@ -55,15 +59,14 @@ export const DEFAULT_SETTINGS: WeaverSettings = {
 
   equalizeEntrySizes: true,
   entrySize: "1em",
-  entryWeight: 600,
   indentStep: 18,
   mobileIndentStep: 12,
   indentMaxLevel: 8,
   portEmphasisColors: true,
 
   entryFrames: true,
+  frameFollowsIndent: true,
 
-  entryDayLink: true,
   debug: false
 };
 
@@ -75,18 +78,18 @@ export function isValidEntrySize(value: string): boolean {
 }
 
 /**
- * The v2 field names, and the only place they are read.
+ * Every older name the model has carried, and the only place they are read.
  *
  * "Heading" was the old word for the unit; the entry model renamed it, so the
- * three Look fields were renamed with it. Dropping the old keys instead of
- * mapping them would reset a writer's size and weight on upgrade, which is a
- * silent data loss — hence the mapping, and hence it lives here rather than in a
- * second settings model.
+ * three Look fields were renamed with it. Dropping an old key instead of mapping
+ * it would reset a writer's choice on upgrade, which is a silent data loss —
+ * hence the mapping, and hence it lives here rather than in a second settings
+ * model. A stored name with no current name at all (`entryWeight`, `entryDate`)
+ * is simply dropped by `normalizeSettings`.
  */
 const LEGACY_SETTING_KEYS: Readonly<Record<string, string>> = {
   equalizeHeadingSizes: "equalizeEntrySizes",
-  headingSize: "entrySize",
-  headingWeight: "entryWeight"
+  headingSize: "entrySize"
 };
 
 /** Copies a payload's values onto their current names; current names win. */
@@ -142,14 +145,13 @@ export function normalizeSettings(data: unknown): WeaverSettings {
 
     equalizeEntrySizes: bool(raw.equalizeEntrySizes, DEFAULT_SETTINGS.equalizeEntrySizes),
     entrySize: isValidEntrySize(rawEntrySize) ? rawEntrySize.trim() : DEFAULT_SETTINGS.entrySize,
-    entryWeight: integer(raw.entryWeight, DEFAULT_SETTINGS.entryWeight, 300, 800),
     indentStep: integer(raw.indentStep, DEFAULT_SETTINGS.indentStep, 0, 48),
     mobileIndentStep: integer(raw.mobileIndentStep, DEFAULT_SETTINGS.mobileIndentStep, 0, 32),
     indentMaxLevel: integer(raw.indentMaxLevel, DEFAULT_SETTINGS.indentMaxLevel, 1, 24),
     portEmphasisColors: bool(raw.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
     entryFrames: bool(raw.entryFrames, DEFAULT_SETTINGS.entryFrames),
+    frameFollowsIndent: bool(raw.frameFollowsIndent, DEFAULT_SETTINGS.frameFollowsIndent),
 
-    entryDayLink: bool(raw.entryDayLink, DEFAULT_SETTINGS.entryDayLink),
     debug: bool(raw.debug, DEFAULT_SETTINGS.debug)
   };
 }

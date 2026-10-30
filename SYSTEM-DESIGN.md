@@ -28,7 +28,9 @@ list of them plus the day's frontmatter. Everything else in the plugin exists to
 draw that list, move a caret through it, or write one of its fields.
 
 The clock row is the frame's bottom edge: the moment and the duration sit at its
-two ends, so the row you write is the row the frame is labelled with.
+two ends, so the row you write is the row the frame is labelled with. Both halves
+are digit and punctuation runs — white digits around dimension-coloured colons —
+the same grammar the marker is drawn in.
 
 | Field | Written by | Read by | Shape |
 | --- | --- | --- | --- |
@@ -151,12 +153,13 @@ The transitions, and where each lives:
 `afterEdit` is the only place a clock starts, and it starts on `typed` only —
 the annotation CodeMirror puts on real input. A vault reload, a decoration
 refresh, a jump, an append or a settle all dispatch without it, so none of them
-starts a clock. The ticking widget writes no document: it mutates three digit
-spans every second (`startTicking`), which is why a running clock costs no
-transaction, no undo entry, and no re-render.
+starts a clock. The ticking widget writes no document: it mutates the duration
+half's three digit spans every second (`startTicking`) — the moment's digits never
+change and are never touched — which is why a running clock costs no transaction,
+no undo entry, and no re-render.
 
 <!-- claim: src/editor/duration-ticker.ts#startTicking @6da859596b -->
-<!-- claim: src/editor/stopwatch-widget.ts#DurationWidget @ec7c01f8fc -->
+<!-- claim: src/editor/stopwatch-widget.ts#DurationWidget @4e71770ce2 -->
 
 ## 5. Geometry
 
@@ -176,6 +179,21 @@ Nothing reflows. The text decides where the box is, never the reverse.
 - The constants that turn "a box" into this box — `LEFT_GUTTER`, `RIGHT_GUTTER`,
   `MIN_AIR`, `NO_CLOCK_PAD`, `INLINE_TITLE_PAD` — are in that file, not in CSS,
   because they are measurements, not styling.
+- A corner's air is the frame's visible stub: `LEFT_GUTTER` (16 px) and
+  `RIGHT_GUTTER` (10 px) are what is left beside the marker's ink and the text
+  column's right edge. Nothing renders *into* it. The labels cannot overhang the
+  row, because Obsidian's `contain: paint` clips a block widget at its padding box;
+  a label that needs the corner is drawn inside the text column instead, and the
+  gutter is the margin that keeps the rail off the ink.
+- Where a frame starts is a setting with two answers. On (`frameFollowsIndent`, the
+  default) the marker, the prose and the clock row all take the indent, and because
+  the frame's left edge is pinned a fixed air left of the marker, the boxes step right
+  with the nesting. Off, only the prose is indented: the marker and the clock row stay
+  in the left margin, the frame's edge follows them, and every box starts in the same
+  column — which puts the markers and the times in one column each down the note. The
+  body class is `weaver-frame-fixed`; both modes are four CSS declarations.
+- The day is not drawn into the entry. The day *is* the file's name, and a note's own
+  header shows it permanently, so a per-entry date would print one word on every box.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
 <!-- claim: src/core/frame.ts#frameSpan @324739146a -->
@@ -193,20 +211,20 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 
 | Surface | Code | Writes | One undo | Empty |
 | --- | --- | --- | --- | --- |
-| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing |
+| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing (it renders the marker's runs and the frame label) |
 | Clock row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
 | Start command | `src/main.ts#WeaverPlugin` | the root entry | the plan | `today's day note could not be found. Nothing was written.` |
 | Navigator | `src/ui/navigator.ts#Navigator` | the child, the root, the deletion, the pause | the plan | `no entries yet — ＋ appends the first` |
-| Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone |
+| Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Close day | `src/main.ts#WeaverPlugin` | `✓` plus the counters | the plan | `this day is already closed. Nothing was written.` |
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
 <!-- claim: src/ui/navigator.ts#Navigator @ef46c8c66b -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @85ced77e71 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @5016308fa6 -->
 
 The navigator is the only navigation: it never takes a `Scope`, never writes
 prose, and re-reads the document on every action
@@ -225,7 +243,7 @@ properties a line carries. Nothing is generated per level; the stylesheet is one
 into one `<style id="weaver-style">` element.
 
 <!-- claim: src/core/color.ts#dimensionColor @bbd0b078df -->
-<!-- claim: src/ui/css.ts#buildCss @627d9d6ac0 -->
+<!-- claim: src/ui/css.ts#buildCss @cc404ff204 -->
 
 Settings land in one of the places listed here, never in a surface of their own:
 values that change the drawing go through `buildCss` (variables), values that
@@ -233,15 +251,19 @@ change state go through `src/main.ts#syncBodyClasses` (body classes), and
 everything else is read where it is needed (the generated table lists every
 field's readers). The settings model is the only place a persisted name exists;
 `normalizeSettings` clamps and defaults, and `LEGACY_SETTING_KEYS` is the single
-place the v2 `heading*` spellings are read.
+place an older spelling is read — the v2 `heading*` names. A stored name with no
+current name at all (`entryWeight`, dropped with the per-entry weight slider;
+`entryDate`, dropped with the per-entry date) is simply dropped.
 
-<!-- claim: src/settings.ts#normalizeSettings @8ca468439f -->
-<!-- claim: src/settings.ts#DEFAULT_SETTINGS @78e60ea700 -->
+<!-- claim: src/settings.ts#normalizeSettings @fb3b51b396 -->
+<!-- claim: src/settings.ts#DEFAULT_SETTINGS @5ef4d6038f -->
 
 **Vocabulary is a coupling, not a preference.** The unit is an *entry*, its depth
 a *dimension*, its state *open* or *settled*. `heading` names Markdown syntax and
-nothing else, which is why the settings fields are `entrySize`, `entryWeight` and
-`equalizeEntrySizes` and why the v2 names appear once, in the migration.
+nothing else, which is why the settings fields are `entrySize` and
+`equalizeEntrySizes` and why the v2 names appear once, in the migration. The four
+labels of a frame — marker, moment, stopwatch — carry the note's own weight, so no
+setting exists for theirs.
 
 ## 8. Every sentence the user sees
 
@@ -294,7 +316,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-34 files, 153 exported symbols, 25 test files.
+34 files, 154 exported symbols, 25 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -312,24 +334,24 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 55 | 5 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 271 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 199 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 40 | 4 | no |
-| `src/editor/entry-frame.ts` | editor | 351 | 2 | yes |
+| `src/editor/entry-frame.ts` | editor | 355 | 2 | yes |
 | `src/editor/entry-keys.ts` | editor | 222 | 10 | no |
-| `src/editor/stopwatch-widget.ts` | editor | 182 | 2 | no |
+| `src/editor/stopwatch-widget.ts` | editor | 159 | 2 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
 | `src/entries/day-note.ts` | entries | 96 | 3 | yes |
 | `src/entries/engine.ts` | entries | 461 | 1 | yes |
 | `src/entries/session.ts` | entries | 47 | 2 | no |
 | `src/entries/writer.ts` | entries | 100 | 5 | yes |
-| `src/main.ts` | root | 306 | 1 | yes |
+| `src/main.ts` | root | 303 | 1 | yes |
 | `src/notices.ts` | root | 46 | 13 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 190 | 1 | yes |
-| `src/settings-tab.ts` | root | 221 | 1 | yes |
-| `src/settings.ts` | root | 186 | 6 | no |
-| `src/ui/css.ts` | ui | 73 | 4 | no |
-| `src/ui/dcn.ts` | ui | 46 | 5 | no |
+| `src/reading/entry-processor.ts` | reading | 159 | 1 | yes |
+| `src/settings-tab.ts` | root | 208 | 1 | yes |
+| `src/settings.ts` | root | 188 | 6 | no |
+| `src/ui/css.ts` | ui | 71 | 4 | no |
+| `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/navigator.ts` | ui | 451 | 1 | no |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -351,13 +373,12 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `dayNoteFormat` | `"YYYY.MM.DD"` | `entries/day-note.ts`<br>`settings-tab.ts` |
 | `equalizeEntrySizes` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entrySize` | `"1em"` | `settings-tab.ts`<br>`ui/css.ts` |
-| `entryWeight` | `600` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentStep` | `18` | `settings-tab.ts`<br>`ui/css.ts` |
 | `mobileIndentStep` | `12` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentMaxLevel` | `8` | `settings-tab.ts`<br>`ui/css.ts` |
 | `portEmphasisColors` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entryFrames` | `true` | `editor/entry-frame.ts`<br>`settings-tab.ts` |
-| `entryDayLink` | `true` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts` |
+| `frameFollowsIndent` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `debug` | `false` | `main.ts`<br>`settings-tab.ts` |
 
 The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the three v2 spellings and nothing else reads them.
@@ -374,15 +395,15 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-dcn-num` | styled | `ui/dcn.ts` |
 | `weaver-duration` | styled | `editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-duration-clock` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
-| `weaver-duration-ink` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
+| `weaver-duration-ink` | styled | `ui/dcn.ts` |
 | `weaver-duration-moment` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
-| `weaver-duration-num` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
+| `weaver-duration-num` | styled | `editor/stopwatch-widget.ts`<br>`ui/dcn.ts` |
 | `weaver-duration-raw` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts` |
 | `weaver-duration-sigil` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
-| `weaver-entry-daylink` | styled | `editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-entry-head` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-prose` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-frame` | styled | `editor/entry-frame.ts`<br>`reading/entry-processor.ts` |
+| `weaver-frame-fixed` | styled | `main.ts` |
 | `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-frame-layer` | styled | `editor/entry-frame.ts` |
 | `weaver-navigator` | styled | `ui/navigator.ts` |
@@ -458,7 +479,7 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | `src/editor/entry-frame.ts` | 0 | 2 |
 | `src/entries/engine.ts` | 0 | 1 |
 | `src/ui/css.ts` | 0 | 4 |
-| `src/ui/dcn.ts` | 0 | 5 |
+| `src/ui/dcn.ts` | 0 | 6 |
 
 Modules with no symbol named by any test: 7.
 
@@ -519,9 +540,9 @@ The day's name, and nothing else.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DayNoteOptions` | interface | 16 | `export interface DayNoteOptions` | `entries/day-note.ts` | — |
-| `dayKey` | function | 22 | `export function dayKey(now: Date): string` | `editor/entry-decorations.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`reading/entry-processor.ts` | `tests/day-note.test.ts` |
+| `dayKey` | function | 22 | `export function dayKey(now: Date): string` | `entries/day-note.ts`<br>`main.ts` | `tests/day-note.test.ts` |
 | `dayNotePath` | function | 27 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | `entries/day-note.ts` | `tests/append-entry.test.ts`<br>`tests/day-note.test.ts` |
-| `dayKeyFromName` | function | 40 | `export function dayKeyFromName(basename: string): string \| null` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/day-note.test.ts` |
+| `dayKeyFromName` | function | 40 | `export function dayKeyFromName(basename: string): string \| null` | — | `tests/day-note.test.ts` |
 | `dayFrontmatter` | function | 47 | `export function dayFrontmatter(day: string): string` | `entries/day-note.ts` | `tests/day-note.test.ts` |
 
 #### `src/core/document.ts`
@@ -649,8 +670,8 @@ The entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `entryDecorationSet` | function | 116 | `export function entryDecorationSet( state: EditorState, settings: WeaverSettings, session: EntrySession, path: string, now: number, openDayLink?: (target: string, sourcePath: st...` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 241 | `export function entryDecorationsExtension( getSettings: () => WeaverSettings, getSession: () => EntrySession, getPath: () => string, openDayLink?: (target: string, sourcePath: s...` | `main.ts` | — |
+| `entryDecorationSet` | function | 76 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number ): DecorationSet` | — | `tests/entry-decorations.test.ts` |
+| `entryDecorationsExtension` | function | 178 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string ): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-field.ts`
 
@@ -669,8 +690,8 @@ The frame around every entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameHost` | interface | 50 | `export interface FrameHost` | — | — |
-| `entryFrameExtension` | function | 342 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
+| `FrameHost` | interface | 54 | `export interface FrameHost` | — | — |
+| `entryFrameExtension` | function | 346 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-keys.ts`
 
@@ -695,7 +716,7 @@ The rendered clock row.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `DurationWidgetInput` | interface | 36 | `export interface DurationWidgetInput` | — | `tests/stopwatch-widget.test.ts` |
+| `DurationWidgetInput` | interface | 41 | `export interface DurationWidgetInput` | — | `tests/stopwatch-widget.test.ts` |
 | `DurationWidget` | class | 56 | `export class DurationWidget extends WidgetType` | `editor/entry-decorations.ts` | `tests/entry-decorations.test.ts`<br>`tests/stopwatch-widget.test.ts` |
 
 #### `src/editor/view-registry.ts`
@@ -756,7 +777,7 @@ Weaver: a day note is a linear list of entries.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts` |
+| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts` |
 
 #### `src/notices.ts`
 
@@ -792,7 +813,7 @@ Reading view: the same entry the editor draws, in the same frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `createEntryProcessor` | function | 86 | `export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
+| `createEntryProcessor` | function | 77 | `export function createEntryProcessor(): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
 
 #### `src/settings-tab.ts`
 
@@ -808,35 +829,36 @@ Weaver settings model.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverSettings` | interface | 15 | `export interface WeaverSettings` | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | `tests/entry-decorations.test.ts` |
-| `WeaverData` | interface | 44 | `export interface WeaverData` | `main.ts` | — |
-| `DEFAULT_SETTINGS` | const | 50 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/append-entry.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/settings.test.ts` |
-| `isValidEntrySize` | function | 73 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
-| `normalizeSettings` | function | 131 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
-| `normalizeData` | function | 171 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
+| `WeaverSettings` | interface | 15 | `export interface WeaverSettings` | `editor/entry-frame.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | — |
+| `WeaverData` | interface | 48 | `export interface WeaverData` | `main.ts` | — |
+| `DEFAULT_SETTINGS` | const | 54 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/append-entry.test.ts`<br>`tests/day-note.test.ts`<br>`tests/settings.test.ts` |
+| `isValidEntrySize` | function | 76 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
+| `normalizeSettings` | function | 134 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
+| `normalizeData` | function | 173 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
 
 #### `src/ui/css.ts`
 
-The generated stylesheet: the six numbers a note is drawn with, and the two
+The generated stylesheet: the five numbers a note is drawn with, and the two
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `STYLE_ID` | const | 11 | `export const STYLE_ID = "weaver-style"` | — | — |
 | `buildCss` | function | 14 | `export function buildCss(settings: WeaverSettings): string` | — | — |
-| `applyCss` | function | 57 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
-| `removeCss` | function | 70 | `export function removeCss(): void` | `main.ts` | — |
+| `applyCss` | function | 55 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
+| `removeCss` | function | 68 | `export function removeCss(): void` | `main.ts` | — |
 
 #### `src/ui/dcn.ts`
 
-`D.C.N` as digits and punctuation: the digits stay white and the separators
+The digit-and-ink grammar: `D.C.N`, the clock row and the date label all split
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `NUM_CLASS` | const | 15 | `export const NUM_CLASS = "weaver-dcn-num"` | `editor/entry-decorations.ts` | — |
-| `INK_CLASS` | const | 17 | `export const INK_CLASS = "weaver-dcn-ink"` | `editor/entry-decorations.ts` | — |
-| `Slice` | interface | 20 | `export interface Slice` | — | — |
-| `markerSlices` | function | 30 | `export function markerSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
-| `appendDigitRuns` | function | 38 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/navigator.ts` | — |
+| `NUM_CLASS` | const | 16 | `export const NUM_CLASS = "weaver-dcn-num"` | `editor/entry-decorations.ts` | — |
+| `INK_CLASS` | const | 18 | `export const INK_CLASS = "weaver-dcn-ink"` | `editor/entry-decorations.ts` | — |
+| `Slice` | interface | 21 | `export interface Slice` | — | — |
+| `markerSlices` | function | 31 | `export function markerSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
+| `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/navigator.ts` | — |
+| `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
 
 #### `src/ui/navigator.ts`
 
