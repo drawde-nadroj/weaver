@@ -11,9 +11,12 @@
 
 const DIGITS = /^\d+$/;
 
+/** The class digits carry: the note's own text colour. */
 export const NUM_CLASS = "weaver-dcn-num";
+/** The class punctuation carries: the dimension's colour. */
 export const INK_CLASS = "weaver-dcn-ink";
 
+/** A piece of `D.C.N`: its text, and the class it carries. */
 export interface Slice {
   text: string;
   cls: string;
@@ -31,6 +34,7 @@ export function markerSlices(text: string): Slice[] {
     .map((part) => ({ text: part, cls: DIGITS.test(part) ? NUM_CLASS : INK_CLASS }));
 }
 
+/** Splits `D.C.N` into digit runs and separators inside `parent`. */
 export function appendDigitRuns(parent: HTMLElement, text: string): void {
   for (const slice of markerSlices(text)) {
     const span = document.createElement("span");

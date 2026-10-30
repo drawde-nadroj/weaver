@@ -21,12 +21,14 @@ import {
   type EntryIndex
 } from "./entries";
 
+/** One replacement in the document, in absolute offsets. */
 export interface TextChange {
   from: number;
   to: number;
   text: string;
 }
 
+/** Changes plus the selection to leave behind, applied in one transaction. */
 export interface InsertPlan {
   changes: TextChange[];
   selection: { from: number; to: number };

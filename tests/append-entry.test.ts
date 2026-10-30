@@ -5,7 +5,7 @@ import { editorInfoField, TFile, type MarkdownFileInfo } from "obsidian";
 
 import WeaverPlugin from "../src/main";
 import { parseEntries } from "../src/core/entries";
-import { dayNotePath } from "../src/core/day-note";
+import { dayNotePath } from "../src/core/day";
 import { entryIndexField } from "../src/editor/entry-field";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 import { DEFAULT_SETTINGS } from "../src/settings";

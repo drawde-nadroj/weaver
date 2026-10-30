@@ -1,3 +1,10 @@
+/**
+ * The live editor views, in one place.
+ *
+ * A settings change and a rewrite both need the view holding a file; scanning
+ * leaves for it would tie every caller to the workspace's shape.
+ */
+
 import { editorInfoField, type App, type TFile } from "obsidian";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 
@@ -9,10 +16,12 @@ export function registerEditorView(view: EditorView): void {
   views.add(view);
 }
 
+/** Drops a view CodeMirror has destroyed. */
 export function unregisterEditorView(view: EditorView): void {
   views.delete(view);
 }
 
+/** Keeps the registry in step with the views CodeMirror creates and drops. */
 export const viewRegistryExtension = ViewPlugin.fromClass(
   class {
     constructor(private readonly view: EditorView) {
@@ -25,6 +34,7 @@ export const viewRegistryExtension = ViewPlugin.fromClass(
   }
 );
 
+/** Every live view, for a change that must reach all of them. */
 export function registeredEditorViews(): readonly EditorView[] {
   return [...views];
 }

@@ -11,7 +11,7 @@ import { Notice, Plugin, TFile } from "obsidian";
 import { formatClock } from "./core/clock";
 import { parseClose, planCloseDay } from "./core/close";
 import { applyDayStats, recountDay } from "./core/day-stats";
-import { dayKey, resolveDayNote } from "./core/day-note";
+import { dayKey } from "./core/day";
 import { applyPlanToSource } from "./core/insert";
 import type { Stop } from "./core/navigator-stack";
 import { closeDecorationsExtension } from "./editor/close-decorations";
@@ -21,6 +21,7 @@ import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, refreshEntriesEffect } from "./editor/entry-field";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
 import { EntryEngine } from "./entries/engine";
+import { resolveDayNote } from "./entries/day-note";
 import { EntrySession } from "./entries/session";
 import { minimalChange, rewriteDay } from "./entries/writer";
 import {
@@ -49,6 +50,7 @@ const BODY_CLASSES = [
   "weaver-tablet"
 ];
 
+/** Wiring only: settings, editor extensions, commands, and the day-stats listener. */
 export default class WeaverPlugin extends Plugin {
   data: WeaverData = normalizeData(null);
   settings: WeaverSettings = this.data.settings;
@@ -139,7 +141,7 @@ export default class WeaverPlugin extends Plugin {
   syncBodyClasses(): void {
     const body = document.body.classList;
     body.toggle("weaver-no-emphasis", !this.settings.portEmphasisColors);
-    body.toggle("weaver-unequal", !this.settings.equalizeHeadingSizes);
+    body.toggle("weaver-unequal", !this.settings.equalizeEntrySizes);
     body.toggle("weaver-platform-mobile", isMobile());
     body.toggle("weaver-phone", isPhone());
     body.toggle("weaver-tablet", isTablet());

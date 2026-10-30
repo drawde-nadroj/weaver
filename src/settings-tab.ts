@@ -1,7 +1,14 @@
+/**
+ * The settings surface: four groups, every control applied live.
+ *
+ * The tab owns no rules of its own — it writes the settings model and calls
+ * `commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.
+ */
+
 import { PluginSettingTab, Setting, type App } from "obsidian";
 
 import type WeaverPlugin from "./main";
-import { DEFAULT_SETTINGS, isValidHeadingSize } from "./settings";
+import { DEFAULT_SETTINGS, isValidEntrySize } from "./settings";
 
 /** Levels beyond this stop indenting; the ceiling keeps the slider usable. */
 const INDENT_LIMIT = 24;
@@ -91,8 +98,8 @@ export class WeaverSettingTab extends PluginSettingTab {
       .setName("Equalize entry sizes")
       .setDesc("Render every entry at one size, whatever its depth.")
       .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.equalizeHeadingSizes).onChange((value) => {
-          this.plugin.settings.equalizeHeadingSizes = value;
+        toggle.setValue(this.plugin.settings.equalizeEntrySizes).onChange((value) => {
+          this.plugin.settings.equalizeEntrySizes = value;
           this.commit();
         });
       });
@@ -102,12 +109,12 @@ export class WeaverSettingTab extends PluginSettingTab {
       .setDesc("CSS length, for example 1em or 18px.")
       .addText((text) => {
         text
-          .setValue(this.plugin.settings.headingSize)
-          .setPlaceholder(DEFAULT_SETTINGS.headingSize)
+          .setValue(this.plugin.settings.entrySize)
+          .setPlaceholder(DEFAULT_SETTINGS.entrySize)
           .onChange((value) => {
             // Ignore intermediate or invalid input instead of writing bad CSS.
-            if (!isValidHeadingSize(value)) return;
-            this.plugin.settings.headingSize = value.trim();
+            if (!isValidEntrySize(value)) return;
+            this.plugin.settings.entrySize = value.trim();
             this.commit();
           });
       });
@@ -117,10 +124,10 @@ export class WeaverSettingTab extends PluginSettingTab {
       .addSlider((slider) => {
         slider
           .setLimits(300, 800, 50)
-          .setValue(this.plugin.settings.headingWeight)
+          .setValue(this.plugin.settings.entryWeight)
           .setDynamicTooltip()
           .onChange((value) => {
-            this.plugin.settings.headingWeight = Math.round(value);
+            this.plugin.settings.entryWeight = Math.round(value);
             this.commit();
           });
       });

@@ -5,13 +5,15 @@
  */
 
 import { ANCHORS } from "../core/color";
-import { isValidHeadingSize, type WeaverSettings } from "../settings";
+import { isValidEntrySize, type WeaverSettings } from "../settings";
 
+/** The id of the one `<style>` element the settings are injected into. */
 export const STYLE_ID = "weaver-style";
 
+/** The whole generated stylesheet for these settings. */
 export function buildCss(settings: WeaverSettings): string {
-  const size = isValidHeadingSize(settings.headingSize) ? settings.headingSize.trim() : "1em";
-  const weight = Math.round(settings.headingWeight);
+  const size = isValidEntrySize(settings.entrySize) ? settings.entrySize.trim() : "1em";
+  const weight = Math.round(settings.entryWeight);
   const indentMax = Math.max(1, Math.round(settings.indentMaxLevel));
 
   const variables = [
@@ -64,6 +66,7 @@ export function applyCss(settings: WeaverSettings): void {
   style.textContent = buildCss(settings);
 }
 
+/** Removes the injected stylesheet on unload. */
 export function removeCss(): void {
   document.getElementById(STYLE_ID)?.remove();
 }

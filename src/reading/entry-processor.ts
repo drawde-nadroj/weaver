@@ -17,7 +17,7 @@
 import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName } from "../core/day-note";
+import { dayKey, dayKeyFromName } from "../core/day";
 import { formatClock, parseDurationLine } from "../core/duration";
 import { parseMarkerPrefix } from "../core/entries";
 import type WeaverPlugin from "../main";
@@ -65,6 +65,7 @@ function durationElement(
   return root;
 }
 
+/** Builds the post processor that frames entries in Reading view. */
 export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor {
   return (element: HTMLElement, context: MarkdownPostProcessorContext): void => {
     const sourcePath = context.sourcePath ?? "";

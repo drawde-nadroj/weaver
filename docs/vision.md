@@ -52,12 +52,18 @@ appears in copy — depth reads `1D`…`nD`.
 | --- | --- | --- | --- |
 | Append | `⌘⇧E` — *Append an entry* | An empty root entry at the tip of today's note, with `- 00:00:00`. Works inside an editor too. | Evidence |
 | Write | The first keystroke in a draft | The session's clock; the file keeps `-`. | Session |
-| Submit | `⏎` in any draft | `-` becomes `=`, and a child opens one dimension deeper with the caret in its prose. | Evidence |
+| Settle | `⏎` on an open entry | `-` or `=` becomes `+`, once, and the clock stops. Nothing else moves. | Evidence |
+| Descend | `⏎` again, on a settled entry | A child opens one dimension deeper with the caret in its prose. | Evidence |
 | Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
 | Jump | `⏎` in the navigator | The caret, and the note on screen. Nothing is written. | Session |
 | Return | `⌘[` in the navigator | The caret, back to the last stop. Nothing is written. | Session |
-| Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `- `. | Evidence |
+| Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `= `. | Evidence |
 | Close | *Close the day* | One `✓` line, then the day's own stats. | Evidence |
+
+The two writes the table names — settle and pause — are `planDuration` with `+`
+and `=`, and nothing else can change a duration line.
+
+<!-- claim: src/core/insert.ts#planDuration @e2a4897524 -->
 
 ## Evidence versus session
 
@@ -124,11 +130,15 @@ navigation that replaces the outline.
   addressability by tying a link to a position or an opaque id. Brander, "Block
   reference mechanisms", 2022 —
   https://newsletter.squishy.computer/p/block-reference-mechanisms
-- **This project's own prior iteration.** `plane → thought → spark → census`, the
-  `MARK_GLYPH` table (`✦` spark, `↩` return, `✓` finish), and the cursor-free
-  "viewing writes nothing" rule are recorded in
-  `~/chronomancer-me/docs/design/ontology.md`. The 0.4.0 model keeps the evidence
-  rule and drops the derived surfaces that duplicate the note.
+- **This project's own prior iteration.** An earlier design separated evidence
+  (what was authored) from derived readings (what could be recounted), and held
+  that viewing a note writes nothing. Weaver keeps both rules and drops the
+  derived surfaces that would duplicate the note. The current form of the first
+  is `src/core/day-stats.ts#recountDay`: the day's numbers are recomputed from
+  the text, never incremented. The earlier document is external history, not a
+  contract, and nothing in this repository is checked against it.
+
+<!-- claim: src/core/day-stats.ts#recountDay @89a9e7f928 -->
 
 ## Naming rule for future docs
 

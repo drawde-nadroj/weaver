@@ -63,7 +63,7 @@ describe("the settings tab", () => {
     const { plugin } = await start();
 
     uiSetting("Equalize entry sizes")?.controls[0]?.change(false);
-    expect(plugin.settings.equalizeHeadingSizes).toBe(false);
+    expect(plugin.settings.equalizeEntrySizes).toBe(false);
     expect(document.body.classList.contains("weaver-unequal")).toBe(true);
 
     uiSetting("Link past days")?.controls[0]?.change(false);
@@ -74,13 +74,13 @@ describe("the settings tab", () => {
 
   it("ignores an entry size that is not a CSS length", async () => {
     const { plugin } = await start();
-    const before = plugin.settings.headingSize;
+    const before = plugin.settings.entrySize;
 
     uiSetting("Entry size")?.controls[0]?.change("enormous");
-    expect(plugin.settings.headingSize).toBe(before);
+    expect(plugin.settings.entrySize).toBe(before);
 
     uiSetting("Entry size")?.controls[0]?.change("18px");
-    expect(plugin.settings.headingSize).toBe("18px");
+    expect(plugin.settings.entrySize).toBe("18px");
 
     plugin.onunload();
   });

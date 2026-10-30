@@ -36,6 +36,7 @@ import { registeredEditorViews } from "./view-registry";
  */
 export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const;
 
+/** What a key handler may ask for: the session and the five entry edits. */
 export interface EntryKeyHost {
   session: EntrySession;
   entries: {
@@ -47,6 +48,7 @@ export interface EntryKeyHost {
   };
 }
 
+/** The same host plus `afterEdit`, for the listeners that start and pause a clock. */
 export interface EntryEditHost extends EntryKeyHost {
   entries: EntryKeyHost["entries"] & {
     afterEdit(view: EditorView, typed: boolean): void;
@@ -137,6 +139,7 @@ export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone =
   return true;
 }
 
+/** Binds `Mod-Shift-E` and `Enter` at the highest precedence. */
 export function entryKeysExtension(host: EntryKeyHost): Extension {
   // Highest, not high: Obsidian's editor keymap is registered at `high`, and a
   // chord it owns there would take precedence over ours inside the editor.
@@ -148,6 +151,7 @@ export function entryKeysExtension(host: EntryKeyHost): Extension {
   );
 }
 
+/** Turns edits and interruptions into session starts and pauses. */
 export function entryEditExtension(host: EntryEditHost): Extension {
   /**
    * Pausing writes a duration through this same editor, and a dispatch may not

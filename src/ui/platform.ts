@@ -1,3 +1,10 @@
+/**
+ * Which platform this is, as one answer.
+ *
+ * Every surface asks here rather than reading Obsidian's flags itself, so a phone
+ * is a phone in the CSS, in the keys and in the pinning alike.
+ */
+
 import { Platform } from "obsidian";
 
 /**
@@ -10,12 +17,14 @@ export function isPhone(): boolean {
   return document.body.classList.contains("is-phone");
 }
 
+/** True on a phone or a tablet, from Obsidian's own flags. */
 export function isMobile(): boolean {
   const platform = Platform as unknown as { isMobile?: boolean };
   if (typeof platform.isMobile === "boolean") return platform.isMobile;
   return document.body.classList.contains("is-mobile");
 }
 
+/** True on a tablet, which is neither a phone nor a desktop window. */
 export function isTablet(): boolean {
   const platform = Platform as unknown as { isTablet?: boolean };
   if (typeof platform.isTablet === "boolean") return platform.isTablet;

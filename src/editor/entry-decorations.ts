@@ -32,7 +32,7 @@ import {
 } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName } from "../core/day-note";
+import { dayKey, dayKeyFromName } from "../core/day";
 import type { DurationSigil } from "../core/duration";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
@@ -231,6 +231,7 @@ export function entryDecorationSet(
   return Decoration.set(ranges, true);
 }
 
+/** Publishes the entry decorations as one state field. */
 export function entryDecorationsExtension(
   getSettings: () => WeaverSettings,
   getSession: () => EntrySession,

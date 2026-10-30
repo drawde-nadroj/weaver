@@ -22,6 +22,7 @@ export interface FrameColumn {
   right: number;
 }
 
+/** What a box needs: the column, the text's left edge, and the label inset. */
 export interface FrameBoxInput {
   /** pane-left … column-right, in scroller coordinates. */
   column: FrameColumn;
@@ -30,6 +31,7 @@ export interface FrameBoxInput {
   gutter: number;
 }
 
+/** The rectangle to draw, or `drawn: false` when there is nothing to enclose. */
 export interface FrameBox {
   left: number;
   width: number;
@@ -49,6 +51,7 @@ export function frameBox(input: FrameBoxInput): FrameBox {
   return { left, width, drawn: input.textLeft !== null };
 }
 
+/** The three rails: this entry's two, and where the next entry's top one sits. */
 export interface FrameSpanInput {
   /** The top rail: the centre of the entry's marker row. */
   firstRail: number;
@@ -60,6 +63,7 @@ export interface FrameSpanInput {
   air: number;
 }
 
+/** The vertical extent to draw, or `drawn: false` when the rails leave no interior. */
 export interface FrameSpan {
   top: number;
   bottom: number;

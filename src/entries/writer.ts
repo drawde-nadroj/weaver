@@ -24,6 +24,7 @@ import {
 import { programmaticWrite } from "../editor/entry-field";
 import { findEditorViewForFile } from "../editor/view-registry";
 
+/** One write: its changes, the resulting text, and where the caret belongs. */
 export interface RewriteResult {
   changes: TextChange[];
   source: string;

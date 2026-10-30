@@ -26,10 +26,12 @@ const SPIRAL_HUE = 300;
 const SPIRAL_STEP = 40;
 const SPIRAL_TURN = 9;
 
+/** One sRGB channel to linear light, the first step into OKLab. */
 export function srgbToLinear(channel: number): number {
   return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 }
 
+/** The inverse: linear light back to an sRGB channel. */
 export function linearToSrgb(channel: number): number {
   return channel <= 0.0031308 ? channel * 12.92 : 1.055 * Math.pow(channel, 1 / 2.4) - 0.055;
 }

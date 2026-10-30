@@ -4,6 +4,12 @@
  * This module is deliberately free of any `obsidian` import so the
  * normalization rules can be unit-tested in plain Node. The settings tab lives
  * in `settings-tab.ts`.
+ *
+ * A field's name is the product's word for the thing: `entrySize`, never
+ * `headingSize`. `heading` is Markdown syntax here, and a setting that draws an
+ * entry is not about syntax. The v2 spellings survive in exactly one place —
+ * `LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,
+ * and renaming a field must not silently reset it.
  */
 
 export interface WeaverSettings {
@@ -18,9 +24,9 @@ export interface WeaverSettings {
   dayNoteFormat: string;
 
   // Look
-  equalizeHeadingSizes: boolean;
-  headingSize: string;
-  headingWeight: number;
+  equalizeEntrySizes: boolean;
+  entrySize: string;
+  entryWeight: number;
   indentStep: number;
   mobileIndentStep: number;
   indentMaxLevel: number;
@@ -29,25 +35,27 @@ export interface WeaverSettings {
   entryFrames: boolean;
 
   // Advanced
-  /** Render ` - [[2026.10.26]]` after the clock on any day but today. */
+  /** Render ` - [[2026.10.26]]` after the clock on any day but today's. */
   entryDayLink: boolean;
   debug: boolean;
 }
 
+/** What is on disk: a version and one settings object. */
 export interface WeaverData {
-  version: 2;
+  version: 3;
   settings: WeaverSettings;
 }
 
+/** Every field's value before a vault says otherwise. */
 export const DEFAULT_SETTINGS: WeaverSettings = {
   writeDayCounters: true,
 
   dayNoteFolder: "Chronomancer",
   dayNoteFormat: "YYYY.MM.DD",
 
-  equalizeHeadingSizes: true,
-  headingSize: "1em",
-  headingWeight: 600,
+  equalizeEntrySizes: true,
+  entrySize: "1em",
+  entryWeight: 600,
   indentStep: 18,
   mobileIndentStep: 12,
   indentMaxLevel: 8,
@@ -59,11 +67,38 @@ export const DEFAULT_SETTINGS: WeaverSettings = {
   debug: false
 };
 
-const HEADING_SIZE_PATTERN = /^\d+(\.\d+)?(em|rem|px)$/;
+const ENTRY_SIZE_PATTERN = /^\d+(\.\d+)?(em|rem|px)$/;
 
 /** True for a CSS length Weaver will accept as an entry size. */
-export function isValidHeadingSize(value: string): boolean {
-  return HEADING_SIZE_PATTERN.test(value.trim());
+export function isValidEntrySize(value: string): boolean {
+  return ENTRY_SIZE_PATTERN.test(value.trim());
+}
+
+/**
+ * The v2 field names, and the only place they are read.
+ *
+ * "Heading" was the old word for the unit; the entry model renamed it, so the
+ * three Look fields were renamed with it. Dropping the old keys instead of
+ * mapping them would reset a writer's size and weight on upgrade, which is a
+ * silent data loss — hence the mapping, and hence it lives here rather than in a
+ * second settings model.
+ */
+const LEGACY_SETTING_KEYS: Readonly<Record<string, string>> = {
+  equalizeHeadingSizes: "equalizeEntrySizes",
+  headingSize: "entrySize",
+  headingWeight: "entryWeight"
+};
+
+/** Copies a payload's values onto their current names; current names win. */
+function withCurrentKeys(raw: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+
+  for (const [legacy, current] of Object.entries(LEGACY_SETTING_KEYS)) {
+    if (!(current in next) && legacy in next) next[current] = next[legacy];
+    delete next[legacy];
+  }
+
+  return next;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -90,36 +125,39 @@ function text(value: unknown, fallback: string): string {
 
 /**
  * Normalizes any persisted payload into a complete, clamped settings object.
- * Unknown fields are dropped; invalid values fall back to the defaults.
+ * Unknown fields are dropped; invalid values fall back to the defaults; a v2
+ * field name keeps its value under the v3 name.
  */
 export function normalizeSettings(data: unknown): WeaverSettings {
   if (!isPlainObject(data)) return { ...DEFAULT_SETTINGS };
 
-  const rawHeadingSize = text(data.headingSize, DEFAULT_SETTINGS.headingSize);
+  const raw = withCurrentKeys(data);
+  const rawEntrySize = text(raw.entrySize, DEFAULT_SETTINGS.entrySize);
 
   return {
-    writeDayCounters: bool(data.writeDayCounters, DEFAULT_SETTINGS.writeDayCounters),
+    writeDayCounters: bool(raw.writeDayCounters, DEFAULT_SETTINGS.writeDayCounters),
 
-    dayNoteFolder: text(data.dayNoteFolder, DEFAULT_SETTINGS.dayNoteFolder),
-    dayNoteFormat: text(data.dayNoteFormat, DEFAULT_SETTINGS.dayNoteFormat),
+    dayNoteFolder: text(raw.dayNoteFolder, DEFAULT_SETTINGS.dayNoteFolder),
+    dayNoteFormat: text(raw.dayNoteFormat, DEFAULT_SETTINGS.dayNoteFormat),
 
-    equalizeHeadingSizes: bool(data.equalizeHeadingSizes, DEFAULT_SETTINGS.equalizeHeadingSizes),
-    headingSize: isValidHeadingSize(rawHeadingSize)
-      ? rawHeadingSize.trim()
-      : DEFAULT_SETTINGS.headingSize,
-    headingWeight: integer(data.headingWeight, DEFAULT_SETTINGS.headingWeight, 300, 800),
-    indentStep: integer(data.indentStep, DEFAULT_SETTINGS.indentStep, 0, 48),
-    mobileIndentStep: integer(data.mobileIndentStep, DEFAULT_SETTINGS.mobileIndentStep, 0, 32),
-    indentMaxLevel: integer(data.indentMaxLevel, DEFAULT_SETTINGS.indentMaxLevel, 1, 24),
-    portEmphasisColors: bool(data.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
-    entryFrames: bool(data.entryFrames, DEFAULT_SETTINGS.entryFrames),
+    equalizeEntrySizes: bool(raw.equalizeEntrySizes, DEFAULT_SETTINGS.equalizeEntrySizes),
+    entrySize: isValidEntrySize(rawEntrySize) ? rawEntrySize.trim() : DEFAULT_SETTINGS.entrySize,
+    entryWeight: integer(raw.entryWeight, DEFAULT_SETTINGS.entryWeight, 300, 800),
+    indentStep: integer(raw.indentStep, DEFAULT_SETTINGS.indentStep, 0, 48),
+    mobileIndentStep: integer(raw.mobileIndentStep, DEFAULT_SETTINGS.mobileIndentStep, 0, 32),
+    indentMaxLevel: integer(raw.indentMaxLevel, DEFAULT_SETTINGS.indentMaxLevel, 1, 24),
+    portEmphasisColors: bool(raw.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
+    entryFrames: bool(raw.entryFrames, DEFAULT_SETTINGS.entryFrames),
 
-    entryDayLink: bool(data.entryDayLink, DEFAULT_SETTINGS.entryDayLink),
-    debug: bool(data.debug, DEFAULT_SETTINGS.debug)
+    entryDayLink: bool(raw.entryDayLink, DEFAULT_SETTINGS.entryDayLink),
+    debug: bool(raw.debug, DEFAULT_SETTINGS.debug)
   };
 }
 
-const SETTING_KEYS = new Set(Object.keys(DEFAULT_SETTINGS));
+const SETTING_KEYS = new Set([
+  ...Object.keys(DEFAULT_SETTINGS),
+  ...Object.keys(LEGACY_SETTING_KEYS)
+]);
 
 function looksLikeBareSettings(value: Record<string, unknown>): boolean {
   return Object.keys(value).some((key) => SETTING_KEYS.has(key));
@@ -127,20 +165,21 @@ function looksLikeBareSettings(value: Record<string, unknown>): boolean {
 
 /**
  * Normalizes persisted plugin data. A bare settings object written by an earlier
- * build is wrapped instead of being discarded.
+ * build is wrapped instead of being discarded, and every payload is reported as
+ * the current version — the migration is the normalization.
  */
 export function normalizeData(data: unknown): WeaverData {
   if (!isPlainObject(data)) {
-    return { version: 2, settings: { ...DEFAULT_SETTINGS } };
+    return { version: 3, settings: { ...DEFAULT_SETTINGS } };
   }
 
   if (isPlainObject(data.settings)) {
-    return { version: 2, settings: normalizeSettings(data.settings) };
+    return { version: 3, settings: normalizeSettings(data.settings) };
   }
 
   if (looksLikeBareSettings(data)) {
-    return { version: 2, settings: normalizeSettings(data) };
+    return { version: 3, settings: normalizeSettings(data) };
   }
 
-  return { version: 2, settings: { ...DEFAULT_SETTINGS } };
+  return { version: 3, settings: { ...DEFAULT_SETTINGS } };
 }

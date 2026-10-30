@@ -38,6 +38,7 @@ type Item =
   | { kind: "stop"; stop: Stop; entry: Entry | null }
   | { kind: "entry"; entry: Entry };
 
+/** The card: today's entries, the return stack, and the three gestures. */
 export class Navigator {
   private readonly root: HTMLElement;
   private readonly card: HTMLElement;

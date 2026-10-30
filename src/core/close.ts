@@ -11,8 +11,10 @@ import { scanFences, scanFrontmatter } from "./document";
 import { parseEntries } from "./entries";
 import { planAppendLine, type InsertPlan } from "./insert";
 
+/** The one shape a close mark has: `✓ HH:MM:SS`, on its own line. */
 export const CLOSE_MARK = /^✓\s+(\d{1,2}:\d{2}(?::\d{2})?)\s*$/;
 
+/** What a note says about being closed: the last mark's clock and the line it sits on. */
 export interface CloseScan {
   /** The last close mark's clock, or null when the day is open. */
   closedAt: string | null;

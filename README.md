@@ -27,31 +27,16 @@ note goes through one writer.
 
 ## Status
 
-`0.5.0` — three sigils, one navigator, a clock in seconds, and a frame around every
-entry. The suite covers 192 tests: parsing, plans, decorations, keys, the navigator
-and its return stack, the one writer, both post processors, the day stats, the
-stopwatch widget, the frame box, and both migration passes. The
-duration algebra is a Bend module, `src/core/duration.bend`, compiled to
-`src/core/bend/duration.mjs`; `LAWS.bend` states its seven laws and
-`bend PROOF.bend` proves them.
+The version is `manifest.json`'s. The sigils are `DurationSigil`'s — open, paused
+and settled — with one navigator, a clock in seconds, and a frame around every
+entry. The suite's size is whatever `npm test` prints; what it covers, and what it
+cannot, is the gate table in `SYSTEM-DESIGN.md`. The duration algebra is a Bend
+module, `src/core/duration.bend`, compiled to `src/core/bend/duration.mjs`;
+`LAWS.bend` states its laws and `bend PROOF.bend` proves them.
 
-The live surface was exercised against Obsidian 1.15 on 2026-10-28 through the
-renderer, on this vault's real notes (which have Vim mode on): `⌘⇧E` writes the
-entry and leaves the caret on its blank prose line with no clock running; a
-keystroke starts the clock while the file keeps `- 00:00:00`; moving the caret out,
-a wheel, and an arrow key inside the entry each write `=` at the current second;
-`⏎` settles that line to `+` with no child and the caret still; `⏎` again opens a
-child under it and pushes the place it left; `⌘⇧P` lists today's entries with the
-caret's entry selected, and its keys behave as documented; five insertions at the
-caret leave the duration line's top identical to the pixel, and two newlines move it
-exactly two line heights.
-
-The navigator, the one writer and the rebuilt frame are newer than that pass: their
-geometry, their plans and their keys are unit-tested (`tests/frame.test.ts`,
-`tests/navigator.test.ts`, `tests/writer.test.ts`), and the frame's rendering was
-checked against a standalone mock of the editor's measurement and of the Reading
-view's wrapper, but they have not yet had their live pass. Their checks are at the
-end of *Manual checks*.
+The frame, the navigator and the writer have no automated layout check: their
+behaviour is unit-tested and their geometry is not, because no test can see a
+pixel. The manual checks they need are at the end of this file.
 
 ## The loop
 
@@ -204,6 +189,27 @@ npm run deploy
 
 Then reload Obsidian and enable **Weaver** under **Settings → Community plugins**.
 
+## Working on the code
+
+`SYSTEM-DESIGN.md` is the map: every mechanism in it names the code that
+implements it, and its second half is generated from the tree. Agents and people
+read it before changing a surface; it is not optional context.
+
+```sh
+npm run typecheck      # strict tsc --noEmit
+npm test               # Vitest, in Node, against the in-repo Obsidian stub
+npm run design         # rebuild docs/design/index.json and the generated half
+npm run docs:check     # addresses, claim hashes, doc comments, DOM names, settings, commands, one writer
+npm run docs:falsify   # break the tree on purpose and require docs:check to go red
+npm run check          # typecheck, tests, Bend proof, docs gate, production build
+```
+
+A sentence in the documents carries `<!-- claim: src/<file>.ts#<symbol> @hash -->` when
+it describes a specific declaration. Changing that declaration turns the gate red
+until someone re-reads the sentence; `npm run docs:claims -- --write` re-stamps it
+afterwards. A backticked identifier in a document must exist in `src/`, so a name
+cannot survive the code that gave it meaning.
+
 ## The duration algebra
 
 One format, both directions: `HH:MM:SS` out of seconds, and seconds back out of
@@ -220,9 +226,9 @@ module is committed, so `npm test` needs no Bend install.
 npm run bend:proof     # bend PROOF.bend, then bend PROOF.bend --verdict
 ```
 
-`bend` is at `$HOME/.bend/bin/bend`; `--verdict` needs Lean (`elan`, toolchain
-`leanprover/lean4:v4.34.0`, on `PATH` as `$HOME/.elan/bin`). `npm run check` runs
-the typecheck, the suite, the proof gate and the build, in that order. The gate
+`bend` is at `$HOME/.bend/bin/bend`; `--verdict` needs Lean (elan, toolchain
+`leanprover/lean4:v4.34.0`, on PATH as `$HOME/.elan/bin`). `npm run check` runs the typecheck, the suite, the proof gate, the
+documentation gate and the build, in that order. The gate
 fails loudly rather than skipping: a law left open prints `SOME PROOFS FAIL`.
 
 Nothing else is in Bend, and that is a rule rather than a preference: a part
@@ -363,7 +369,9 @@ npm run deploy    # copy main.js, manifest.json, styles.css into the vault
 npm run check     # typecheck + tests + proof gate + production build
 ```
 
-`src/core` is pure and has no `obsidian` import; the editor and UI layers sit on
-top of it. `src/entries/writer.ts` is the only writer of a day note — the open
-editor or the vault, never both — and `src/entries/engine.ts` is the only caller
-that decides what to write.
+`src/core` is pure and has no `obsidian` import; the editor, reading and entries
+layers sit on top of it. `src/entries/writer.ts` is the one writer to disk — the
+open editor when there is one, the vault otherwise, never both — and
+`src/entries/engine.ts` is the only place an entry is changed through the editor.
+Every change to entry text is a plan from `src/core/insert.ts`. `SYSTEM-DESIGN.md`
+is the map: what each module is for, and which sentence is checked by which gate.

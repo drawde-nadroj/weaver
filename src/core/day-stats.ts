@@ -10,6 +10,7 @@ import { scanFrontmatter } from "./document";
 import { formatClock } from "./duration";
 import { parseEntries, type EntryIndex } from "./entries";
 
+/** The three readings the frontmatter carries, plus the close they were counted with. */
 export interface DayStats {
   travels: number;
   depth: number;

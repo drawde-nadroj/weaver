@@ -4,10 +4,9 @@ import {
   dayFrontmatter,
   dayKey,
   dayKeyFromName,
-  dayNotePath,
-  ensureDayNote,
-  resolveDayNote
-} from "../src/core/day-note";
+  dayNotePath
+} from "../src/core/day";
+import { ensureDayNote, resolveDayNote } from "../src/entries/day-note";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { createApp, createFile, fileContent } from "../test-support/harness";
 

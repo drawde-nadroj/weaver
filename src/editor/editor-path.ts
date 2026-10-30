@@ -3,6 +3,7 @@
 import { editorInfoField } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 
+/** The note a live editor is showing, read from the editor's own state. */
 export function editorPathOf(view: EditorView): string | null {
   const info = view.state.field(editorInfoField, false);
   return info?.file?.path ?? null;

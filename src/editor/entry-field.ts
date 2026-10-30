@@ -21,6 +21,7 @@ export const refreshEntriesEffect = StateEffect.define<void>();
  */
 export const programmaticWrite = Annotation.define<boolean>();
 
+/** The shared parse: one per document change, read by every surface. */
 export const entryIndexField = StateField.define<EntryIndex>({
   create: (state) => parseEntries(state.doc.toString()),
   update: (value, transaction) => {
@@ -32,6 +33,7 @@ export const entryIndexField = StateField.define<EntryIndex>({
   }
 });
 
+/** Registers the field every other editor extension reads. */
 export function entryIndexExtension(): Extension {
   return entryIndexField;
 }

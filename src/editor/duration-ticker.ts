@@ -11,8 +11,10 @@
 
 import { formatClock } from "../core/duration";
 
+/** A second: the smallest unit a clock shows, and the only tick rate. */
 export const TICK_MS = 1000;
 
+/** The one interval an element may hold, keyed by the element itself. */
 export interface Ticker {
   timer: number;
   shown: number;
@@ -31,6 +33,7 @@ export function writeDigits(digits: readonly HTMLElement[], ms: number): void {
     });
 }
 
+/** Stops the interval attached to this element, if there is one. */
 export function stopTicking(dom: HTMLElement | null): void {
   if (dom === null) return;
   const ticker = tickers.get(dom);
@@ -38,6 +41,7 @@ export function stopTicking(dom: HTMLElement | null): void {
   tickers.delete(dom);
 }
 
+/** Starts the one interval this element may have, from its current second. */
 export function startTicking(dom: HTMLElement, digits: HTMLElement[], ms: number): void {
   stopTicking(dom);
 

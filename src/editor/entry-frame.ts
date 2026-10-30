@@ -46,6 +46,7 @@ const NO_DURATION_PAD = 8;
 /** Air above a marker row when that row also carries prose (the legacy title case). */
 const INLINE_TITLE_PAD = 12;
 
+/** What the layer may ask the plugin: settings, the session, and a fallback path. */
 export interface FrameHost {
   settings(): WeaverSettings;
   session(): EntrySession;
@@ -337,6 +338,7 @@ class EntryFrames {
   }
 }
 
+/** Draws one box per entry in a layer inside the scroller. */
 export function entryFrameExtension(host: FrameHost): Extension {
   return ViewPlugin.fromClass(
     class extends EntryFrames {

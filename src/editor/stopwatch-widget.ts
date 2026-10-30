@@ -28,6 +28,7 @@ import { WidgetType } from "@codemirror/view";
 import { formatClock, type DurationSigil } from "../core/duration";
 import { startTicking, stopTicking, writeDigits } from "./duration-ticker";
 
+/** Everything the widget renders from; none of it changes while the clock ticks. */
 export interface DurationWidgetInput {
   /** The entry this row's clock belongs to: the frame layer's row stamp. */
   n: number;
@@ -39,6 +40,7 @@ export interface DurationWidgetInput {
   d: number;
 }
 
+/** The duration row as a widget: digits that tick without a transaction. */
 export class DurationWidget extends WidgetType {
   /** The element this instance built or adopted, so `destroy` can stop its ticker. */
   private root: HTMLElement | null = null;

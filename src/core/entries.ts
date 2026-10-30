@@ -20,6 +20,7 @@ import { lineStartsOf, scanFences, scanFrontmatter, type CodeFence } from "./doc
 import { parseDurationLine } from "./duration";
 import type { TextChange } from "./insert";
 
+/** One entry: its marker, prose, duration, and the offsets every surface reads. */
 export interface Entry {
   /** Zero-based index of the marker line. */
   line: number;
@@ -56,6 +57,7 @@ export interface Entry {
   blockEnd: number;
 }
 
+/** One parse of a note: its entries, maxima, and the line facts they were found in. */
 export interface EntryIndex {
   entries: Entry[];
   maxD: number;
@@ -135,6 +137,7 @@ interface MarkerHit {
   inline: boolean;
 }
 
+/** Parses a note into entries, ignoring frontmatter and fenced code. */
 export function parseEntries(source: string): EntryIndex {
   const lines = source.split("\n");
   const lineStarts = lineStartsOf(source);
@@ -295,6 +298,7 @@ function lineOfOffset(index: EntryIndex, offset: number): number {
   return found;
 }
 
+/** The entry whose block contains this zero-based line, or null. */
 export function findEntryAtLine(index: EntryIndex, line: number): Entry | null {
   for (const entry of index.entries) {
     if (entry.line === line) return entry;
@@ -321,6 +325,7 @@ export function findCurrentEntry(index: EntryIndex, line: number): Entry | null 
   return best;
 }
 
+/** The entry carrying this `N`, or null when a write removed it. */
 export function entryBySeq(index: EntryIndex, n: number): Entry | null {
   for (const entry of index.entries) {
     if (entry.n === n) return entry;

@@ -16,7 +16,6 @@ import { MarkdownView, Notice, TFile, type App } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { Transaction, type StateEffect } from "@codemirror/state";
 
-import { ensureDayNote, resolveDayNote } from "../core/day-note";
 import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
@@ -45,9 +44,11 @@ import {
   noticeCloseFrontmatter
 } from "../notices";
 import type WeaverPlugin from "../main";
+import { ensureDayNote, resolveDayNote } from "./day-note";
 import { EntrySession } from "./session";
 import { planRewrite, rewriteDay } from "./writer";
 
+/** The only writer of entry text: every surface changes an entry through one of its methods. */
 export class EntryEngine {
   constructor(private readonly plugin: WeaverPlugin) {}
 

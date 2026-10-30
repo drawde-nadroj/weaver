@@ -45,22 +45,39 @@ describe("normalizeSettings", () => {
   });
 
   it("clamps and rejects values it cannot use", () => {
-    expect(normalizeSettings({ headingSize: "1em" }).headingSize).toBe("1em");
-    expect(normalizeSettings({ headingSize: "huge" }).headingSize).toBe(DEFAULT_SETTINGS.headingSize);
+    expect(normalizeSettings({ entrySize: "1em" }).entrySize).toBe("1em");
+    expect(normalizeSettings({ entrySize: "huge" }).entrySize).toBe(DEFAULT_SETTINGS.entrySize);
     expect(normalizeSettings({ indentStep: 900 }).indentStep).toBe(48);
     expect(normalizeSettings({ indintStep: 4 }).indentStep).toBe(DEFAULT_SETTINGS.indentStep);
-    expect(normalizeSettings({ headingWeight: 12 }).headingWeight).toBe(300);
+    expect(normalizeSettings({ entryWeight: 12 }).entryWeight).toBe(300);
     expect(normalizeSettings({ indentMaxLevel: 400 }).indentMaxLevel).toBe(24);
   });
 });
 
 describe("normalizeData", () => {
-  it("wraps a bare settings object written by an earlier build", () => {
+  it("wraps a bare v2 settings object and keeps its values under the current names", () => {
     const data = normalizeData({ headingWeight: 700, debug: true });
 
-    expect(data.version).toBe(2);
-    expect(data.settings.headingWeight).toBe(700);
+    expect(data.version).toBe(3);
+    expect(data.settings.entryWeight).toBe(700);
     expect(data.settings.debug).toBe(true);
+  });
+
+  it("carries every renamed v2 field across without losing it", () => {
+    const data = normalizeData({
+      version: 2,
+      settings: {
+        equalizeHeadingSizes: false,
+        headingSize: "18px",
+        headingWeight: 400
+      }
+    });
+
+    expect(data.settings.equalizeEntrySizes).toBe(false);
+    expect(data.settings.entrySize).toBe("18px");
+    expect(data.settings.entryWeight).toBe(400);
+    expect("headingSize" in data.settings).toBe(false);
+    expect("headingWeight" in data.settings).toBe(false);
   });
 
   it("keeps the settings and drops the two fields the model lost", () => {
@@ -71,7 +88,7 @@ describe("normalizeData", () => {
       shuttle: [{ kind: "note", path: "a.md", label: "a" }]
     });
 
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.settings.writeDayCounters).toBe(false);
     expect("lastVaultMaxLevel" in data).toBe(false);
     expect("shuttle" in data).toBe(false);

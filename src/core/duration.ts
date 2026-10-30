@@ -18,6 +18,7 @@
 
 import duration from "./bend/duration.mjs";
 
+/** The three sigils: `-` open and being written, `=` open and paused, `+` settled. */
 export type DurationSigil = "+" | "-" | "=";
 
 /** Milliseconds as `HH:MM:SS`; hours are unbounded. */

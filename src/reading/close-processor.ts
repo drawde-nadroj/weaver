@@ -1,3 +1,10 @@
+/**
+ * Reading view: the close mark, muted and labelled.
+ *
+ * A `✓` line is a decision, not an entry, so it is styled in place and never
+ * wrapped in a frame.
+ */
+
 import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidian";
 
 import { CLOSE_MARK } from "../core/close";

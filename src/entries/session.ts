@@ -15,6 +15,7 @@ export interface ActiveEntry {
   resumedAt: number;
 }
 
+/** At most one live stopwatch; every field here is device-local. */
 export class EntrySession {
   private current: ActiveEntry | null = null;
 

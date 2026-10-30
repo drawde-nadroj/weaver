@@ -38,6 +38,7 @@ function excludedLines(state: EditorState): Set<number> {
   return excluded;
 }
 
+/** The band for every `✓` line in this state, outside the caret. */
 export function closeDecorations(state: EditorState): DecorationSet {
   // Source mode is never decorated: the raw marks are the point of it.
   if (state.field(editorLivePreviewField, false) !== true) return Decoration.none;
@@ -62,6 +63,7 @@ export function closeDecorations(state: EditorState): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
+/** Bands every `✓` line outside the caret, in Live Preview only. */
 export function closeDecorationsExtension(): Extension {
   const field = StateField.define<DecorationSet>({
     create: (state) => closeDecorations(state),

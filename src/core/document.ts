@@ -38,6 +38,7 @@ export function lineStartsOf(source: string): number[] {
   return starts;
 }
 
+/** Where the frontmatter is: none, closed at `end`, or unclosed. */
 export interface FrontmatterScan {
   kind: "none" | "closed" | "unclosed";
   end: number;

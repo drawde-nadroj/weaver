@@ -187,8 +187,9 @@ card, with the return stack inside it.
   document: the card never caches a line number across a write.
 - The list is today's note, the same target *Append an entry* writes to. Reaching
   another day means opening that note.
-- The stack lives in `src/core/navigator-stack.ts`: eight stops, no duplicate top
-  (the same entry and the same caret), and a pop that hands the stop back.
+- The stack lives in `src/core/navigator-stack.ts`: `STACK_LIMIT` bounds it, and it
+  refuses a duplicate top — the same entry and the same caret — so `⌘[` cannot
+  appear broken. A pop hands the stop back.
 
 ### The close mark
 
@@ -197,12 +198,13 @@ card, with the return stack inside it.
 
 ## Settings
 
-Thirteen settings in four groups. **Writing** is the note's own convention, **Day**
-is where the day note lives, **Look** is how the note is drawn (including whether
-it is framed at all), **Advanced** is the past-day link and logging. There is no
-navigator mode, no depth cap and no per-level size field: colour is a function of
-`D` alone, and the navigator always opens on today's note with the caret's entry
-selected.
+The groups are **Writing** (the note's own convention), **Day** (where the day note
+lives), **Look** (how the note is drawn, including whether it is framed at all) and
+**Advanced** (the past-day link and logging). The fields, their defaults and every
+reader are the generated settings table in `SYSTEM-DESIGN.md`; this page does not
+restate them. There is no navigator mode, no depth cap and no per-level size field:
+colour is a function of `D` alone, and the navigator always opens on today's note
+with the caret's entry selected.
 
 ## Mobile matrix
 

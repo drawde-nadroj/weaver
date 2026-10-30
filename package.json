@@ -11,13 +11,17 @@
     "test": "vitest run",
     "bend:build": "$HOME/.bend/bin/bend src/core/duration.bend -o src/core/bend/duration.mjs",
     "bend:proof": "$HOME/.bend/bin/bend PROOF.bend && PATH=\"$HOME/.elan/bin:$PATH\" $HOME/.bend/bin/bend PROOF.bend --verdict",
-    "check": "npm run typecheck && npm test && npm run bend:proof && npm run build",
+    "design": "node scripts/design-index.mjs && node scripts/design-md.mjs",
+    "docs:check": "node scripts/docs-check.mjs",
+    "docs:claims": "node scripts/docs-claims.mjs",
+    "docs:falsify": "node scripts/docs-falsify.mjs",
+    "check": "npm run typecheck && npm test && npm run bend:proof && npm run docs:check && npm run build",
     "deploy": "node scripts/deploy.mjs"
   },
   "keywords": [
     "obsidian",
     "markdown",
-    "headings",
+    "entries",
     "timestamps"
   ],
   "license": "MIT",
