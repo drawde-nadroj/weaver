@@ -29,13 +29,14 @@ never to write prose.
 
 | Term | Means | Is not |
 | --- | --- | --- |
-| **Entry** | One unit of a day note: a marker line, its prose, and at most one duration line. | A Markdown heading, a block, a file. |
-| **Marker** | `{ D.C.N } - HH:MM:SS`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
+| **Entry** | One unit of a day note: a marker line, its prose, and at most one clock row. | A Markdown heading, a block, a file. |
+| **Marker** | `{ D.C.N }`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
 | **D** | The dimension: how deep the thought sits inside its thread. `1` is the top of a day. | A rank, a score, an order. |
 | **C** | The thread: a depth-1 entry's position among depth-1 entries, carried unchanged all the way down its branch. Repaired only when a root is deleted. | Identity. It moves. |
 | **N** | The day sequence: assigned once, only ever appended. | A sort key you can rewrite. |
-| **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its marker. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
-| **Open** | An entry whose duration line reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
+| **Clock row** | The entry's last line: the moment `HH:MM:SS` it was written, then its duration `[+-=] HH:MM:SS`. Either half may be absent. | Prose, a heading, a timestamp in frontmatter. |
+| **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its moment. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
+| **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Settle** | `⏎` on an open entry: the duration becomes `+`, once, and the clock stops. Nothing else moves. | Saving, syncing, publishing, submitting. |
 | **Navigator** | The card that lists today's entries and the return stack, and appends, descends, jumps or deletes from it. | Search, a second editor, an outline, a dialog to write in. |
 | **Stop** | The place a move left: an entry, a caret and a scroll offset, remembered in the return stack. | A bookmark in the file, a link. |
@@ -61,9 +62,9 @@ appears in copy — depth reads `1D`…`nD`.
 | Close | *Close the day* | One `✓` line, then the day's own stats. | Evidence |
 
 The two writes the table names — settle and pause — are `planDuration` with `+`
-and `=`, and nothing else can change a duration line.
+and `=`, and nothing else can change a duration half.
 
-<!-- claim: src/core/insert.ts#planDuration @e2a4897524 -->
+<!-- claim: src/core/insert.ts#planDuration @543224e52c -->
 
 ## Evidence versus session
 
@@ -71,7 +72,7 @@ The boundary rule is one test: **if the plugin vanished, the notes must still me
 something.**
 
 Evidence is what a reader of the vault would find and understand without the
-plugin: marker lines, prose, duration lines, `✓` close lines, and the frontmatter
+plugin: marker lines, prose, clock rows, `✓` close lines, and the frontmatter
 fields `date`, `travels`, `depth` and `duration`. Evidence is written by a command,
 by `⏎`, or by leaving the note — and by nothing else.
 

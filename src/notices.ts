@@ -38,3 +38,8 @@ export function noticeCloseFrontmatter(action: string): string {
 export function noticeCloseCodeBlock(action: string): string {
   return `Weaver: close the code block before ${action}. ${NOTICE_NOTHING_WRITTEN}`;
 }
+
+/** The refusal for a note that still carries the old marker's clock. */
+export function noticeLegacyFormat(action: string): string {
+  return `Weaver: this note still uses the old entry format; migrate it before ${action}. ${NOTICE_NOTHING_WRITTEN}`;
+}

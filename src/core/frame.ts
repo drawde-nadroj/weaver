@@ -3,15 +3,17 @@
  *
  * The layer that uses this draws a border and the live highlight. It draws no
  * text: the entry's own first row — the marker line — is the box's top-left
- * label, and its own duration row is the box's bottom-right, so the label is
+ * label, and its own clock row is the bottom edge, labelling the bottom-left
+ * corner with the moment and the bottom-right with the duration. Every label is
  * read once, from the file, in the place a label would sit. Nothing is hidden
  * and nothing is duplicated.
  *
  * Both rails run through the centre of the row that labels them, and the label's
  * own background cuts the rail behind it, so the box reads as running into its
  * own text rather than enclosing it. The box therefore spans from one label inset
- * outside the marker's ink to the right edge of the text column: a taller box
- * could not put a clock in its own corner without a second rendering of the row.
+ * outside the marker's ink to the right edge of the text column: a box that hugged
+ * its text could not put the moment at one bottom corner and the duration at the
+ * other without a second rendering of the row.
  *
  * Pure — no DOM, no measurement — so the geometry is testable without a browser.
  */
@@ -55,7 +57,7 @@ export function frameBox(input: FrameBoxInput): FrameBox {
 export interface FrameSpanInput {
   /** The top rail: the centre of the entry's marker row. */
   firstRail: number;
-  /** The bottom rail: the centre of its duration row, or below its last prose row. */
+  /** The bottom rail: the centre of its clock row, or below its last prose row. */
   lastRail: number;
   /** The next entry's top rail; `null` for the last entry in the note. */
   nextRail: number | null;

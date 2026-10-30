@@ -9,7 +9,7 @@
 
 import { formatClock } from "./clock";
 import { lineStartsOf } from "./document";
-import { formatDurationLine, type DurationSigil } from "./duration";
+import { formatClockRow, formatDurationLine, parseClockRow, type DurationSigil } from "./duration";
 import {
   endOfSubtree,
   formatMarker,
@@ -78,16 +78,17 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 }
 
 /**
- * A new root entry at the tip of the note: `{ 1.k.m } - HH:MM:SS`, a blank prose
- * line, and its `- 00:00:00` duration.
+ * A new root entry at the tip of the note: `{ 1.k.m }`, a blank prose line, and
+ * its clock row `HH:MM:SS - 00:00:00`.
  *
  * The caret lands on the blank line, which is where the writing happens.
  */
 export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null {
-  if (index.unclosedFrontmatter || index.unclosedFence) return null;
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(1, nextThread(index), nextSeq(index), formatClock(now));
-  const text = `${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
+  const marker = formatMarker(1, nextThread(index), nextSeq(index));
+  const clock = formatClockRow(formatClock(now), "-", 0);
+  const text = `${marker}${NEWLINE}${NEWLINE}${clock}`;
   return planAppendLine(source, text, marker.length + 1);
 }
 
@@ -104,9 +105,10 @@ export function planChildEntry(
   parent: Entry,
   now: Date
 ): InsertPlan | null {
-  if (index.unclosedFrontmatter || index.unclosedFence) return null;
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(parent.d + 1, parent.c, nextSeq(index), formatClock(now));
+  const marker = formatMarker(parent.d + 1, parent.c, nextSeq(index));
+  const clock = formatClockRow(formatClock(now), "-", 0);
   const blockEnd = endOfSubtree(index, parent);
 
   // Blank lines at the end of the subtree are spacing; the child goes under the
@@ -115,7 +117,7 @@ export function planChildEntry(
   while (anchor > parent.line && (index.lines[anchor] ?? "").trim() === "") anchor -= 1;
 
   const at = (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
-  const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${formatDurationLine("-", 0)}`;
+  const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${clock}`;
 
   const caret = at + NEWLINE.length * 2 + marker.length + 1;
   return { changes: [{ from: at, to: at, text }], selection: { from: caret, to: caret } };
@@ -135,7 +137,7 @@ export function planDeleteEntry(
   index: EntryIndex,
   entry: Entry
 ): InsertPlan | null {
-  if (index.unclosedFrontmatter || index.unclosedFence) return null;
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
   const first = entry.line;
   let last = endOfSubtree(index, entry);
@@ -166,14 +168,18 @@ export function planDeleteEntry(
 }
 
 /**
- * Writes the duration line in place.
+ * Writes the duration half of the clock row in place.
  *
- * A settled entry — a `+` line, or a line that carries no duration at all — is
+ * A settled entry — a `+` half, or a row that carries no duration at all — is
  * final: nothing is planned for it, whatever the sigil. An open entry is
  * rewritten whenever the bytes would change, which the identical-text guard
- * decides, so a pause that reaches the same second plans nothing. The selection
- * is reported at the prose, because the caller keeps the live selection:
- * rewriting a duration must not move the caret.
+ * decides, so a pause that reaches the same second plans nothing. Only the tail
+ * is rewritten: the moment keeps its own characters, so the row cannot move. The
+ * selection is reported at the prose, because the caller keeps the live
+ * selection: rewriting a duration must not move the caret. A note that still
+ * carries the old marker is refused whole — its old duration line parses as a
+ * clock row, so a field-level rewrite would be the one write that slipped
+ * through the migration.
  */
 export function planDuration(
   _source: string,
@@ -182,13 +188,21 @@ export function planDuration(
   sigil: DurationSigil,
   ms: number
 ): InsertPlan | null {
-  if (entry.durationLine === null || entry.state === "settled") return null;
+  if (entry.clockLine === null || entry.state === "settled") return null;
+  // A note written before the clock row is refused whole, not field by field:
+  // its old duration line still parses as a clock row, so a plan here would
+  // rewrite one half of a note the migration has not touched.
+  if (index.legacyFormat) return null;
 
-  const target = formatDurationLine(sigil, ms);
-  if ((index.lines[entry.durationLine] ?? "") === target) return null;
+  const line = index.lines[entry.clockLine] ?? "";
+  const row = parseClockRow(line);
+  if (row === null) return null;
+
+  const target = `${row.head}${formatDurationLine(sigil, ms)}`;
+  if (line === target) return null;
 
   return {
-    changes: [{ from: entry.durationFrom, to: entry.durationTo, text: target }],
+    changes: [{ from: entry.clockFrom, to: entry.clockTo, text: target }],
     selection: { from: entry.proseFrom, to: entry.proseFrom }
   };
 }

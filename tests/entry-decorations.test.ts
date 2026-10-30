@@ -9,7 +9,7 @@ import { DurationWidget } from "../src/editor/stopwatch-widget";
 import { EntrySession } from "../src/entries/session";
 import { DEFAULT_SETTINGS, type WeaverSettings } from "../src/settings";
 
-const DOC = ["{ 2.1.1 } - 10:00:00", "prose here", "+ 00:01:00"].join("\n");
+const DOC = ["{ 2.1.1 }", "prose here", "10:00:00 + 00:01:00"].join("\n");
 // Not today: the run below is dated 27 October 2026.
 const PATH = "Chronomancer/2026-10-26.md";
 const NOW = new Date(2026, 9, 27, 12, 0, 0).getTime();
@@ -52,12 +52,18 @@ function collect(
 }
 
 /** The caret sits in the prose unless a test says otherwise. */
-function stateAt(anchor = DOC.indexOf("prose")): EditorState {
+function stateAt(anchor = DOC.indexOf("prose"), doc = DOC): EditorState {
   return EditorState.create({
-    doc: DOC,
+    doc,
     selection: { anchor },
     extensions: [entryIndexField, editorLivePreviewField]
   });
+}
+
+function clockWidget(found: Found[]): DurationWidget | undefined {
+  return found.find((range) => range.spec.widget instanceof DurationWidget)?.spec.widget as
+    | DurationWidget
+    | undefined;
 }
 
 describe("the entry decorations", () => {
@@ -70,15 +76,15 @@ describe("the entry decorations", () => {
     expect(prose?.spec.attributes?.style).toBe("--weaver-dcolor:#f97316;--weaver-d:2");
   });
 
-  it("keeps the digits white and the punctuation coloured", () => {
+  it("keeps the marker's digits white and its punctuation coloured", () => {
     const found = collect(stateAt());
     const digits = found.filter((range) => range.spec.class === "weaver-dcn-num");
     const ink = found.filter((range) => range.spec.class === "weaver-dcn-ink");
 
-    expect(digits.map((range) => range.text)).toEqual(["2", "1", "1", "10", "00", "00"]);
-    // The hyphen is punctuation like the braces and the dots: the whole marker is
-    // the top rail's label, so no character of it belongs to the box instead.
-    expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| } - |:|:");
+    expect(digits.map((range) => range.text)).toEqual(["2", "1", "1"]);
+    // The braces and the dots are punctuation: the whole marker is the top
+    // rail's label, so no character of it belongs to the box instead.
+    expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| }");
   });
 
   it("labels the marker row as the top rail's label", () => {
@@ -86,20 +92,19 @@ describe("the entry decorations", () => {
 
     // One mark over the file's own marker: the rail is cut behind these
     // characters, and no character is added, moved or hidden.
-    expect(label?.text).toBe("{ 2.1.1 } - 10:00:00");
+    expect(label?.text).toBe("{ 2.1.1 }");
   });
 
   it("stamps each row with the entry it belongs to", () => {
     const found = collect(stateAt());
     const head = found.find((range) => range.spec.class === "weaver-entry-head");
-    const widget = found.find((range) => range.spec.widget instanceof DurationWidget);
 
     // The frame layer finds the rows by these stamps, never by a DOM position.
     expect(head?.spec.attributes?.["data-weaver-n"]).toBe("1");
-    expect((widget?.spec.widget as DurationWidget | undefined)?.input.n).toBe(1);
+    expect(clockWidget(found)?.input.n).toBe(1);
   });
 
-  it("replaces the duration line while the caret is elsewhere", () => {
+  it("replaces the clock row while the caret is elsewhere", () => {
     const found = collect(stateAt());
     const replaced = found.find((range) => range.spec.widget instanceof DurationWidget);
 
@@ -107,18 +112,41 @@ describe("the entry decorations", () => {
     expect(replaced?.spec.block).toBe(true);
   });
 
-  it("goes back to raw text while the caret is on the duration line", () => {
+  it("gives the row both clocks, from the file's own text", () => {
+    const widget = clockWidget(collect(stateAt()));
+
+    expect(widget?.input.time).toBe("10:00:00");
+    expect(widget?.input.sigil).toBe("+");
+    expect(widget?.input.ms).toBe(60_000);
+  });
+
+  it("draws no duration half for a row that carries only a moment", () => {
+    const doc = ["{ 1.1.1 }", "prose here", "10:00:00"].join("\n");
+    const widget = clockWidget(
+      collect(stateAt(doc.indexOf("prose"), doc), { ...DEFAULT_SETTINGS, entryDayLink: false })
+    );
+
+    // The file has no duration half, so the row must not label its right corner
+    // with one: the frame shows what the note holds.
+    expect(widget?.input.time).toBe("10:00:00");
+    expect(widget?.input.sigil).toBeNull();
+    const root = widget?.toDOM();
+    expect(root?.querySelector(".weaver-duration-moment")?.textContent).toBe("10:00:00");
+    expect(root?.querySelector(".weaver-duration-clock")).toBeNull();
+  });
+
+  it("goes back to raw text while the caret is on the clock row", () => {
     const state = stateAt(DOC.length - 1);
     const found = collect(state);
     const raw = found.find((range) => range.spec.class === "weaver-duration-raw");
 
-    expect(found.some((range) => range.spec.widget instanceof DurationWidget)).toBe(false);
+    expect(clockWidget(found)).toBeUndefined();
     expect(raw?.spec.attributes?.["data-weaver-n"]).toBe("1");
     // The bottom rail's label is the same row, in the file's own characters.
     const label = found.find(
-      (range) => range.spec.class === "weaver-frame-label" && range.text.startsWith("+")
+      (range) => range.spec.class === "weaver-frame-label" && range.text.startsWith("10:")
     );
-    expect(label?.text).toBe("+ 00:01:00");
+    expect(label?.text).toBe("10:00:00 + 00:01:00");
   });
 
   it("keeps the marker's own text on the line whatever the caret does", () => {
@@ -130,35 +158,28 @@ describe("the entry decorations", () => {
     // class, because nothing swaps the line's text for a drawn label any more.
     expect(headClass(stateAt())).toBe("weaver-entry-head");
     expect(headClass(stateAt(2))).toBe("weaver-entry-head");
-    expect(headClass(stateAt(), { ...DEFAULT_SETTINGS, entryFrames: false })).toBe("weaver-entry-head");
+    expect(headClass(stateAt(), { ...DEFAULT_SETTINGS, entryFrames: false })).toBe(
+      "weaver-entry-head"
+    );
   });
 
   it("ticks a live session instead of showing the stored time", () => {
     const session = new EntrySession();
     session.start(PATH, 1, 65_000, NOW - 1000);
 
-    const widget = collect(stateAt(), DEFAULT_SETTINGS, session).find(
-      (range) => range.spec.widget instanceof DurationWidget
-    )?.spec.widget as DurationWidget | undefined;
+    const widget = clockWidget(collect(stateAt(), DEFAULT_SETTINGS, session));
 
     // Writing is always a draft, whatever sigil the file holds.
     expect(widget?.input.sigil).toBe("-");
     expect(widget?.input.active).toBe(true);
     expect(widget?.input.ms).toBe(66_000);
+    expect(widget?.input.time).toBe("10:00:00");
     widget?.destroy();
   });
 
   it("shows the sigil the file kept once nothing is running", () => {
-    const settled = ["{ 2.1.1 } - 10:00:00", "prose here", "= 00:01:00"].join("\n");
-    const state = EditorState.create({
-      doc: settled,
-      selection: { anchor: settled.indexOf("prose") },
-      extensions: [entryIndexField]
-    });
-
-    const widget = collect(state).find(
-      (range) => range.spec.widget instanceof DurationWidget
-    )?.spec.widget as DurationWidget | undefined;
+    const settled = ["{ 2.1.1 }", "prose here", "10:00:00 = 00:01:00"].join("\n");
+    const widget = clockWidget(collect(stateAt(settled.indexOf("prose"), settled)));
 
     expect(widget?.input.sigil).toBe("=");
     expect(widget?.input.active).toBe(false);
@@ -166,7 +187,18 @@ describe("the entry decorations", () => {
   });
 
   it("draws two coloured colons between three white digit spans", () => {
-    const widget = new DurationWidget({ n: 1, sigil: "-", ms: 66_000, active: false, color: "#f97316", d: 2 });
+    const widget = new DurationWidget({
+      n: 1,
+      time: "10:00:00",
+      sigil: "-",
+      ms: 66_000,
+      active: false,
+      color: "#f97316",
+      d: 2,
+      dayLink: null,
+      openDayLink: null,
+      sourcePath: PATH
+    });
     const root = widget.toDOM() as unknown as {
       querySelectorAll: (selector: string) => Array<{ textContent: string }>;
     };
@@ -183,26 +215,25 @@ describe("the entry decorations", () => {
     widget.destroy();
   });
 
-  it("links a past day and leaves today alone", () => {
-    const past = collect(stateAt()).find(
-      (range) => range.spec.widget !== undefined && !range.spec.block
-    );
-    // Part of the top rail's label, so its background cuts the rail behind it.
-    expect(past?.spec.widget?.toDOM?.().className).toBe("weaver-entry-daylink weaver-frame-label");
+  it("carries the day link on the clock row, beside the moment", () => {
+    expect(clockWidget(collect(stateAt()))?.input.dayLink).toBe("2026-10-26");
 
-    const today = collect(
-      stateAt(),
-      DEFAULT_SETTINGS,
-      new EntrySession(),
-      "Chronomancer/2026-10-27.md"
-    );
-    expect(today.some((range) => range.spec.widget !== undefined && !range.spec.block)).toBe(false);
+    const today = collect(stateAt(), DEFAULT_SETTINGS, new EntrySession(), "Chronomancer/2026-10-27.md");
+    expect(clockWidget(today)?.input.dayLink).toBeNull();
   });
 
   it("honours the setting that turns the day link off", () => {
     const off: WeaverSettings = { ...DEFAULT_SETTINGS, entryDayLink: false };
-    const found = collect(stateAt(), off);
-    expect(found.some((range) => !range.spec.block && range.spec.widget !== undefined)).toBe(false);
+    expect(clockWidget(collect(stateAt(), off))?.input.dayLink).toBeNull();
+  });
+
+  it("keeps the day link on the marker when the entry has no clock row", () => {
+    const doc = "{ 2.1.1 }\nprose here";
+    const link = collect(stateAt(doc.indexOf("prose"), doc)).find(
+      (range) => range.spec.widget !== undefined && !range.spec.block
+    );
+
+    expect(link?.spec.widget?.toDOM?.().className).toBe("weaver-entry-daylink weaver-frame-label");
   });
 
   it("decorates nothing when the note has no entries", () => {

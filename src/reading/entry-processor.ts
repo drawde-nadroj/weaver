@@ -1,13 +1,13 @@
 /**
  * Reading view: the same entry the editor draws, in the same frame.
  *
- * The marker paragraph becomes the frame's first child and the duration
- * paragraph its last; the prose between them is the frame's interior. The
- * wrapper is a real element because a box needs one to enclose — and because the
- * file's own text is what labels it: the marker row is the top rail's label, the
- * duration row the bottom rail's, each appearing once. The rails run through the
- * middle of those rows and are cut behind them by the labels' own backgrounds, so
- * the box reads as running into its own text.
+ * The marker paragraph becomes the frame's first child and the clock paragraph
+ * its last; the prose between them is the frame's interior. The wrapper is a real
+ * element because a box needs one to enclose — and because the file's own text is
+ * what labels it: the marker row is the top rail's label, and the clock row is the
+ * bottom edge, its moment at the left corner and its duration at the right. The
+ * rails run through the middle of those rows and are cut behind them by the
+ * labels' own backgrounds, so the box reads as running into its own text.
  *
  * The marker's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
@@ -18,7 +18,7 @@ import type { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidi
 
 import { dimensionColorVars } from "../core/color";
 import { dayKey, dayKeyFromName } from "../core/day";
-import { formatClock, parseDurationLine } from "../core/duration";
+import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseMarkerPrefix } from "../core/entries";
 import type WeaverPlugin from "../main";
 import { appendDigitRuns } from "../ui/dcn";
@@ -30,38 +30,55 @@ const PROCESSED = "data-weaver-entry-processed";
 const HEAD_CLASS = "weaver-entry-head";
 const TEXT_NODE = 3;
 
-function durationElement(
-  parsed: NonNullable<ReturnType<typeof parseDurationLine>>,
-  d: number | null
-): HTMLElement {
+/**
+ * The clock row, in Reading view: the moment at the left corner, the duration at
+ * the right, each carrying its own background so the rail is cut twice and shows
+ * between them. The parser accepts only the canonical shape, so this re-renders
+ * the file's own text: the digits stay white and the colons take the dimension's
+ * colour.
+ */
+function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTMLElement {
   const root = document.createElement("div");
   root.className = "weaver-duration";
   root.setAttribute(PROCESSED, "true");
   if (d !== null) root.setAttribute("style", dimensionColorVars(d));
 
+  const moment = document.createElement("span");
+  moment.className = labelled
+    ? "weaver-duration-moment weaver-frame-label"
+    : "weaver-duration-moment";
+  moment.textContent = parsed.time ?? "";
+  root.appendChild(moment);
+
+  if (parsed.duration === null) return root;
+
+  const clock = document.createElement("span");
+  clock.className = labelled
+    ? "weaver-duration-clock weaver-frame-label"
+    : "weaver-duration-clock";
+
   const sigil = document.createElement("span");
   sigil.className = "weaver-duration-sigil";
-  sigil.textContent = parsed.sigil;
-  root.appendChild(sigil);
+  sigil.textContent = parsed.duration.sigil;
+  clock.appendChild(sigil);
 
-  // The parser accepts only the canonical shape, so this re-renders the file's
-  // own text: the digits stay white and the colons take the dimension's colour.
-  formatClock(parsed.ms)
+  formatClock(parsed.duration.ms)
     .split(":")
     .forEach((part, index) => {
       if (index > 0) {
         const colon = document.createElement("span");
         colon.className = "weaver-duration-ink";
         colon.textContent = ":";
-        root.appendChild(colon);
+        clock.appendChild(colon);
       }
 
       const span = document.createElement("span");
       span.className = "weaver-duration-num";
       span.textContent = part;
-      root.appendChild(span);
+      clock.appendChild(span);
     });
 
+  root.appendChild(clock);
   return root;
 }
 
@@ -85,12 +102,12 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
 
       const text = paragraph.textContent ?? "";
 
-      const duration = parseDurationLine(text.trim());
-      if (duration !== null) {
-        // A duration paragraph on its own, with no frame to sit on — a stray
-        // line, or one separated from its marker by something that is not a
-        // paragraph — is drawn as the plain block it always was.
-        paragraph.replaceWith(durationElement(duration, depth));
+      const clock = parseClockRow(text.trim());
+      if (clock !== null) {
+        // A clock row on its own, with no frame to sit on — a stray line, or one
+        // separated from its marker by something that is not a paragraph — is
+        // drawn as the plain block it always was.
+        paragraph.replaceWith(clockElement(clock, depth));
         continue;
       }
 
@@ -111,7 +128,7 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
       if (showLink) {
         const link = document.createElement("span");
         link.className = "weaver-entry-daylink";
-        link.textContent = ` - [[${basename}]]`;
+        link.textContent = ` [[${basename}]]`;
         link.addEventListener("click", (event: Event) => {
           event.preventDefault();
           void plugin.app.workspace.openLinkText(basename, sourcePath, false);
@@ -151,13 +168,13 @@ export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcesso
         if (sibling.tagName !== "P") break;
         if (sibling.classList.contains(HEAD_CLASS)) break;
         if (sibling.classList.contains("weaver-frame")) break;
-        const parsed = parseDurationLine((sibling.textContent ?? "").trim());
+        const parsed = parseClockRow((sibling.textContent ?? "").trim());
         if (parsed !== null) {
-          const duration = durationElement(parsed, prefix.d);
-          // Only inside a frame: a stray duration with no entry above it must not
-          // paint a full-width band over the text it sits beside.
-          duration.classList.add("weaver-frame-label");
-          frame.appendChild(duration);
+          const clock = clockElement(parsed, prefix.d, true);
+          // The day link belongs beside the moment, and the moment is here.
+          const link = head.querySelector(".weaver-entry-daylink");
+          if (link !== null) clock.querySelector(".weaver-duration-moment")?.appendChild(link);
+          frame.appendChild(clock);
           sibling.remove();
           break;
         }

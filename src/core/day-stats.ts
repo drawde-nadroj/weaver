@@ -21,7 +21,7 @@ export interface DayStats {
 /** Every entry is a travel; depth is the deepest dimension; durations add up. */
 export function countDay(index: EntryIndex, closedAt: string | null): DayStats {
   let durationMs = 0;
-  for (const entry of index.entries) durationMs += entry.durationMs;
+  for (const entry of index.entries) durationMs += entry.duration?.ms ?? 0;
 
   return { travels: index.entries.length, depth: index.maxD, durationMs, closedAt };
 }

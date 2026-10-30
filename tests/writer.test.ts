@@ -24,13 +24,13 @@ beforeEach(() => {
 
 describe("the one writer", () => {
   it("writes into the open editor and leaves the file on disk alone", async () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "prose", "+ 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "10:00:00 + 00:01:00"].join("\n");
     const file = createFile(DAY, source);
     const app = createApp([file]);
 
     // The buffer holds a sentence the file has not seen yet: this is exactly the
     // state a debounced stats write used to clobber.
-    const typed = ["{ 1.1.1 } - 10:00:00", "prose typed a moment ago", "+ 00:01:00"].join("\n");
+    const typed = ["{ 1.1.1 }", "prose typed a moment ago", "10:00:00 + 00:01:00"].join("\n");
     const view = liveEditor(file, typed);
     registerEditorView(view);
 
@@ -65,7 +65,7 @@ describe("the one writer", () => {
   });
 
   it("writes through the vault when no editor holds the file", async () => {
-    const source = ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
     const file = createFile(DAY, source);
     const app = createApp([file]);
 
@@ -78,11 +78,11 @@ describe("the one writer", () => {
 
     expect(result).not.toBeNull();
     expect(fileContent(file)).toBe(result?.source);
-    expect(fileContent(file)).toContain("{ 1.2.2 } - 13:27:43");
+    expect(fileContent(file)).toContain("{ 1.2.2 }");
   });
 
   it("writes nothing when the rewrite declines", async () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "prose", "- 00:00:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:00"].join("\n");
     const file = createFile(DAY, source);
     const app = createApp([file]);
 
@@ -125,13 +125,13 @@ describe("the one writer", () => {
 
 describe("planRewrite", () => {
   it("plans against the text it is handed, not an earlier read", () => {
-    const earlier = ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n");
+    const earlier = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
     const current = [
       earlier,
       "",
-      "{ 1.2.2 } - 09:30:00",
+      "{ 1.2.2 }",
       "second",
-      "+ 00:02:00",
+      "09:30:00 + 00:02:00",
       ""
     ].join("\n");
 
@@ -146,7 +146,7 @@ describe("planRewrite", () => {
     const result = rewrite(current);
     if (result === null) throw new Error("expected a rewrite");
 
-    expect(result.source).toContain("{ 1.3.3 } - 13:27:43");
+    expect(result.source).toContain("{ 1.3.3 }");
     expect(result.source.indexOf("13:27:43")).toBeGreaterThan(result.source.indexOf("second"));
     expect(result.changes.length).toBe(1);
   });
@@ -169,8 +169,8 @@ describe("minimalChange", () => {
   });
 
   it("applies back to the text it was computed from", () => {
-    const before = "---\ntravels: 0\n---\n{ 1.1.1 } - 10:00:00\nprose";
-    const after = "---\ntravels: 7\n---\n{ 1.1.1 } - 10:00:00\nprose";
+    const before = "---\ntravels: 0\n---\n{ 1.1.1 }\nprose";
+    const after = "---\ntravels: 7\n---\n{ 1.1.1 }\nprose";
 
     const [change] = minimalChange(before, after);
     expect(change).toBeDefined();

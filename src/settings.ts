@@ -31,11 +31,11 @@ export interface WeaverSettings {
   mobileIndentStep: number;
   indentMaxLevel: number;
   portEmphasisColors: boolean;
-  /** Draw a frame around every entry: the rails run through the middle of the marker and duration rows, cut behind those labels. */
+  /** Draw a frame around every entry: the rails run through the middle of the marker and clock rows, cut behind those labels. */
   entryFrames: boolean;
 
   // Advanced
-  /** Render ` - [[2026.10.26]]` after the clock on any day but today's. */
+  /** Render `[[2026.10.26]]` after the moment on any day but today's. */
   entryDayLink: boolean;
   debug: boolean;
 }

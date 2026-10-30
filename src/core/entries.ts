@@ -1,26 +1,29 @@
 /**
  * The entry: the unit a day note is made of.
  *
- * An entry is a marker line `{ D.C.N } - HH:MM:SS`, prose, then at most one
- * duration line `+ MM:SS:MS`. `D` is the dimension, `C` the thread (a branch's
- * id, carried unchanged from its depth-1 ancestor down), `N` the day sequence
- * (assigned once, only appended). `N` is identity, `C` is address — and both
- * halves of an address change only when a root is deleted, never on insert.
+ * An entry is a marker line `{ D.C.N }`, prose, then at most one clock row
+ * `09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`
+ * is the dimension, `C` the thread (a branch's id, carried unchanged from its
+ * depth-1 ancestor down), `N` the day sequence (assigned once, only appended).
+ * `N` is identity, `C` is address — and both halves of an address change only
+ * when a root is deleted, never on insert.
  *
- * The marker is matched as a **prefix**, so a hand-written title after the clock
- * becomes the first prose line instead of breaking the entry. Markers inside
- * frontmatter or a fenced code block are text.
+ * The marker is matched as a **prefix**, so a title written on it becomes the
+ * first prose line instead of breaking the entry. The clock row is the entry's
+ * last line, which is what lets the moment and the duration label the frame's
+ * bottom rail at its two corners. Markers inside frontmatter or a fenced code
+ * block are text.
  *
  * `proseLines` is trimmed at both ends: a blank line between the prose and the
- * duration is spacing, not content, so the caret and the "last prose line" both
+ * clock row is spacing, not content, so the caret and the "last prose line" both
  * refer to a line the writer actually typed on.
  */
 
 import { lineStartsOf, scanFences, scanFrontmatter, type CodeFence } from "./document";
-import { parseDurationLine } from "./duration";
+import { parseClockRow, type DurationSigil } from "./duration";
 import type { TextChange } from "./insert";
 
-/** One entry: its marker, prose, duration, and the offsets every surface reads. */
+/** One entry: its marker, prose, clocks, and the offsets every surface reads. */
 export interface Entry {
   /** Zero-based index of the marker line. */
   line: number;
@@ -34,16 +37,18 @@ export interface Entry {
   /** 1-based position of the depth-1 ancestor among depth-1 entries; equals
    * `c` in a healthy note, and is what a deletion repairs. */
   thread: number;
-  /** Normalised `HH:MM:SS`. */
-  time: string;
-  /** Absolute offset just past the clock, where a title or the day link sits. */
+  /** The moment, normalised `HH:MM:SS`; null when the entry has no clock row. */
+  time: string | null;
+  /** Absolute offset just past the marker, where a title or the day link sits. */
   markerEnd: number;
   /** `-` is a draft; `+`, `=` and an absent duration are settled. */
   state: "draft" | "settled";
-  durationMs: number;
-  durationLine: number | null;
-  durationFrom: number;
-  durationTo: number;
+  /** The clock row's duration half; null for a row without one, or no row. */
+  duration: { sigil: DurationSigil; ms: number } | null;
+  /** Zero-based index of the clock row, or null when the entry has none. */
+  clockLine: number | null;
+  clockFrom: number;
+  clockTo: number;
   /** Absolute, `proseTo` exclusive. */
   proseFrom: number;
   proseTo: number;
@@ -65,38 +70,41 @@ export interface EntryIndex {
   codeFences: CodeFence[];
   unclosedFence: boolean;
   unclosedFrontmatter: boolean;
+  /** True when a marker still carries its old `- HH:MM:SS` clock. */
+  legacyFormat: boolean;
   frontmatterEnd: number | null;
   lines: string[];
   lineStarts: number[];
 }
 
-/** `{ 1.2.3 } - 13:27:43`, matched as a prefix; the clock may be `HH:MM`. */
-const MARKER =
-  /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)/d;
+/** `{ 1.2.3 }`, matched as a prefix; whatever follows it is the entry's first prose. */
+const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
+
+/**
+ * The shape a marker carried before the clock row: `{ 1.2.3 } - 13:27:43`.
+ *
+ * It is never parsed. A note that still holds one is refused rather than read,
+ * because the row would otherwise become an entry whose first prose line is its
+ * own clock — a silent mistranslation, not an error.
+ */
+const LEGACY_MARKER =
+  /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}[ \t]*-[ \t]*\d{1,2}:\d{2}(?::\d{2})?/;
 
 /** What a marker line carries, and how much of the text it occupies. */
 export interface MarkerPrefix {
   d: number;
   c: number;
   n: number;
-  /** Normalised `HH:MM:SS`. */
-  time: string;
   /** Length of the marker text, in characters. */
   length: number;
-}
-
-function normalizeClock(time: string): string {
-  const parts = time.split(":");
-  return `${(parts[0] ?? "0").padStart(2, "0")}:${(parts[1] ?? "00").padStart(2, "0")}:${(
-    parts[2] ?? "00"
-  ).padStart(2, "0")}`;
 }
 
 /**
  * Reads a marker at the start of `text`, or returns null.
  *
- * The marker is a prefix, so `{ 1.2.3 } - 13:27:43 a title` is one entry whose
- * title is `a title`.
+ * The marker is a prefix, so `{ 1.2.3 } a title` is one entry whose title is
+ * `a title` — and the same is true of a hand-written line that opens with an
+ * address and nothing else.
  */
 export function parseMarkerPrefix(text: string): MarkerPrefix | null {
   const match = MARKER.exec(text);
@@ -106,13 +114,12 @@ export function parseMarkerPrefix(text: string): MarkerPrefix | null {
     d: Number.parseInt(match[1] ?? "1", 10),
     c: Number.parseInt(match[2] ?? "1", 10),
     n: Number.parseInt(match[3] ?? "1", 10),
-    time: normalizeClock(match[4] ?? "00:00:00"),
     length: match[0].length
   };
 }
 
-/** The duration line of the entry starting at `line`, before `limit`. */
-function findDurationLine(
+/** The clock row of the entry starting at `line`, before `limit`. */
+function findClockRow(
   lines: readonly string[],
   line: number,
   limit: number,
@@ -120,7 +127,7 @@ function findDurationLine(
 ): number | null {
   for (let candidate = line + 1; candidate < limit; candidate += 1) {
     if (fenced.has(candidate)) continue;
-    if (parseDurationLine(lines[candidate] ?? "") !== null) return candidate;
+    if (parseClockRow(lines[candidate] ?? "") !== null) return candidate;
   }
   return null;
 }
@@ -130,7 +137,6 @@ interface MarkerHit {
   d: number;
   c: number;
   n: number;
-  time: string;
   markerEnd: number;
   /** Where the prose starts when it is on the marker line: past the spaces. */
   proseStart: number;
@@ -150,6 +156,7 @@ export function parseEntries(source: string): EntryIndex {
     codeFences: [],
     unclosedFence: false,
     unclosedFrontmatter: false,
+    legacyFormat: false,
     frontmatterEnd: null,
     lines,
     lineStarts
@@ -173,12 +180,12 @@ export function parseEntries(source: string): EntryIndex {
     const start = lineStarts[line] ?? 0;
     const remainder = raw.slice(prefix.length);
     const inline = remainder.trim() !== "";
+    if (LEGACY_MARKER.test(raw)) index.legacyFormat = true;
     hits.push({
       line,
       d: prefix.d,
       c: prefix.c,
       n: prefix.n,
-      time: prefix.time,
       markerEnd: start + prefix.length,
       proseStart: start + prefix.length + (inline ? remainder.length - remainder.trimStart().length : 0),
       inline
@@ -195,10 +202,10 @@ export function parseEntries(source: string): EntryIndex {
     const start = lineStarts[hit.line] ?? 0;
 
     const limit = position + 1 < hits.length ? (hits[position + 1] as MarkerHit).line : lines.length;
-    const durationLine = findDurationLine(lines, hit.line, limit, fences.inside);
+    const clockLine = findClockRow(lines, hit.line, limit, fences.inside);
 
     let lo = hit.inline ? hit.line : hit.line + 1;
-    let hi = (durationLine ?? limit) - 1;
+    let hi = (clockLine ?? limit) - 1;
     while (lo <= hi && (lines[lo] ?? "").trim() === "") lo += 1;
     while (hi >= lo && (lines[hi] ?? "").trim() === "") hi -= 1;
 
@@ -226,8 +233,9 @@ export function parseEntries(source: string): EntryIndex {
           ? raw.slice(hit.markerEnd - start).trim()
           : (lines[firstProseLine] ?? "").trim();
 
-    const duration = durationLine === null ? null : parseDurationLine(lines[durationLine] ?? "");
-    const durationFrom = durationLine === null ? 0 : (lineStarts[durationLine] ?? 0);
+    const clock = clockLine === null ? null : parseClockRow(lines[clockLine] ?? "");
+    const duration = clock?.duration ?? null;
+    const clockFrom = clockLine === null ? 0 : (lineStarts[clockLine] ?? 0);
 
     while (stack.length > 0) {
       const top = index.entries[stack[stack.length - 1] as number];
@@ -250,16 +258,16 @@ export function parseEntries(source: string): EntryIndex {
       c: hit.c,
       n: hit.n,
       thread,
-      time: hit.time,
+      time: clock?.time ?? null,
       markerEnd: hit.markerEnd,
       // `+` alone is settled: `-` is being written and `=` is paused, and both
       // are still open. Every `state === "draft"` check in the tree now reads
       // as "open".
       state: duration !== null && duration.sigil !== "+" ? "draft" : "settled",
-      durationMs: duration?.ms ?? 0,
-      durationLine,
-      durationFrom,
-      durationTo: durationFrom + (durationLine === null ? 0 : (lines[durationLine] ?? "").length),
+      duration,
+      clockLine,
+      clockFrom,
+      clockTo: clockFrom + (clockLine === null ? 0 : (lines[clockLine] ?? "").length),
       proseFrom,
       proseTo,
       proseLines,
@@ -354,9 +362,9 @@ export function nextThread(index: EntryIndex): number {
   return childrenOf(index, null).length + 1;
 }
 
-/** `{ 1.2.3 } - 13:27:43`; one space inside each brace. */
-export function formatMarker(d: number, c: number, n: number, time: string): string {
-  return `{ ${d}.${c}.${n} } - ${time}`;
+/** `{ 1.2.3 }`; one space inside each brace, and nothing after it. */
+export function formatMarker(d: number, c: number, n: number): string {
+  return `{ ${d}.${c}.${n} }`;
 }
 
 /**

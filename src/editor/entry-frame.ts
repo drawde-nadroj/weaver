@@ -10,19 +10,19 @@
  *
  * - **Nothing reflows.** The box catches up to the text; the text never moves to
  *   fit the box. Every pixel-stability invariant the decorations already keep —
- *   the duration line's top across a run of insertions — survives.
+ *   the clock row's top across a run of insertions — survives.
  * - **Scrolling is free.** The layer lives inside `.cm-scroller`, which is
  *   already `position: relative`, so its children scroll with the content and a
  *   scroll needs no re-measure. Only a reflow does.
  * - **Editing is untouched.** The layer is `pointer-events: none`.
  *
  * The file's own rows are the box's rails, and each rail runs through the centre
- * of the row that labels it: the marker row is the top-left label, the duration
- * row the bottom-right, and each label's own background cuts the rail behind it —
- * so the box reads as running into the text that names it. Nothing is at
- * `opacity: 0`, nothing is painted twice, and the frame survives its ends
- * scrolling out of the render range because a row that is not rendered falls back
- * to the line block's centre.
+ * of the row that labels it: the marker row is the top-left label, the clock row
+ * the bottom edge — its moment at the left corner, its duration at the right —
+ * and each label's own background cuts the rail behind it, so the box reads as
+ * running into the text that names it. Nothing is at `opacity: 0`, nothing is
+ * painted twice, and the frame survives its ends scrolling out of the render
+ * range because a row that is not rendered falls back to the line block's centre.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -41,8 +41,8 @@ const LEFT_GUTTER = 32;
 const RIGHT_GUTTER = 20;
 /** Clear space required between two entries' rails. */
 const MIN_AIR = 8;
-/** Air below the last prose row when an entry has no duration row. */
-const NO_DURATION_PAD = 8;
+/** Air below the last prose row when an entry has no clock row. */
+const NO_CLOCK_PAD = 8;
 /** Air above a marker row when that row also carries prose (the legacy title case). */
 const INLINE_TITLE_PAD = 12;
 
@@ -160,7 +160,7 @@ class EntryFrames {
   }
 
   update(update: ViewUpdate): void {
-    // A selection is geometry here: the caret on a duration row turns the widget
+    // A selection is geometry here: the caret on the clock row turns the widget
     // back into text, which changes that row's height.
     if (
       update.docChanged ||
@@ -268,25 +268,25 @@ class EntryFrames {
       }
 
       const lastLine =
-        entry.durationLine ?? entry.proseLines[entry.proseLines.length - 1] ?? entry.line;
+        entry.clockLine ?? entry.proseLines[entry.proseLines.length - 1] ?? entry.line;
       const lastRow = this.view.state.doc.line(lastLine + 1);
 
-      // The bottom rail is the duration row's centre, so the clock's glyphs
-      // straddle it. An entry with no duration has no bottom label: its box closes
-      // below its last prose row instead, on air rather than on a rail.
+      // The bottom rail is the clock row's centre, so its glyphs straddle it —
+      // the moment at one corner and the duration at the other. An entry with no
+      // clock row has no bottom label: its box closes below its last prose row
+      // instead, on air rather than on a rail.
       let lastRail: number;
-      if (entry.durationLine !== null) {
-        const durationElement = rendered.get(entry.n)?.duration;
-        const durationInk =
-          durationElement === undefined ? null : inkRect(durationElement);
-        if (durationInk !== null) {
-          lastRail = toY((durationInk.top + durationInk.bottom) / 2);
+      if (entry.clockLine !== null) {
+        const clockElement = rendered.get(entry.n)?.duration;
+        const clockInk = clockElement === undefined ? null : inkRect(clockElement);
+        if (clockInk !== null) {
+          lastRail = toY((clockInk.top + clockInk.bottom) / 2);
         } else {
-          const block = this.view.lineBlockAt(entry.durationFrom);
+          const block = this.view.lineBlockAt(entry.clockFrom);
           lastRail = toY(block.top + docTop + block.height / 2);
         }
       } else {
-        lastRail = toY(this.view.lineBlockAt(lastRow.from).bottom + docTop) + NO_DURATION_PAD;
+        lastRail = toY(this.view.lineBlockAt(lastRow.from).bottom + docTop) + NO_CLOCK_PAD;
       }
 
       return { entry, firstRail, lastRail };

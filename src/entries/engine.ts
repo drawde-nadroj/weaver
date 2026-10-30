@@ -41,7 +41,8 @@ import {
   NOTICE_NO_DAY_NOTE,
   NOTICE_REFUSAL_MS,
   noticeCloseCodeBlock,
-  noticeCloseFrontmatter
+  noticeCloseFrontmatter,
+  noticeLegacyFormat
 } from "../notices";
 import type WeaverPlugin from "../main";
 import { ensureDayNote, resolveDayNote } from "./day-note";
@@ -104,9 +105,15 @@ export class EntryEngine {
    * makes when it lands on an open entry and is pressed again.
    */
   settleAndDescend(view: EditorView, entry: Entry): void {
+    // Checked once, before either half: `settle` and `descend` each refuse a
+    // legacy note, and the writer should be told once, not twice.
+    if (this.refuseLegacy(this.indexOf(view, view.state.doc.toString()), "settling this entry")) {
+      return;
+    }
+
     if (entry.state === "draft") this.settle(view, entry);
 
-    // Settling rewrote the duration line, so the parent is found again by `N`.
+    // Settling rewrote the clock row, so the parent is found again by `N`.
     const settled = entryBySeq(parseEntries(view.state.doc.toString()), entry.n);
     if (settled === null) return;
     this.descend(view, settled);
@@ -124,6 +131,7 @@ export class EntryEngine {
 
     const source = view.state.doc.toString();
     const index = this.indexOf(view, source);
+    if (this.refuseLegacy(index, "deleting an entry")) return;
     const current = entryBySeq(index, entry.n);
     if (current === null) return;
 
@@ -148,6 +156,7 @@ export class EntryEngine {
 
     const source = view.state.doc.toString();
     const index = this.indexOf(view, source);
+    if (this.refuseLegacy(index, "settling this entry")) return;
     const current = entryBySeq(index, entry.n);
     if (current === null || current.state === "settled") return;
 
@@ -155,7 +164,7 @@ export class EntryEngine {
     // time, so settling never restarts a clock it never had.
     const ms = this.session.activeFor(path, current.n)
       ? this.session.elapsed(Date.now())
-      : current.durationMs;
+      : (current.duration?.ms ?? 0);
     this.session.clear();
 
     const plan = planDuration(source, index, current, "+", ms);
@@ -169,12 +178,13 @@ export class EntryEngine {
 
   /**
    * `Enter` on a settled entry: a child opens one dimension deeper under it, with
-   * the caret in its prose. The parent's duration line is not touched.
+   * the caret in its prose. The parent's clock row is not touched.
    */
   descend(view: EditorView, entry: Entry): void {
     const now = new Date();
     const source = view.state.doc.toString();
     const index = this.indexOf(view, source);
+    if (this.refuseLegacy(index, "opening a child entry")) return;
     const parent = entryBySeq(index, entry.n);
     if (parent === null) return;
 
@@ -229,7 +239,7 @@ export class EntryEngine {
     if (moved) this.pause(new Date());
 
     if (typed && at !== null && at.state === "draft" && !this.session.activeFor(path, at.n)) {
-      this.session.start(path, at.n, at.durationMs, Date.now());
+      this.session.start(path, at.n, at.duration?.ms ?? 0, Date.now());
     }
 
     this.refreshSoon(view);
@@ -422,7 +432,25 @@ export class EntryEngine {
     return editor;
   }
 
+  /**
+   * Refuses a note written before the clock row, and says why, once.
+   *
+   * The plans each refuse such a note on their own; this is where an explicit
+   * editor action — an `⏎`, a deletion — turns that refusal into a sentence.
+   * An ambient write (a pause after typing) stays silent: it writes nothing, and
+   * the note is no worse for it.
+   */
+  private refuseLegacy(index: EntryIndex, action: string): boolean {
+    if (!index.legacyFormat) return false;
+    new Notice(noticeLegacyFormat(action), NOTICE_REFUSAL_MS);
+    return true;
+  }
+
   private notifyRefusal(index: EntryIndex, action: string): void {
+    if (index.legacyFormat) {
+      new Notice(noticeLegacyFormat(action), NOTICE_REFUSAL_MS);
+      return;
+    }
     if (index.unclosedFrontmatter) {
       new Notice(noticeCloseFrontmatter(action), NOTICE_REFUSAL_MS);
       return;

@@ -58,21 +58,44 @@ body {
 }
 
 .weaver-duration {
-  /* The bottom rail's label: a block shrink-wrapped to the clock and pushed to
-   * the right edge, so the clock's own box — not a separate element — is what
-   * paints over the rail behind it. A span cannot take vertical padding, and the
-   * right padding is the same inset the raw duration line keeps. */
-  display: block;
-  width: fit-content;
-  margin-left: auto;
-  padding: 0 10px 6px;
-  background: var(--background-primary);
-  border-radius: 4px;
+  /* The bottom edge's two labels: the moment at the left corner, the duration
+   * at the right. One row, two boxes, and the rail visible between them — each
+   * label's own background cuts the rail, so neither half paints over the other.
+   * The row itself is transparent: a background here would erase the rail all the
+   * way across and the gap between the labels is the point. */
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  background: transparent;
   /* Explicit, so the block's height is a function of the line height and not of
    * its own content: the digits change every second and the line does not move. */
   line-height: var(--weaver-entry-line-height);
   font-size: var(--weaver-entry-size);
   font-variant-numeric: tabular-nums;
+}
+
+/* The moment hangs onto the left rail: the frame's edge is one label inset
+ * outside the marker's ink, so the label extends that far left while its text
+ * stays exactly where the marker's does. */
+.weaver-duration-moment {
+  margin-left: -32px;
+  padding-left: 32px;
+}
+
+.weaver-duration-moment:empty {
+  display: none;
+}
+
+/* The duration reaches the right edge the same way: its padding is the label's
+ * overhang, so the rail stops at the box's corner rather than at the digits.
+ * `margin-left: auto` is what keeps it there when the row carries no moment: the
+ * moment span is hidden when empty, and a lone duration must still label the
+ * right corner rather than the left. */
+.weaver-duration-clock {
+  margin-left: auto;
+  padding-right: 10px;
+  padding-bottom: 6px;
 }
 
 .weaver-entry-daylink {
@@ -85,15 +108,19 @@ body {
 /* Raw while the caret is on the line: the file's own text is the record. The
  * classes carry no colour of their own — a raw line keeps the dimension's
  * colour, so clicking one does not flash it back to plain text. A raw marker
- * line is `.weaver-entry-head` too; a raw duration line is not `.weaver-duration`
- * (the widget is gone), so it needs the colour named again. */
+ * line is `.weaver-entry-head` too; a raw clock row is not `.weaver-duration`
+ * (the widget is gone), so it needs the colour and the indent named again. */
 .weaver-duration-raw {
   color: var(--weaver-dcolor, var(--text-normal));
+  padding-left: calc(
+    min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
+  );
 }
 
 body.weaver-phone .weaver-entry-head,
 body.weaver-phone .weaver-entry-prose,
-body.weaver-phone .weaver-duration {
+body.weaver-phone .weaver-duration,
+body.weaver-phone .weaver-duration-raw {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step-mobile)
   );
@@ -188,8 +215,10 @@ body.weaver-phone .weaver-duration {
 }
 
 /* A corner label paints the note's own background over the rail it names, so
- * the rail stops at the label. No padding: a label must never move a character.
- * The shadow is the padding it cannot have. */
+ * the rail stops at the label. This class adds no padding, because padding here
+ * would move a character; the shadow is the padding it cannot have. A label that
+ * needs an overhang — the clock row's two corners — pairs its padding with an
+ * equal negative margin instead, so only the box edge moves. */
 .weaver-frame-label {
   background: var(--background-primary);
   border-radius: 4px;
@@ -226,11 +255,11 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
   );
 }
 
-/* The raw duration line keeps the inset the widget's padding gives the clock, so
- * crossing the row with the caret does not move it. The clock's label is the mark
- * over the row, whose 8 px shadow cuts the rail. */
+/* The raw clock row sits where its widget does: the moment at the left inset the
+ * widget's own moment keeps, so crossing the row with the caret moves nothing.
+ * The clock's label is the mark over the whole row, whose 8 px shadow cuts the
+ * rail. */
 .weaver-duration-raw {
-  text-align: right;
   padding-right: 10px;
 }
 
@@ -249,9 +278,11 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
 }
 
 /* The first and last rows are the box's rails, so each hangs half a line over the
- * frame's edge until its centre is on the edge. `align-self` shrink-wraps them:
- * a stretched block would paint a full-width band over the rail it names. The
- * negative margin moves the box edge, never a character. */
+ * frame's edge until its centre is on the edge. The head shrink-wraps: its label
+ * is its own characters, and a stretched block would paint a full-width band over
+ * the rail it names. The clock row stretches instead, because its two labels sit
+ * at opposite corners; the row itself paints nothing, so the rail stays visible
+ * between them. The negative margin moves a box edge, never a character. */
 .markdown-rendered .weaver-frame.is-static .weaver-entry-head {
   align-self: flex-start;
   margin-top: -0.675em;
@@ -259,11 +290,25 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
 }
 
 .markdown-rendered .weaver-frame.is-static .weaver-duration {
-  align-self: flex-end;
-  width: fit-content;
-  margin: 0 0 -0.675em auto;
+  align-self: stretch;
+  width: auto;
+  margin: 0 0 -0.675em;
   padding: 0;
   text-align: left;
+}
+
+/* Here the frame's own padding is the label's overhang: the row reaches the
+ * box's edge so both labels cut the rail at their corners, while their text
+ * keeps the same inset as the marker and the prose. */
+.markdown-rendered .weaver-frame.is-static .weaver-duration-moment {
+  margin-left: -0.9em;
+  padding-left: 0.9em;
+}
+
+.markdown-rendered .weaver-frame.is-static .weaver-duration-clock {
+  margin-right: -0.9em;
+  padding-right: 0.9em;
+  padding-bottom: 0;
 }
 
 /* ── Closing the day ───────────────────────────────────────────────────── */

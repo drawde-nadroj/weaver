@@ -381,7 +381,7 @@ export class Navigator {
 
       const time = document.createElement("span");
       time.className = "weaver-navigator-time";
-      time.textContent = item.entry.time;
+      time.textContent = item.entry.time ?? "";
       open.appendChild(time);
 
       if (item.entry.title !== "") {

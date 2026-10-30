@@ -1,25 +1,25 @@
 # Weaver
 
 Weaver is an Obsidian plugin where a day note is a linear list of **entries**. An
-entry is a marker line `{ D.C.N } - HH:MM:SS`, its prose, and one duration line
-`[+-=] HH:MM:SS`:
+entry is a marker line `{ D.C.N }`, its prose, and one clock row
+`HH:MM:SS [+-=] HH:MM:SS`:
 
 ```markdown
-{ 1.1.1 } - 16:10:00
+{ 1.1.1 }
 sparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]
 - **kashmir Shaivism & Bhartrhari's Gammarian**
-+ 00:04:12
+16:10:00 + 00:04:12
 
-{ 2.1.2 } - 16:12:00
+{ 2.1.2 }
 the thought this one opened, one dimension deeper
-= 00:01:30
+16:12:00 = 00:01:30
 ```
 
 `D` is the dimension, `C` the thread — a depth-1 entry's position among depth-1
 entries, carried unchanged all the way down its branch — and `N` the day sequence
-(assigned once, only appended). `N` is identity, `C` is address, and the duration is
-the only mutable field. Colour is a pure function of `D`, so nothing is recalculated
-when a deeper entry appears: depth 7 looks the same before and after.
+(assigned once, only appended). `N` is identity, `C` is address, and the duration
+half is the only mutable field. Colour is a pure function of `D`, so nothing is
+recalculated when a deeper entry appears: depth 7 looks the same before and after.
 
 The note and one navigator are the whole surface. Writing happens in the note;
 nothing is written until a command or a keystroke says so, and every write of a day
@@ -41,14 +41,15 @@ pixel. The manual checks they need are at the end of this file.
 ## The loop
 
 1. **Append** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
-   added at the tip of today's note with an empty prose line and `- 00:00:00`.
-2. **Write.** The first keystroke starts the stopwatch; the rendered line ticks
+   added at the tip of today's note with an empty prose line and a clock row of
+   `HH:MM:SS - 00:00:00`.
+2. **Write.** The first keystroke starts the stopwatch; the rendered duration ticks
    while the file still says `- 00:00:00`.
 3. **Stop writing** — move the caret away, click out of the note, scroll with the
    wheel, open a card — and the clock pauses, writing `=` at that second.
-4. **Settle** with `⏎`: the line becomes `+ HH:MM:SS`, the session ends and nothing
-   else moves. `⏎` again on that settled entry opens a child one dimension deeper
-   with the caret in its prose.
+4. **Settle** with `⏎`: the duration half becomes `+ HH:MM:SS`, the session ends and
+   nothing else moves. `⏎` again on that settled entry opens a child one dimension
+   deeper with the caret in its prose.
 5. **Navigate** with `⌘⇧P`: today's entries in one card, where `⏎` jumps, `⇧⏎`
    settles and descends, `n` appends at the tip, `x` deletes the selection's
    subtree, and `⌘[` walks back a stop.
@@ -56,7 +57,7 @@ pixel. The manual checks they need are at the end of this file.
 
 A pause writes only when a whole second has accumulated, so moving the caret costs
 at most one line rewrite per second and the value always reads back the same.
-Editing a settled entry changes nothing: a `+` line is never rewritten.
+Editing a settled entry changes nothing: a `+` half is never rewritten.
 
 The clock starts on the writer's own input — a typed character or a paste — and on
 nothing else. The vault reloading a note from disk, or Weaver rewriting a line,
@@ -125,21 +126,29 @@ writes to — so reaching another day means opening that note.
 
 ## Record formats
 
-**Marker line** — `{ D.C.N } - HH:MM:SS`, matched as a prefix, so a title typed
-after the clock becomes the first prose line. Tokens are optional in the file:
-`{1.2.3}-13:27` reads as 13:27:00. A marker inside frontmatter or a fenced code
-block is text. On a framed surface the marker's characters are the box's top rail
-label: the rail runs through the middle of the row and is cut behind it, so the
-file's own text is what names the box. The hyphen is ordinary punctuation inside
-that label — the file keeps it, and no character belongs to the box instead.
+**Marker line** — `{ D.C.N }`, matched as a prefix, so a title typed after it
+becomes the first prose line. Whitespace inside the braces is optional:
+`{1.2.3}` reads the same. A marker inside frontmatter or a fenced code block is
+text. On a framed surface the marker's characters are the box's top rail label:
+the rail runs through the middle of the row and is cut behind it, so the file's
+own text is what names the box.
 
-**Duration line** — `[+-=] HH:MM:SS`, the first such line under a marker, in the
-same shape as the marker's own clock so the two can be read against each other.
-Minutes and seconds are `0–59`; hours are unbounded. One sigil decides what the
-entry is: `-` is open and being written, `=` is open and paused, and `+` alone is
-settled. A settled entry is final — nothing rewrites it, not a pause, not a
-settle, not a session that wandered in. A duration line is the only mutable field
-of an entry.
+**Clock row** — the entry's last line: an optional moment `HH:MM:SS`, then an
+optional duration `[+-=] HH:MM:SS`. Either half may be absent, so a hand-written
+`09:14:22` and a stray `+ 00:04:12` are both clock rows. When both are there the
+row reads as one line, `09:14:22 + 00:04:12`: the moment at the left corner of the
+frame's bottom edge, the duration at the right. A half that is absent labels no
+corner, so the frame never shows a value the file does not hold. The moment is
+written once, when the entry is created, and never moves; settling rewrites only
+the tail. Minutes and seconds are `0–59`; hours are unbounded. One sigil decides
+what the entry is: `-` is open and being written, `=` is open and paused, and `+`
+alone is settled. A settled entry is final — nothing rewrites it, not a pause, not
+a settle, not a session that wandered in. The duration half is the only mutable
+field of an entry.
+
+A marker that still carries its old `- HH:MM:SS` clock is refused, not read: the
+new prefix would otherwise take the clock for the first prose line. The migration
+below moves it.
 
 The clock ticks in whole seconds, so the file changes at most once a second, and
 only when the writer stops.
@@ -164,8 +173,8 @@ changes, and only when *Write day counters* is on.
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
-| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail and the duration row its bottom rail, each running through the middle of the row that names it and cut behind that label. |
-| Advanced | Link past days | on | Render ` - [[2026.10.26]]` after the clock on any note that is not today's. |
+| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the moment labels the bottom-left corner, the duration the bottom-right, each running through the middle of the row and cut behind its label. |
+| Advanced | Link past days | on | Render `[[2026.10.26]]` after the moment on any note that is not today's. |
 | Advanced | Debug logging | off | Verbose console output. |
 
 No setting is read while colouring: `dimensionColor(7)` is the same value in every
@@ -217,7 +226,7 @@ One format, both directions: `HH:MM:SS` out of seconds, and seconds back out of
 it — `clock` and `parseClock`, with the `field`/`verdict` chain underneath — `bend
 src/core/duration.bend -o src/core/bend/duration.mjs` compiles it, and
 `src/core/duration.ts` is the typed facade that rounds milliseconds into seconds,
-reads the sigil, and answers "not a duration line" for anything else. The generated
+reads the sigil, and answers "not a clock row" for anything else. The generated
 module is committed, so `npm test` needs no Bend install.
 
 `LAWS.bend` states the laws and `PROOF.bend` proves them:
@@ -288,27 +297,44 @@ and becomes `00:00:22` — and the old `=` sigil, which meant settled, becomes `
 `-` stays `-`. Every other byte survives, and `--verify` checks that against a copy
 of the note taken before the pass.
 
+The clock grew its own row, so a note written before that needs one one-shot pass:
+
+```sh
+node scripts/migrate-clock-row.mjs --dry-run <file…>          # print, write nothing
+node scripts/migrate-clock-row.mjs <file…>                    # migrate in place
+node scripts/migrate-clock-row.mjs --verify <file…>           # self-consistency
+node scripts/migrate-clock-row.mjs --verify --from <original> <file…>  # plus line survival
+```
+
+`{ 1.2.3 } - 13:27:43` becomes `{ 1.2.3 }` with `13:27:43` at the head of the
+entry's clock row; a title written after the old clock moves to the line below the
+marker, where the parser already reads it. An entry with no duration line gains
+`+ 00:00:00`, because it was settled. Frontmatter, fenced code, prose, blank lines
+and the close mark are copied verbatim. The plugin refuses an unmigrated note and
+says so — it never rewrites a note because it opened it.
+
 ## Manual checks
 
 These need a live Obsidian and are not covered by `npm test`:
 
 - `⌘⇧E` with the caret in the editor of another note: today's note gains
-  `{ 1.1.1 } - HH:MM:SS`, a blank line and `- 00:00:00`, the caret sits on the
-  blank line, and no session has started yet.
+  `{ 1.1.1 }`, a blank line and a clock row `HH:MM:SS - 00:00:00`, the caret sits
+  on the blank line, and no session has started yet.
 - Two keystrokes: the clock ticks in seconds. Moving the caret out of the entry
-  writes `= HH:MM:SS`; so does an arrow key inside it. The next keystroke resumes
-  from that second and the rendered sigil returns to `-` without the file moving.
-- `⏎` on the open entry: the line becomes `+ HH:MM:SS`, no child appears and the
-  caret does not move. `⏎` again: a child `{ 2.1.2 } - HH:MM:SS` with `- 00:00:00`
+  writes `=` in the duration half; so does an arrow key inside it. The next
+  keystroke resumes from that second and the rendered sigil returns to `-` without
+  the file moving.
+- `⏎` on the open entry: the duration half becomes `+ HH:MM:SS`, no child appears
+  and the caret does not move. `⏎` again: a child `{ 2.1.2 }` with its own clock row
   appears directly under it, with the caret in its prose.
 - Prose renders in the dimension's colour, the stopwatch's two colons render in
-  that colour while its digits keep the note's own text colour, and the duration
-  line keeps its height while the digits change.
+  that colour while its digits keep the note's own text colour, and the clock row
+  keeps its height while the digits change.
 - `⇧⏎` inside an open entry adds a line; `weaver:line-break` does the same from the
   toolbar.
 - Deleting the live entry then pressing `⌘⇧E`: the new entry's stopwatch reads
   `- 00:00:00` and stays there until the first keystroke.
-- Type into a settled entry: its duration line never changes, and a `+` entry is
+- Type into a settled entry: its duration half never changes, and a `+` entry is
   never rewritten.
 - `⌘⇧P`: the card lists today's entries with the caret's entry selected; `↓` moves
 the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles it and opens a
@@ -323,13 +349,15 @@ card open.
 - Vim: `⏎` in normal mode still moves down outside a draft.
 - Frames, Live Preview: every entry is enclosed by one unbroken box spanning the
   text column; the box's top rail runs through the middle of the entry's own marker
-  row and its bottom rail through the middle of its own duration row, each exactly
-  once and never dimmed. Both rails are cut behind their labels, with a short stub
-  left beside each corner, so the box reads as running into its own text. Scroll to
-  the middle of a long entry: the box stays whole with its last line still
-  off-screen. Two neighbouring boxes never overlap — 8 px of clear space, at least,
-  between one entry's clock centre and the next entry's marker centre.
-- Frames, the caret: put the caret on the marker row or on the duration row — the
+  row and its bottom edge through the middle of its own clock row, each exactly
+  once and never dimmed. The bottom edge is labelled twice: the moment at the
+  left corner, the duration at the right, with the rail visible between them. Both
+  rails are cut behind their labels, with a short stub left beside each corner, so
+  the box reads as running into its own text. Scroll to the middle of a long entry:
+  the box stays whole with its last line still off-screen. Two neighbouring boxes
+  never overlap — 8 px of clear space, at least, between one entry's clock centre
+  and the next entry's marker centre.
+- Frames, the caret: put the caret on the marker row or on the clock row — the
   text stays exactly where it is, both labels keep cutting their rails, and nothing
   steps aside. Turning *Frame each entry* off removes every box and leaves the lines
   untouched; Source mode never draws one.
@@ -340,8 +368,8 @@ card open.
   second indent; a nested entry's frame starts one indent step further right; the
   marker hangs half a line over the top rail and the clock half a line over the
   bottom one, both centred on their rails.
-- Frames, phone: the box reaches the pane's edge, and the clock reads on one line in
-  the bottom-right corner.
+- Frames, phone: the box reaches the pane's edge, and the moment and the duration
+  read on one line at the bottom two corners.
 
 ## Known limits
 

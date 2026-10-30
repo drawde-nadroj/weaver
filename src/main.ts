@@ -1,9 +1,9 @@
 /**
  * Weaver: a day note is a linear list of entries.
  *
- * An entry is `{ D.C.N } - HH:MM:SS`, its prose, and one duration line. The note
- * and the navigator are the whole surface: nothing else navigates, and every
- * write of a day note goes through one writer.
+ * An entry is `{ D.C.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.
+ * The note and the navigator are the whole surface: nothing else navigates, and
+ * every write of a day note goes through one writer.
  */
 
 import { Notice, Plugin, TFile } from "obsidian";
@@ -12,6 +12,7 @@ import { formatClock } from "./core/clock";
 import { parseClose, planCloseDay } from "./core/close";
 import { applyDayStats, recountDay } from "./core/day-stats";
 import { dayKey } from "./core/day";
+import { parseEntries } from "./core/entries";
 import { applyPlanToSource } from "./core/insert";
 import type { Stop } from "./core/navigator-stack";
 import { closeDecorationsExtension } from "./editor/close-decorations";
@@ -29,7 +30,8 @@ import {
   NOTICE_DAY_CLOSED,
   NOTICE_NO_DAY_NOTE,
   NOTICE_NOOP_MS,
-  NOTICE_REFUSAL_MS
+  NOTICE_REFUSAL_MS,
+  noticeLegacyFormat
 } from "./notices";
 import { createCloseProcessor } from "./reading/close-processor";
 import { createEntryProcessor } from "./reading/entry-processor";
@@ -195,6 +197,11 @@ export default class WeaverPlugin extends Plugin {
     );
 
     if (result === null) {
+      const source = await this.app.vault.cachedRead(file);
+      if (parseEntries(source).legacyFormat) {
+        new Notice(noticeLegacyFormat("closing the day"), NOTICE_REFUSAL_MS);
+        return;
+      }
       new Notice(NOTICE_DAY_ALREADY_CLOSED, NOTICE_REFUSAL_MS);
       return;
     }

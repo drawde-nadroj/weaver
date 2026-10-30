@@ -54,7 +54,7 @@ export function planCloseDay(source: string, now: Date): InsertPlan | null {
   if (parseClose(source).closedAt !== null) return null;
 
   const index = parseEntries(source);
-  if (index.unclosedFrontmatter || index.unclosedFence) return null;
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
   return planAppendLine(source, closeLine(formatClock(now)));
 }

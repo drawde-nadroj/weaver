@@ -39,7 +39,7 @@ describe("parseClose", () => {
 
 describe("planCloseDay", () => {
   it("appends the mark at the tip of the note", () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "prose", "+ 00:00:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "10:00:00 + 00:00:00"].join("\n");
     const plan = planCloseDay(source, AT_1730);
     if (plan === null) throw new Error("expected a plan");
 
@@ -47,7 +47,7 @@ describe("planCloseDay", () => {
   });
 
   it("refuses a second close", () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "prose", "✓ 09:00:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "10:00:00 + 00:00:00", "✓ 09:00:00"].join("\n");
     expect(planCloseDay(source, AT_1730)).toBeNull();
   });
 

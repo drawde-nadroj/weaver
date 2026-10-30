@@ -177,7 +177,7 @@ describe("Mod-Enter", () => {
 });
 
 describe("shouldPinStopwatch", () => {
-  const all = { phone: true, active: true, caretOnLastProseLine: true, hasDuration: true };
+  const all = { phone: true, active: true, caretOnLastProseLine: true, hasClockRow: true };
 
   it("pins only when all four hold", () => {
     expect(shouldPinStopwatch(all)).toBe(true);
@@ -185,6 +185,6 @@ describe("shouldPinStopwatch", () => {
     expect(shouldPinStopwatch({ ...all, phone: false })).toBe(false);
     expect(shouldPinStopwatch({ ...all, active: false })).toBe(false);
     expect(shouldPinStopwatch({ ...all, caretOnLastProseLine: false })).toBe(false);
-    expect(shouldPinStopwatch({ ...all, hasDuration: false })).toBe(false);
+    expect(shouldPinStopwatch({ ...all, hasClockRow: false })).toBe(false);
   });
 });

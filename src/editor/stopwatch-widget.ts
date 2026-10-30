@@ -1,5 +1,13 @@
 /**
- * The rendered duration line.
+ * The rendered clock row.
+ *
+ * The row is the frame's bottom edge, and its two ends are its two labels: the
+ * moment at the left corner, the duration at the right. The widget renders the
+ * row the file holds — the moment the parser read, the duration from its sigil
+ * and milliseconds — and a half the row does not carry is not drawn: a
+ * moment-only row has no clock at its right corner, and a duration-only row has
+ * no moment at its left. Each half carries its own background, so the rail is cut
+ * twice and stays visible in the gap between them.
  *
  * While the session is live the widget ticks itself: it mutates the three digit
  * spans every second and dispatches nothing, so the document, the undo history
@@ -10,17 +18,13 @@
  * The clock never moves the line. `eq` ignores the elapsed time, so a per
  * keystroke refresh of the decoration set finds the widget unchanged and leaves
  * the DOM, and the line's measured height, alone. When something a redraw must
- * show does change — the sigil, the liveness, the colour — `updateDOM` rewrites
- * that DOM in place instead of rebuilding it, which is what used to make the
- * line hop a pixel on every keystroke.
+ * show does change — the sigil, the liveness, the colour, the moment — `updateDOM`
+ * rewrites that DOM in place instead of rebuilding it, which is what used to make
+ * the line hop a pixel on every keystroke.
  *
- * With frames on, this element is the box's bottom rail label: the clock's own
- * box paints over the rail behind it, and the rail runs through the middle of the
- * row. It is right-aligned like nothing else in the note, and it is the only clock
- * — the frame layer draws no text. `n` is the entry it belongs to, so the frame
- * layer can find the row by its stamp instead of by a DOM position. The ticker is
- * keyed by the element, so whichever surface owns the element owns the one
- * interval.
+ * `n` is the entry it belongs to, so the frame layer can find the row by its
+ * stamp instead of by a DOM position. The ticker is keyed by the element, so
+ * whichever surface owns the element owns the one interval.
  */
 
 import { WidgetType } from "@codemirror/view";
@@ -30,17 +34,25 @@ import { startTicking, stopTicking, writeDigits } from "./duration-ticker";
 
 /** Everything the widget renders from; none of it changes while the clock ticks. */
 export interface DurationWidgetInput {
-  /** The entry this row's clock belongs to: the frame layer's row stamp. */
+  /** The entry this row's clocks belong to: the frame layer's row stamp. */
   n: number;
-  sigil: DurationSigil;
+  /** The moment, `HH:MM:SS`; null when the row carries only a duration. */
+  time: string | null;
+  /** The duration half's sigil; null when the row carries only a moment. */
+  sigil: DurationSigil | null;
   ms: number;
   active: boolean;
   color: string;
   /** The entry's depth, so the rendered line keeps the entry's indent. */
   d: number;
+  /** The day this entry continues, or null when it started today. */
+  dayLink: string | null;
+  /** Opens `dayLink`; never called when `dayLink` is null. */
+  openDayLink: ((target: string, sourcePath: string) => void) | null;
+  sourcePath: string;
 }
 
-/** The duration row as a widget: digits that tick without a transaction. */
+/** The clock row as a widget: two labels, digits that tick without a transaction. */
 export class DurationWidget extends WidgetType {
   /** The element this instance built or adopted, so `destroy` can stop its ticker. */
   private root: HTMLElement | null = null;
@@ -52,43 +64,78 @@ export class DurationWidget extends WidgetType {
 
   /**
    * The elapsed time is not part of this comparison on purpose: the widget is
-   * the same widget while the sigil, the liveness, the colour and the depth are,
-   * and the seconds are the tick's business, not the redraw's.
+   * the same widget while the moment, the sigil, the liveness, the colour, the
+   * depth and the day link are, and the seconds are the tick's business, not the
+   * redraw's.
    */
   eq(other: DurationWidget): boolean {
     return (
       other.input.n === this.input.n &&
+      other.input.time === this.input.time &&
       other.input.sigil === this.input.sigil &&
       other.input.active === this.input.active &&
       other.input.color === this.input.color &&
-      other.input.d === this.input.d
+      other.input.d === this.input.d &&
+      other.input.dayLink === this.input.dayLink
     );
   }
 
   toDOM(): HTMLElement {
     const root = document.createElement("span");
     root.className = "weaver-duration";
-    this.paint(root);
 
-    this.digits = [];
-    formatClock(this.input.ms)
-      .split(":")
-      .forEach((part, index) => {
-        if (index > 0) {
-          const colon = document.createElement("span");
-          colon.className = "weaver-duration-ink";
-          colon.textContent = ":";
-          root.appendChild(colon);
-        }
-
-        const span = document.createElement("span");
-        span.className = "weaver-duration-num";
-        span.textContent = part;
-        root.appendChild(span);
-        this.digits.push(span);
+    // The bottom-left label: the moment, and the day it continues.
+    const moment = document.createElement("span");
+    moment.className = "weaver-duration-moment weaver-frame-label";
+    moment.textContent = this.input.time ?? "";
+    if (this.input.dayLink !== null) {
+      const link = document.createElement("span");
+      link.className = "weaver-entry-daylink";
+      link.textContent = ` [[${this.input.dayLink}]]`;
+      link.addEventListener("click", (event: Event) => {
+        event.preventDefault();
+        this.input.openDayLink?.(this.input.dayLink ?? "", this.input.sourcePath);
       });
+      moment.appendChild(link);
+    }
+    root.appendChild(moment);
+
+    // The bottom-right label: the sigil, then the clock. A row that carries only
+    // a moment has no duration half, so the widget draws none: the frame must not
+    // label a corner with a value the file does not hold.
+    if (this.input.sigil !== null) {
+      const clock = document.createElement("span");
+      clock.className = "weaver-duration-clock weaver-frame-label";
+
+      const sigil = document.createElement("span");
+      sigil.className = "weaver-duration-sigil";
+      clock.appendChild(sigil);
+
+      this.digits = [];
+      formatClock(this.input.ms)
+        .split(":")
+        .forEach((part, index) => {
+          if (index > 0) {
+            const colon = document.createElement("span");
+            colon.className = "weaver-duration-ink";
+            colon.textContent = ":";
+            clock.appendChild(colon);
+          }
+
+          const span = document.createElement("span");
+          span.className = "weaver-duration-num";
+          span.textContent = part;
+          clock.appendChild(span);
+          this.digits.push(span);
+        });
+
+      root.appendChild(clock);
+    } else {
+      this.digits = [];
+    }
 
     this.root = root;
+    this.paint(root);
     if (this.input.active) startTicking(root, this.digits, this.input.ms);
     return root;
   }
@@ -118,7 +165,7 @@ export class DurationWidget extends WidgetType {
   }
 
   /** The sigil, the row stamp and the two custom properties, which live outside
-   * the digits. */
+   * the digits. Everything else the widget shows is fixed by `eq`. */
   private paint(root: HTMLElement): void {
     root.setAttribute(
       "style",
@@ -128,12 +175,7 @@ export class DurationWidget extends WidgetType {
     // widget is not always a line of its own.
     root.setAttribute("data-weaver-n", String(this.input.n));
 
-    let sigil = root.querySelector<HTMLElement>(".weaver-duration-sigil");
-    if (sigil === null) {
-      sigil = document.createElement("span");
-      sigil.className = "weaver-duration-sigil";
-      root.appendChild(sigil);
-    }
-    sigil.textContent = this.input.sigil;
+    const sigil = root.querySelector<HTMLElement>(".weaver-duration-sigil");
+    if (sigil !== null) sigil.textContent = this.input.sigil;
   }
 }

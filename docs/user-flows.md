@@ -6,13 +6,13 @@ there is nothing to do.
 ## Flow: append an entry
 
 1. `⌘⇧E`. Today's note is created if it does not exist; otherwise it is opened.
-2. An empty root entry is appended at the tip: `{ 1.k.m } - HH:MM:SS`, one blank
-   prose line, `- 00:00:00`, and the caret on the blank line. `k` is one past the
-   day's depth-1 entries; `m` is one past its largest sequence.
+2. An empty root entry is appended at the tip: `{ 1.k.m }`, one blank prose line,
+   then its clock row `HH:MM:SS - 00:00:00`, and the caret on the blank line. `k` is
+   one past the day's depth-1 entries; `m` is one past its largest sequence.
 
-Writes: the marker and the duration line, plus the frontmatter block when the note
-is created. Undo: one step, the whole entry. The write goes through the editor when
-the note is open in one and through `Vault.process` otherwise — one writer per file,
+Writes: the marker and the clock row, plus the frontmatter block when the note is
+created. Undo: one step, the whole entry. The write goes through the editor when the
+note is open in one and through `Vault.process` otherwise — one writer per file,
 never both — and the plan is built from the exact text being written, so an append
 lands at the note's real end however much it grew since it was read. The file is
 revealed in a tab of its own, never replacing the tab you are in.
@@ -23,7 +23,7 @@ revealed in a tab of its own, never replacing the tab you are in.
    duration as the baseline. The vault reloading a note, and Weaver's own writes,
    start nothing: an entry nobody has typed in has no time in it.
 2. The rendered duration reads `- HH:MM:SS` and ticks; the file still says
-   `- 00:00:00`.
+   `- 00:00:00` in the clock row.
 
 Writes: nothing until the writing stops. The ticking widget mutates its own digit
 spans, so no transaction and no undo entry is created by the clock.
@@ -34,33 +34,34 @@ spans, so no transaction and no undo entry is created by the clock.
    a document change (an arrow key, a click, a tap), a blur of the editor, a wheel
    or a finger on the note, another leaf becoming active, the app hidden, the
    navigator opening, and the live entry being deleted.
-2. The clock stops and the entry's line becomes `= HH:MM:SS`.
+2. The clock stops and the duration half of the entry's clock row becomes
+   `= HH:MM:SS`.
 
-Writes: the duration line of the entry the clock was on, through the same one writer
-as every other day-note write — the open editor when there is one, `Vault.process`
-otherwise, re-read first and skipped if the entry is gone. Nothing is written when
-the second has not changed — that guard is why a caret move costs at most one
-rewrite per second. Not added to the undo history: a pause is not an edit you asked
-for.
+Writes: the duration half of the clock row of the entry the clock was on, through
+the same one writer as every other day-note write — the open editor when there is
+one, `Vault.process` otherwise, re-read first and skipped if the entry is gone. The
+moment keeps its own characters, so the row cannot move. Nothing is written when the
+second has not changed — that guard is why a caret move costs at most one rewrite
+per second. Not added to the undo history: a pause is not an edit you asked for.
 
 Refused, silently, when the entry has been deleted or settled in the meantime.
 
 ## Flow: settle, then descend
 
 1. `⏎` in an open entry — `-` being written or `=` paused.
-2. The duration becomes `+ HH:MM:SS`, the session ends, and nothing else moves: no
-   child, no caret.
+2. The duration half becomes `+ HH:MM:SS`, the session ends, and nothing else moves:
+   no child, no caret.
 3. `⏎` again, on that settled entry: a child opens one dimension deeper, directly
    beneath it, with the caret in its prose. It inherits the parent's `C` — a branch
    carries one thread id — and takes the next `N`. The place the caret left is the
    first row of the return stack.
 
-Writes: the duration (one transaction), then the child's marker (a second, single
-change: an insert renumbers nothing). Each is undoable on its own. The child's own
-line reads `- 00:00:00`, and its stopwatch does not start until the first
-keystroke.
+Writes: the duration (one transaction), then the child's marker and clock row (a
+second, single change: an insert renumbers nothing). Each is undoable on its own.
+The child's own clock row reads `HH:MM:SS - 00:00:00`, and its stopwatch does not
+start until the first keystroke.
 
-A settled entry is final: `⏎` there descends, it never rewrites the `+` line.
+A settled entry is final: `⏎` there descends, it never rewrites the `+` half.
 Refused (nothing written, `⏎` not handled) only when the caret is not in an entry.
 The rule is stateless, so `⏎` in yesterday's `+` entry descends too, and a stray
 `⏎` while reading leaves an empty child that `x` or one undo removes.
@@ -109,23 +110,24 @@ means opening that note.
 Writes: the mark and, when a value changed, the frontmatter. Undo: one step.
 
 Refused when the day already carries a mark (`this day is already closed`), when
-the frontmatter is unclosed, or when a code block is unclosed. The first decision
-stands.
+the frontmatter is unclosed, when a code block is unclosed, or when the note still
+uses the old marker format (`migrate it before closing the day`). The first
+decision stands.
 
 ## Flow: read a day back
 
-Nothing is written. The note itself is the view: each entry in its frame, the marker
-centred on the top rail and the duration centred on the bottom rail with both rails
-cut behind their labels, digits in the text colour and punctuation in the dimension's
-colour, durations as they were settled, and `- [[day]]` after the clock on any note
-that is not today's.
+Nothing is written. The note itself is the view: each entry in its frame, the
+marker centred on the top rail and the clock row on the bottom edge — moment at the
+left corner, duration at the right — with both rails cut behind their labels, digits
+in the text colour and punctuation in the dimension's colour, durations as they were
+settled, and `[[day]]` after the moment on any note that is not today's.
 
 ## Flow: phone capture
 
 1. The toolbar's `+` runs *Append an entry*. The note opens with the caret in the
    new entry.
-2. Type: after every keystroke the duration line is pinned to the bottom of the
-   writing band above the soft keyboard, with the caret line directly above it.
+2. Type: after every keystroke the clock row is pinned to the bottom of the writing
+   band above the soft keyboard, with the caret line directly above it.
 3. Scroll up without typing: the view stays where you put it, and the scroll itself
    pauses the clock. Tap back into the last prose line and type again: the clock
    resumes from that second and the stopwatch comes back to the bottom.

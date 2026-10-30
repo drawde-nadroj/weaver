@@ -3,8 +3,8 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 34,
-    "exports": 150,
-    "classes": 39,
+    "exports": 153,
+    "classes": 41,
     "testFiles": 25
   },
   "modules": [
@@ -137,8 +137,8 @@
           "line": 53,
           "signature": "export function planCloseDay(source: string, now: Date): InsertPlan | null",
           "doc": "The plan that appends the closing mark, or null when it must be refused.",
-          "hash": "22825a0841",
-          "bytes": 306,
+          "hash": "e36f434d57",
+          "bytes": 328,
           "refs": [
             "src/main.ts"
           ],
@@ -296,8 +296,8 @@
           "line": 22,
           "signature": "export function countDay(index: EntryIndex, closedAt: string | null): DayStats",
           "doc": "Every entry is a travel; depth is the deepest dimension; durations add up.",
-          "hash": "8479138927",
-          "bytes": 259,
+          "hash": "b04e813ed7",
+          "bytes": 266,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -538,8 +538,8 @@
     {
       "file": "src/core/duration.ts",
       "layer": "core",
-      "lines": 53,
-      "doc": "The duration line of an entry, and the clock it is written with.\n\nOne format for both directions: `HH:MM:SS`. An entry's duration reads against\nthe marker's own clock, so a duration and a time of day are the same shape at\nthe same width. The algebra behind it — and the inverse, reading a clock\nstring back — lives in `duration.bend`, where `LAWS.bend` pins it and\n`bend PROOF.bend` proves it; `bend/duration.mjs` is that module compiled, and\nthis file is its typed facade.\n\nThe generated module sits in its own directory on purpose: a `duration.mjs`\nbeside this file would win the extensionless `./duration` import, and Vite\ntries `.mjs` before `.ts`.\n\nWhat stays here is what Bend cannot see: milliseconds, which are rounded into\nthe seconds the algebra counts in, and the sigil, which is text.",
+      "lines": 110,
+      "doc": "The clock row of an entry, and the clocks it is written with.\n\nThe row is the entry's last line and carries its two clocks: the moment it was\nwritten, and how long it took. One format for both directions, `HH:MM:SS`, so\na time of day and a duration are the same shape at the same width — which is\nwhat lets them sit at opposite ends of one rail. The algebra behind it — and\nthe inverse, reading a clock string back — lives in `duration.bend`, where\n`LAWS.bend` pins it and `bend PROOF.bend` proves it; `bend/duration.mjs` is\nthat module compiled, and this file is its typed facade.\n\nThe generated module sits in its own directory on purpose: a `duration.mjs`\nbeside this file would win the extensionless `./duration` import, and Vite\ntries `.mjs` before `.ts`.\n\nWhat stays here is what Bend cannot see: milliseconds, which are rounded into\nthe seconds the algebra counts in, and the sigil, which is text.",
       "obsidian": false,
       "imports": [
         "src/core/bend/duration.mjs"
@@ -548,14 +548,14 @@
         {
           "name": "DurationSigil",
           "kind": "type",
-          "line": 22,
+          "line": 23,
           "signature": "export type DurationSigil = \"+\" | \"-\" | \"=\"",
           "doc": "The three sigils: `-` open and being written, `=` open and paused, `+` settled.",
           "hash": "bcc5defb43",
           "bytes": 44,
           "refs": [
+            "src/core/entries.ts",
             "src/core/insert.ts",
-            "src/editor/entry-decorations.ts",
             "src/editor/stopwatch-widget.ts",
             "src/entries/engine.ts"
           ],
@@ -565,7 +565,7 @@
         {
           "name": "formatClock",
           "kind": "function",
-          "line": 25,
+          "line": 26,
           "signature": "export function formatClock(ms: number): string",
           "doc": "Milliseconds as `HH:MM:SS`; hours are unbounded.",
           "hash": "e9595ee6a1",
@@ -589,32 +589,61 @@
         {
           "name": "formatDurationLine",
           "kind": "function",
-          "line": 30,
+          "line": 31,
           "signature": "export function formatDurationLine(sigil: DurationSigil, ms: number): string",
-          "doc": "The whole line, e.g. `+ 00:04:12`.",
+          "doc": "The duration half of a clock row, e.g. `+ 00:04:12`.",
           "hash": "0b884ca13a",
           "bytes": 120,
           "refs": [
             "src/core/insert.ts"
           ],
-          "refCount": 4,
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "ClockRow",
+          "kind": "interface",
+          "line": 42,
+          "signature": "export interface ClockRow",
+          "doc": "The two halves of a clock row: the moment, then the duration beside it.",
+          "hash": "719e27ad1c",
+          "bytes": 134,
+          "refs": [
+            "src/reading/entry-processor.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "parseClockRow",
+          "kind": "function",
+          "line": 71,
+          "signature": "export function parseClockRow(text: string): ClockRow | null",
+          "doc": "A clock row: a moment, a duration, or both, and nothing else.\n\nEither half may be absent — a draft has no settled duration, a hand-written\nentry may carry only a duration — so `null` back means the row is prose, not\nthat half of it was wrong. The moment keeps its own bytes in {@link ClockRow.head}\nso a rewrite of the duration can leave it character for character alone.\n\nMinutes and seconds are 0–59, so `formatClock`'s own output always reads back.\nThe duration's separator is required, so a prose line that starts with a plus\nis prose.",
+          "hash": "a1ee9d6751",
+          "bytes": 1074,
+          "refs": [
+            "src/core/entries.ts",
+            "src/core/insert.ts",
+            "src/reading/entry-processor.ts"
+          ],
+          "refCount": 8,
           "testedBy": [
             "tests/duration.test.ts"
           ]
         },
         {
-          "name": "parseDurationLine",
+          "name": "formatClockRow",
           "kind": "function",
-          "line": 42,
-          "signature": "export function parseDurationLine(line: string):",
-          "doc": "A duration line: sigil, one space, then `HH:MM:SS`.\n\nMinutes and seconds are 0–59, so `formatClock`'s own output always reads back.\nThe separator is required, so a prose line that starts with a plus is prose.",
-          "hash": "b920b19453",
-          "bytes": 85,
+          "line": 105,
+          "signature": "export function formatClockRow(time: string | null, sigil: DurationSigil, ms: number): string",
+          "doc": "The whole clock row, e.g. `09:14:22 + 00:04:12`, or the duration alone.",
+          "hash": "95ad4850c2",
+          "bytes": 197,
           "refs": [
-            "src/core/entries.ts",
-            "src/reading/entry-processor.ts"
+            "src/core/insert.ts"
           ],
-          "refCount": 7,
+          "refCount": 3,
           "testedBy": [
             "tests/duration.test.ts"
           ]
@@ -626,8 +655,8 @@
     {
       "file": "src/core/entries.ts",
       "layer": "core",
-      "lines": 384,
-      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.C.N } - HH:MM:SS`, prose, then at most one\nduration line `+ MM:SS:MS`. `D` is the dimension, `C` the thread (a branch's\nid, carried unchanged from its depth-1 ancestor down), `N` the day sequence\n(assigned once, only appended). `N` is identity, `C` is address — and both\nhalves of an address change only when a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a hand-written title after the clock\nbecomes the first prose line instead of breaking the entry. Markers inside\nfrontmatter or a fenced code block are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nduration is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.",
+      "lines": 392,
+      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.C.N }`, prose, then at most one clock row\n`09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`\nis the dimension, `C` the thread (a branch's id, carried unchanged from its\ndepth-1 ancestor down), `N` the day sequence (assigned once, only appended).\n`N` is identity, `C` is address — and both halves of an address change only\nwhen a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a title written on it becomes the\nfirst prose line instead of breaking the entry. The clock row is the entry's\nlast line, which is what lets the moment and the duration label the frame's\nbottom rail at its two corners. Markers inside frontmatter or a fenced code\nblock are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nclock row is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.",
       "obsidian": false,
       "imports": [
         "src/core/document",
@@ -638,11 +667,11 @@
         {
           "name": "Entry",
           "kind": "interface",
-          "line": 24,
+          "line": 27,
           "signature": "export interface Entry",
-          "doc": "One entry: its marker, prose, duration, and the offsets every surface reads.",
-          "hash": "8363584c75",
-          "bytes": 487,
+          "doc": "One entry: its marker, prose, clocks, and the offsets every surface reads.",
+          "hash": "a06d26a3c7",
+          "bytes": 526,
           "refs": [
             "src/core/insert.ts",
             "src/editor/entry-keys.ts",
@@ -658,11 +687,11 @@
         {
           "name": "EntryIndex",
           "kind": "interface",
-          "line": 61,
+          "line": 66,
           "signature": "export interface EntryIndex",
           "doc": "One parse of a note: its entries, maxima, and the line facts they were found in.",
-          "hash": "792739810c",
-          "bytes": 244,
+          "hash": "8dca27f285",
+          "bytes": 272,
           "refs": [
             "src/core/day-stats.ts",
             "src/core/insert.ts",
@@ -670,17 +699,17 @@
             "src/entries/engine.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 14,
+          "refCount": 15,
           "testedBy": []
         },
         {
           "name": "MarkerPrefix",
           "kind": "interface",
-          "line": 78,
+          "line": 94,
           "signature": "export interface MarkerPrefix",
           "doc": "What a marker line carries, and how much of the text it occupies.",
-          "hash": "48e496ac96",
-          "bytes": 112,
+          "hash": "ff25bc0936",
+          "bytes": 93,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -688,11 +717,11 @@
         {
           "name": "parseMarkerPrefix",
           "kind": "function",
-          "line": 101,
+          "line": 109,
           "signature": "export function parseMarkerPrefix(text: string): MarkerPrefix | null",
-          "doc": "Reads a marker at the start of `text`, or returns null.\n\nThe marker is a prefix, so `{ 1.2.3 } - 13:27:43 a title` is one entry whose\ntitle is `a title`.",
-          "hash": "18cd7e0cff",
-          "bytes": 372,
+          "doc": "Reads a marker at the start of `text`, or returns null.\n\nThe marker is a prefix, so `{ 1.2.3 } a title` is one entry whose title is\n`a title` — and the same is true of a hand-written line that opens with an\naddress and nothing else.",
+          "hash": "a3575a0382",
+          "bytes": 322,
           "refs": [
             "src/reading/entry-processor.ts"
           ],
@@ -702,20 +731,21 @@
         {
           "name": "parseEntries",
           "kind": "function",
-          "line": 141,
+          "line": 147,
           "signature": "export function parseEntries(source: string): EntryIndex",
           "doc": "Parses a note into entries, ignoring frontmatter and fenced code.",
-          "hash": "e2d41f4111",
-          "bytes": 4728,
+          "hash": "d348ea9601",
+          "bytes": 4774,
           "refs": [
             "src/core/close.ts",
             "src/core/day-stats.ts",
             "src/core/insert.ts",
             "src/editor/entry-field.ts",
             "src/entries/engine.ts",
+            "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 18,
+          "refCount": 20,
           "testedBy": [
             "tests/append-entry.test.ts",
             "tests/color.test.ts",
@@ -729,7 +759,7 @@
         {
           "name": "findEntryAtLine",
           "kind": "function",
-          "line": 302,
+          "line": 310,
           "signature": "export function findEntryAtLine(index: EntryIndex, line: number): Entry | null",
           "doc": "The entry whose block contains this zero-based line, or null.",
           "hash": "a8b5e43b31",
@@ -743,7 +773,7 @@
         {
           "name": "findEntryAtOffset",
           "kind": "function",
-          "line": 311,
+          "line": 319,
           "signature": "export function findEntryAtOffset(index: EntryIndex, offset: number): Entry | null",
           "doc": "The entry whose subtree holds `offset`, or null when it is outside every one.",
           "hash": "c6e5f577ca",
@@ -760,7 +790,7 @@
         {
           "name": "findCurrentEntry",
           "kind": "function",
-          "line": 319,
+          "line": 327,
           "signature": "export function findCurrentEntry(index: EntryIndex, line: number): Entry | null",
           "doc": "The entry on `line`, else the nearest one above it, else null.",
           "hash": "6049d303a4",
@@ -776,7 +806,7 @@
         {
           "name": "entryBySeq",
           "kind": "function",
-          "line": 329,
+          "line": 337,
           "signature": "export function entryBySeq(index: EntryIndex, n: number): Entry | null",
           "doc": "The entry carrying this `N`, or null when a write removed it.",
           "hash": "53b1606b80",
@@ -793,7 +823,7 @@
         {
           "name": "childrenOf",
           "kind": "function",
-          "line": 337,
+          "line": 345,
           "signature": "export function childrenOf(index: EntryIndex, entry: Entry | null): Entry[]",
           "doc": "Direct children of `entry`, in document order; roots when it is null.",
           "hash": "26bdb8834a",
@@ -809,7 +839,7 @@
         {
           "name": "endOfSubtree",
           "kind": "function",
-          "line": 343,
+          "line": 351,
           "signature": "export function endOfSubtree(index: EntryIndex, entry: Entry): number",
           "doc": "The last line of `entry`'s subtree.",
           "hash": "df77e07b37",
@@ -823,7 +853,7 @@
         {
           "name": "nextSeq",
           "kind": "function",
-          "line": 348,
+          "line": 356,
           "signature": "export function nextSeq(index: EntryIndex): number",
           "doc": "The next day sequence: one past the largest, starting at 1.",
           "hash": "4bb89b4dc3",
@@ -839,7 +869,7 @@
         {
           "name": "nextThread",
           "kind": "function",
-          "line": 353,
+          "line": 361,
           "signature": "export function nextThread(index: EntryIndex): number",
           "doc": "The next thread id: one past the depth-1 entries.",
           "hash": "c576a5b869",
@@ -855,11 +885,11 @@
         {
           "name": "formatMarker",
           "kind": "function",
-          "line": 358,
-          "signature": "export function formatMarker(d: number, c: number, n: number, time: string): string",
-          "doc": "`{ 1.2.3 } - 13:27:43`; one space inside each brace.",
-          "hash": "38836c80b7",
-          "bytes": 128,
+          "line": 366,
+          "signature": "export function formatMarker(d: number, c: number, n: number): string",
+          "doc": "`{ 1.2.3 }`; one space inside each brace, and nothing after it.",
+          "hash": "26f8d1081a",
+          "bytes": 104,
           "refs": [
             "src/core/insert.ts"
           ],
@@ -871,7 +901,7 @@
         {
           "name": "repairThreads",
           "kind": "function",
-          "line": 369,
+          "line": 377,
           "signature": "export function repairThreads(index: EntryIndex): TextChange[]",
           "doc": "Changes that put every `C` back onto its branch's thread.\n\nA root's `C` is its 1-based position among roots, and a deeper entry's `C` is\nits root's — so deleting a root is the only thing that can unsettle a branch,\nand one pass over the note rewrites exactly the markers that drifted.",
           "hash": "7919580f20",
@@ -891,15 +921,15 @@
     {
       "file": "src/core/frame.ts",
       "layer": "core",
-      "lines": 94,
-      "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the marker line — is the box's top-left\nlabel, and its own duration row is the box's bottom-right, so the label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the marker's ink to the right edge of the text column: a taller box\ncould not put a clock in its own corner without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
+      "lines": 96,
+      "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the marker line — is the box's top-left\nlabel, and its own clock row is the bottom edge, labelling the bottom-left\ncorner with the moment and the bottom-right with the duration. Every label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the marker's ink to the right edge of the text column: a box that hugged\nits text could not put the moment at one bottom corner and the duration at the\nother without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
       "obsidian": false,
       "imports": [],
       "exports": [
         {
           "name": "FrameColumn",
           "kind": "interface",
-          "line": 20,
+          "line": 22,
           "signature": "export interface FrameColumn",
           "doc": "The column a frame may occupy, in the layer's own coordinates.",
           "hash": "c35ea8d7ba",
@@ -915,7 +945,7 @@
         {
           "name": "FrameBoxInput",
           "kind": "interface",
-          "line": 26,
+          "line": 28,
           "signature": "export interface FrameBoxInput",
           "doc": "What a box needs: the column, the text's left edge, and the label inset.",
           "hash": "13f504ab95",
@@ -927,7 +957,7 @@
         {
           "name": "FrameBox",
           "kind": "interface",
-          "line": 35,
+          "line": 37,
           "signature": "export interface FrameBox",
           "doc": "The rectangle to draw, or `drawn: false` when there is nothing to enclose.",
           "hash": "635f1a434a",
@@ -939,7 +969,7 @@
         {
           "name": "frameBox",
           "kind": "function",
-          "line": 48,
+          "line": 50,
           "signature": "export function frameBox(input: FrameBoxInput): FrameBox",
           "doc": "The box spans one label inset outside the entry's first row's ink to the\ncolumn's right edge.\n\nThere is no width below which a box is withheld: a narrow pane gets a narrow\nbox. The only way to get no box is to have measured nothing yet.",
           "hash": "cbb958de1d",
@@ -955,7 +985,7 @@
         {
           "name": "FrameSpanInput",
           "kind": "interface",
-          "line": 55,
+          "line": 57,
           "signature": "export interface FrameSpanInput",
           "doc": "The three rails: this entry's two, and where the next entry's top one sits.",
           "hash": "ec0d2677fb",
@@ -967,7 +997,7 @@
         {
           "name": "FrameSpan",
           "kind": "interface",
-          "line": 67,
+          "line": 69,
           "signature": "export interface FrameSpan",
           "doc": "The vertical extent to draw, or `drawn: false` when the rails leave no interior.",
           "hash": "69ed767a0d",
@@ -981,7 +1011,7 @@
         {
           "name": "frameSpan",
           "kind": "function",
-          "line": 88,
+          "line": 90,
           "signature": "export function frameSpan(input: FrameSpanInput): FrameSpan",
           "doc": "The box's vertical extent: from one rail to the other, and nothing more.\n\nThe rails are the label lines, so there is no padding to add and no cap to\napply. The old version derived both ends from the text's edges and padded them,\nwhich put the top rail 5 px above the marker's own row and the bottom rail 5 px\nbelow the clock's — so the labels sat inside the box instead of on it, and the\nclock row was clipped by the rail under it.\n\nThe only judgement left is whether two rails are far enough apart: a box is\nwithheld when the next entry's rail is closer than {@link FrameSpanInput.air},\nbecause two labels would then share the space and neither would read. There is\nno trimming — a rail is a label's centre or it is nothing — and no padding cap.\nWhen the rails cross, there is no interior and no box.",
           "hash": "324739146a",
@@ -1001,7 +1031,7 @@
     {
       "file": "src/core/insert.ts",
       "layer": "core",
-      "lines": 227,
+      "lines": 241,
       "doc": "The three plans that write entry text, and the arithmetic every plan shares.\n\nA plan is a list of changes plus the selection to leave behind, applied in one\ntransaction so a single undo reverts all of it. `+` is never written twice,\n`C` is a branch's thread id (inherited on insert, repaired only when a root is\ndeleted), and `N` is only ever appended.",
       "obsidian": false,
       "imports": [
@@ -1063,9 +1093,9 @@
           "kind": "function",
           "line": 86,
           "signature": "export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null",
-          "doc": "A new root entry at the tip of the note: `{ 1.k.m } - HH:MM:SS`, a blank prose\nline, and its `- 00:00:00` duration.\n\nThe caret lands on the blank line, which is where the writing happens.",
-          "hash": "53b98c9c7f",
-          "bytes": 391,
+          "doc": "A new root entry at the tip of the note: `{ 1.k.m }`, a blank prose line, and\nits clock row `HH:MM:SS - 00:00:00`.\n\nThe caret lands on the blank line, which is where the writing happens.",
+          "hash": "43f3c82770",
+          "bytes": 432,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1078,11 +1108,11 @@
         {
           "name": "planChildEntry",
           "kind": "function",
-          "line": 101,
+          "line": 102,
           "signature": "export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan | null",
           "doc": "A child entry one dimension deeper, directly under the parent's subtree.\n\nThe child inherits its parent's written `C`, so a branch carries one thread id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change.",
-          "hash": "632cb745a4",
-          "bytes": 904,
+          "hash": "8d4231c9b9",
+          "bytes": 945,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1094,11 +1124,11 @@
         {
           "name": "planDeleteEntry",
           "kind": "function",
-          "line": 133,
+          "line": 135,
           "signature": "export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan | null",
           "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose thread id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.",
-          "hash": "1a09429c57",
-          "bytes": 1467,
+          "hash": "86569127e3",
+          "bytes": 1489,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1110,11 +1140,11 @@
         {
           "name": "planDuration",
           "kind": "function",
-          "line": 178,
+          "line": 184,
           "signature": "export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan | null",
-          "doc": "Writes the duration line in place.\n\nA settled entry — a `+` line, or a line that carries no duration at all — is\nfinal: nothing is planned for it, whatever the sigil. An open entry is\nrewritten whenever the bytes would change, which the identical-text guard\ndecides, so a pause that reaches the same second plans nothing. The selection\nis reported at the prose, because the caller keeps the live selection:\nrewriting a duration must not move the caret.",
-          "hash": "e2a4897524",
-          "bytes": 504,
+          "doc": "Writes the duration half of the clock row in place.\n\nA settled entry — a `+` half, or a row that carries no duration at all — is\nfinal: nothing is planned for it, whatever the sigil. An open entry is\nrewritten whenever the bytes would change, which the identical-text guard\ndecides, so a pause that reaches the same second plans nothing. Only the tail\nis rewritten: the moment keeps its own characters, so the row cannot move. The\nselection is reported at the prose, because the caller keeps the live\nselection: rewriting a duration must not move the caret. A note that still\ncarries the old marker is refused whole — its old duration line parses as a\nclock row, so a field-level rewrite would be the one write that slipped\nthrough the migration.",
+          "hash": "543224e52c",
+          "bytes": 854,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1127,7 +1157,7 @@
         {
           "name": "offsetToLineCh",
           "kind": "function",
-          "line": 197,
+          "line": 211,
           "signature": "export function offsetToLineCh(source: string, offset: number):",
           "doc": "Converts an absolute offset into a zero-based line/ch position.",
           "hash": "b2443552a3",
@@ -1141,7 +1171,7 @@
         {
           "name": "cmChanges",
           "kind": "function",
-          "line": 210,
+          "line": 224,
           "signature": "export function cmChanges( changes: readonly TextChange[] ):",
           "doc": "A plan's changes in CodeMirror's own shape.\n\nCodeMirror reads `insert`, not `text`: a `TextChange` handed to a view as-is\nis a change with no text, so nothing is written and nothing throws. Every\ndispatch of a plan goes through here.",
           "hash": "7f311f1a35",
@@ -1158,7 +1188,7 @@
         {
           "name": "applyPlanToSource",
           "kind": "function",
-          "line": 217,
+          "line": 231,
           "signature": "export function applyPlanToSource(source: string, plan: InsertPlan):",
           "doc": "Applies a plan's changes to a source string; used by tests and previews.",
           "hash": "c5b022f97b",
@@ -1415,13 +1445,12 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 265,
-      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe duration line is replaced by a block widget unless the selection touches\nit; then it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.",
+      "lines": 271,
+      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.",
       "obsidian": true,
       "imports": [
         "src/core/color",
         "src/core/day",
-        "src/core/duration",
         "src/entries/session",
         "src/settings",
         "src/ui/dcn",
@@ -1435,11 +1464,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 117,
+          "line": 116,
           "signature": "export function entryDecorationSet( state: EditorState, settings: WeaverSettings, session: EntrySession, path: string, now: number, openDayLink?: (target: string, sourcePath: st...",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "790406058b",
-          "bytes": 3770,
+          "hash": "5d0afbcb7c",
+          "bytes": 4087,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1449,7 +1478,7 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 235,
+          "line": 241,
           "signature": "export function entryDecorationsExtension( getSettings: () => WeaverSettings, getSession: () => EntrySession, getPath: () => string, openDayLink?: (target: string, sourcePath: s...",
           "doc": "Publishes the entry decorations as one state field.",
           "hash": "e9280839c4",
@@ -1566,7 +1595,7 @@
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
       "lines": 351,
-      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the duration line's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the duration\nrow the bottom-right, and each label's own background cuts the rail behind it —\nso the box reads as running into the text that names it. Nothing is at\n`opacity: 0`, nothing is painted twice, and the frame survives its ends\nscrolling out of the render range because a row that is not rendered falls back\nto the line block's centre.",
+      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its moment at the left corner, its duration at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.",
       "obsidian": true,
       "imports": [
         "src/core/color",
@@ -1621,7 +1650,7 @@
       "file": "src/editor/entry-keys.ts",
       "layer": "editor",
       "lines": 222,
-      "doc": "The two keys an entry owns, and the two edit events that keep the stopwatch\nhonest.\n\n`Mod-Shift-E` starts an entry from inside any editor as well as from the app.\nIt is not `Mod-Enter`: Obsidian's core \"Open link under cursor in new tab\"\nowns that chord, and its scope runs before every plugin keymap.\n\n`Enter` is two-way and stateless: on an open entry — `-` being written or `=`\npaused — it settles the duration to `+` and stops the clock; on a settled\nentry it opens a child one dimension deeper under it. `Shift-Enter` is the\nnewline, on every platform, which is why a phone's `Enter` settles too.\n\nOn a phone the duration line is pinned to the bottom of the writing band after\nevery keystroke, so the stopwatch stays visible above the soft keyboard\nwithout the writer ever scrolling to find it.",
+      "doc": "The two keys an entry owns, and the two edit events that keep the stopwatch\nhonest.\n\n`Mod-Shift-E` starts an entry from inside any editor as well as from the app.\nIt is not `Mod-Enter`: Obsidian's core \"Open link under cursor in new tab\"\nowns that chord, and its scope runs before every plugin keymap.\n\n`Enter` is two-way and stateless: on an open entry — `-` being written or `=`\npaused — it settles the duration to `+` and stops the clock; on a settled\nentry it opens a child one dimension deeper under it. `Shift-Enter` is the\nnewline, on every platform, which is why a phone's `Enter` settles too.\n\nOn a phone the clock row is pinned to the bottom of the writing band after\nevery keystroke, so the stopwatch stays visible above the soft keyboard\nwithout the writer ever scrolling to find it.",
       "obsidian": false,
       "imports": [
         "src/core/entries",
@@ -1723,8 +1752,8 @@
           "kind": "function",
           "line": 99,
           "signature": "export function shouldPinStopwatch(input:",
-          "doc": "All four must hold: a phone, the live session, the caret on the entry's last\nprose line, and a duration line to pin. Each one alone is not enough, which is\nwhat keeps the view still while reading the middle of a long entry.",
-          "hash": "6b09f594a1",
+          "doc": "All four must hold: a phone, the live session, the caret on the entry's last\nprose line, and a clock row to pin. Each one alone is not enough, which is\nwhat keeps the view still while reading the middle of a long entry.",
+          "hash": "eefa36e514",
           "bytes": 242,
           "refs": [],
           "refCount": 0,
@@ -1738,8 +1767,8 @@
           "line": 109,
           "signature": "export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean",
           "doc": "Pins the stopwatch under the caret on a phone; returns true when it did.",
-          "hash": "74413b3fe5",
-          "bytes": 1102,
+          "hash": "8c4691af26",
+          "bytes": 1090,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -1779,8 +1808,8 @@
     {
       "file": "src/editor/stopwatch-widget.ts",
       "layer": "editor",
-      "lines": 140,
-      "doc": "The rendered duration line.\n\nWhile the session is live the widget ticks itself: it mutates the three digit\nspans every second and dispatches nothing, so the document, the undo history\nand the decoration set are all untouched by the clock. The two colons are\ntheir own spans because they carry the dimension's colour while the digits\nstay white.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the liveness, the colour — `updateDOM` rewrites\nthat DOM in place instead of rebuilding it, which is what used to make the\nline hop a pixel on every keystroke.\n\nWith frames on, this element is the box's bottom rail label: the clock's own\nbox paints over the rail behind it, and the rail runs through the middle of the\nrow. It is right-aligned like nothing else in the note, and it is the only clock\n— the frame layer draws no text. `n` is the entry it belongs to, so the frame\nlayer can find the row by its stamp instead of by a DOM position. The ticker is\nkeyed by the element, so whichever surface owns the element owns the one\ninterval.",
+      "lines": 182,
+      "doc": "The rendered clock row.\n\nThe row is the frame's bottom edge, and its two ends are its two labels: the\nmoment at the left corner, the duration at the right. The widget renders the\nrow the file holds — the moment the parser read, the duration from its sigil\nand milliseconds — and a half the row does not carry is not drawn: a\nmoment-only row has no clock at its right corner, and a duration-only row has\nno moment at its left. Each half carries its own background, so the rail is cut\ntwice and stays visible in the gap between them.\n\nWhile the session is live the widget ticks itself: it mutates the three digit\nspans every second and dispatches nothing, so the document, the undo history\nand the decoration set are all untouched by the clock. The two colons are\ntheir own spans because they carry the dimension's colour while the digits\nstay white.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the liveness, the colour, the moment — `updateDOM`\nrewrites that DOM in place instead of rebuilding it, which is what used to make\nthe line hop a pixel on every keystroke.\n\n`n` is the entry it belongs to, so the frame layer can find the row by its\nstamp instead of by a DOM position. The ticker is keyed by the element, so\nwhichever surface owns the element owns the one interval.",
       "obsidian": false,
       "imports": [
         "src/core/duration",
@@ -1791,11 +1820,11 @@
         {
           "name": "DurationWidgetInput",
           "kind": "interface",
-          "line": 32,
+          "line": 36,
           "signature": "export interface DurationWidgetInput",
           "doc": "Everything the widget renders from; none of it changes while the clock ticks.",
-          "hash": "14d7c35b3a",
-          "bytes": 146,
+          "hash": "8e01207db9",
+          "bytes": 306,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1805,11 +1834,11 @@
         {
           "name": "DurationWidget",
           "kind": "class",
-          "line": 44,
+          "line": 56,
           "signature": "export class DurationWidget extends WidgetType",
-          "doc": "The duration row as a widget: digits that tick without a transaction.",
-          "hash": "5f4bdceb89",
-          "bytes": 2428,
+          "doc": "The clock row as a widget: two labels, digits that tick without a transaction.",
+          "hash": "ec7c01f8fc",
+          "bytes": 3693,
           "refs": [
             "src/editor/entry-decorations.ts"
           ],
@@ -1822,9 +1851,13 @@
       ],
       "classes": [
         "weaver-duration",
+        "weaver-duration-clock",
         "weaver-duration-ink",
+        "weaver-duration-moment",
         "weaver-duration-num",
-        "weaver-duration-sigil"
+        "weaver-duration-sigil",
+        "weaver-entry-daylink",
+        "weaver-frame-label"
       ],
       "dataAttrs": [
         "data-weaver-n"
@@ -1996,7 +2029,7 @@
     {
       "file": "src/entries/engine.ts",
       "layer": "entries",
-      "lines": 433,
+      "lines": 461,
       "doc": "The only writer of entry text.\n\nEvery surface that changes an entry goes through here, so the rules live in one\nplace: `+` is final, `N` is only appended, `C` is a branch's thread id, and a\nwrite never guesses — the plan is built from the exact text the attempt is\nabout to replace, by `writer.ts`, and skipped when the entry it was aiming at\nis gone.\n\nA move — append, descend, jump — pushes the place it left onto the plugin's\nreturn stack before it goes, and carries `programmaticWrite`, so no move starts\na clock.",
       "obsidian": true,
       "imports": [
@@ -2020,11 +2053,11 @@
         {
           "name": "EntryEngine",
           "kind": "class",
-          "line": 52,
+          "line": 53,
           "signature": "export class EntryEngine",
           "doc": "The only writer of entry text: every surface changes an entry through one of its methods.",
-          "hash": "c64b56268d",
-          "bytes": 10076,
+          "hash": "cc6654df91",
+          "bytes": 10863,
           "refs": [
             "src/main.ts"
           ],
@@ -2039,7 +2072,7 @@
       "file": "src/entries/session.ts",
       "layer": "entries",
       "lines": 47,
-      "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own duration line already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
+      "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
       "obsidian": false,
       "imports": [],
       "exports": [
@@ -2048,7 +2081,7 @@
           "kind": "interface",
           "line": 10,
           "signature": "export interface ActiveEntry",
-          "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own duration line already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
+          "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
           "hash": "6b6647f7b6",
           "bytes": 109,
           "refs": [],
@@ -2178,14 +2211,15 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 299,
-      "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.C.N } - HH:MM:SS`, its prose, and one duration line. The note\nand the navigator are the whole surface: nothing else navigates, and every\nwrite of a day note goes through one writer.",
+      "lines": 306,
+      "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.C.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
       "obsidian": true,
       "imports": [
         "src/core/clock",
         "src/core/close",
         "src/core/day",
         "src/core/day-stats",
+        "src/core/entries",
         "src/core/insert",
         "src/core/navigator-stack",
         "src/editor/close-decorations",
@@ -2212,11 +2246,11 @@
         {
           "name": "WeaverPlugin",
           "kind": "class",
-          "line": 54,
+          "line": 56,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the day-stats listener.",
-          "hash": "5703101b8b",
-          "bytes": 7010,
+          "hash": "265332486a",
+          "bytes": 7219,
           "refs": [
             "src/entries/engine.ts",
             "src/reading/entry-processor.ts",
@@ -2246,7 +2280,7 @@
     {
       "file": "src/notices.ts",
       "layer": "root",
-      "lines": 41,
+      "lines": 46,
       "doc": "Every user-facing string Weaver shows, so wording stays consistent.",
       "obsidian": false,
       "imports": [],
@@ -2263,7 +2297,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 9,
+          "refCount": 12,
           "testedBy": []
         },
         {
@@ -2414,6 +2448,23 @@
           ],
           "refCount": 2,
           "testedBy": []
+        },
+        {
+          "name": "noticeLegacyFormat",
+          "kind": "function",
+          "line": 43,
+          "signature": "export function noticeLegacyFormat(action: string): string",
+          "doc": "The refusal for a note that still carries the old marker's clock.",
+          "hash": "25537adedd",
+          "bytes": 180,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/main.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/append-entry.test.ts"
+          ]
         }
       ],
       "classes": [],
@@ -2457,8 +2508,8 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 173,
-      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the duration\nparagraph its last; the prose between them is the frame's interior. The\nwrapper is a real element because a box needs one to enclose — and because the\nfile's own text is what labels it: the marker row is the top rail's label, the\nduration row the bottom rail's, each appearing once. The rails run through the\nmiddle of those rows and are cut behind them by the labels' own backgrounds, so\nthe box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included.",
+      "lines": 190,
+      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its moment at the left corner and its duration at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included.",
       "obsidian": true,
       "imports": [
         "src/core/color",
@@ -2473,11 +2524,11 @@
         {
           "name": "createEntryProcessor",
           "kind": "function",
-          "line": 69,
+          "line": 86,
           "signature": "export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor",
           "doc": "Builds the post processor that frames entries in Reading view.",
-          "hash": "77f2d6cc2c",
-          "bytes": 4471,
+          "hash": "85ced77e71",
+          "bytes": 4472,
           "refs": [
             "src/main.ts"
           ],
@@ -2489,7 +2540,9 @@
       ],
       "classes": [
         "weaver-duration",
+        "weaver-duration-clock",
         "weaver-duration-ink",
+        "weaver-duration-moment",
         "weaver-duration-num",
         "weaver-duration-sigil",
         "weaver-entry-daylink",
@@ -2521,8 +2574,8 @@
           "line": 22,
           "signature": "export class WeaverSettingTab extends PluginSettingTab",
           "doc": "Settings UI, in four groups: what is written, where the day note is, how an\nentry looks, and the rest.\n\nEvery control writes through `commit()` so changes apply live.",
-          "hash": "fc3fe3041c",
-          "bytes": 6421,
+          "hash": "6e79fa4751",
+          "bytes": 6449,
           "refs": [
             "src/main.ts"
           ],
@@ -2828,8 +2881,8 @@
           "line": 42,
           "signature": "export class Navigator",
           "doc": "The card: today's entries, the return stack, and the three gestures.",
-          "hash": "c98123d156",
-          "bytes": 11745,
+          "hash": "ef46c8c66b",
+          "bytes": 11751,
           "refs": [
             "src/main.ts"
           ],
@@ -3076,7 +3129,9 @@
       "weaver-dcn-ink",
       "weaver-dcn-num",
       "weaver-duration",
+      "weaver-duration-clock",
       "weaver-duration-ink",
+      "weaver-duration-moment",
       "weaver-duration-num",
       "weaver-duration-raw",
       "weaver-duration-sigil",
@@ -3129,6 +3184,6 @@
   },
   "fixture": {
     "file": "tests/fixtures/day-note.md",
-    "text": "---\ndate: 2026-10-29\ntravels: 3\ndepth: 2\nduration: 00:09:05\n---\n\n{ 1.1.1 } - 16:10:00\nsparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]\n+ 00:04:12\n\n{ 2.1.2 } - 16:14:12\nthe thought this one opened, one dimension deeper\n+ 00:01:30\n\n{ 2.1.3 } - 16:15:42\nand the one beside it, still open\n= 00:03:23\n\n✓ 17:02:00"
+    "text": "---\ndate: 2026-10-29\ntravels: 3\ndepth: 2\nduration: 00:09:05\n---\n\n{ 1.1.1 }\nsparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]\n16:10:00 + 00:04:12\n\n{ 2.1.2 }\nthe thought this one opened, one dimension deeper\n16:14:12 + 00:01:30\n\n{ 2.1.3 }\nand the one beside it, still open\n16:15:42 = 00:03:23\n\n✓ 17:02:00"
   }
 }

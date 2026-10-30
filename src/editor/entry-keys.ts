@@ -11,7 +11,7 @@
  * entry it opens a child one dimension deeper under it. `Shift-Enter` is the
  * newline, on every platform, which is why a phone's `Enter` settles too.
  *
- * On a phone the duration line is pinned to the bottom of the writing band after
+ * On a phone the clock row is pinned to the bottom of the writing band after
  * every keystroke, so the stopwatch stays visible above the soft keyboard
  * without the writer ever scrolling to find it.
  */
@@ -93,16 +93,16 @@ export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean {
 
 /**
  * All four must hold: a phone, the live session, the caret on the entry's last
- * prose line, and a duration line to pin. Each one alone is not enough, which is
+ * prose line, and a clock row to pin. Each one alone is not enough, which is
  * what keeps the view still while reading the middle of a long entry.
  */
 export function shouldPinStopwatch(input: {
   phone: boolean;
   active: boolean;
   caretOnLastProseLine: boolean;
-  hasDuration: boolean;
+  hasClockRow: boolean;
 }): boolean {
-  return input.phone && input.active && input.caretOnLastProseLine && input.hasDuration;
+  return input.phone && input.active && input.caretOnLastProseLine && input.hasClockRow;
 }
 
 /** Pins the stopwatch under the caret on a phone; returns true when it did. */
@@ -124,16 +124,16 @@ export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone =
     phone,
     active: host.session.activeFor(path, entry.n),
     caretOnLastProseLine: lastProseLine !== undefined && lastProseLine === caretLine,
-    hasDuration: entry.durationLine !== null
+    hasClockRow: entry.clockLine !== null
   });
   if (!pin) return false;
 
   const seq = entry.n;
-  const durationTo = entry.durationTo;
+  const clockTo = entry.clockTo;
   requestAnimationFrame(() => {
     if (!view.dom.isConnected) return;
     if (!host.session.activeFor(path, seq)) return;
-    view.dispatch({ effects: EditorView.scrollIntoView(durationTo, { y: "end" }) });
+    view.dispatch({ effects: EditorView.scrollIntoView(clockTo, { y: "end" }) });
   });
 
   return true;

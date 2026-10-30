@@ -8,6 +8,7 @@ import { parseEntries } from "../src/core/entries";
 import { dayNotePath } from "../src/core/day";
 import { entryIndexField } from "../src/editor/entry-field";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
+import { noticeLegacyFormat } from "../src/notices";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { FakeEditor } from "../test-support/editor";
 import {
@@ -19,6 +20,7 @@ import {
   fileContent,
   instantiatePlugin,
   liveEditor,
+  noticeMessages,
   resetHarness
 } from "../test-support/harness";
 
@@ -65,20 +67,20 @@ describe("appending an entry", () => {
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
-    expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43\n\n- 00:00:00");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n13:27:43 - 00:00:00");
 
     plugin.onunload();
   });
 
   it("appends to the note that already holds one", async () => {
-    const existing = createFile(DAY, ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n"));
+    const existing = createFile(DAY, ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n"));
     const { plugin, app } = await start([existing]);
 
     await plugin.entries.appendEntry(AT_1337);
 
     const text = reading(app, DAY);
-    expect(text).toContain("{ 1.2.2 } - 13:27:43");
-    expect(text.startsWith("{ 1.1.1 } - 09:00:00")).toBe(true);
+    expect(text).toContain("{ 1.2.2 }");
+    expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();
   });
@@ -90,7 +92,7 @@ describe("appending an entry", () => {
 
     // No clock before the first keystroke: a write is not typing.
     expect(plugin.session.active()).toBeNull();
-    expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43\n\n- 00:00:00");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n13:27:43 - 00:00:00");
 
     plugin.onunload();
   });
@@ -99,8 +101,8 @@ describe("appending an entry", () => {
     // A sync, a terminal, another device: the file holds two more entries than
     // the note the appender was looking at. The plan is built from the text
     // being written, so `N` counts the file's entries, not the stale ones.
-    const stale = ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n");
-    const grown = [stale, "", "", "{ 1.2.2 } - 09:30:00", "second", "+ 00:02:00", ""].join("\n");
+    const stale = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
+    const grown = [stale, "", "", "{ 1.2.2 }", "second", "09:30:00 + 00:02:00", ""].join("\n");
     const file = createFile(DAY, stale);
     const { plugin, app } = await start([file]);
 
@@ -109,9 +111,9 @@ describe("appending an entry", () => {
     await plugin.entries.appendEntry(AT_1337);
 
     const text = reading(app, DAY);
-    expect(text).toContain("{ 1.3.3 } - 13:27:43");
-    expect(text.endsWith("- 00:00:00\n")).toBe(true);
-    expect(text.startsWith("{ 1.1.1 } - 09:00:00")).toBe(true);
+    expect(text).toContain("{ 1.3.3 }");
+    expect(text.endsWith("13:27:43 - 00:00:00\n")).toBe(true);
+    expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();
   });
@@ -124,7 +126,7 @@ describe("appending an entry", () => {
 
     await plugin.entries.appendEntry(AT_1337);
 
-    expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }");
 
     plugin.onunload();
   });
@@ -145,7 +147,7 @@ describe("deleting the entry being written", () => {
 
     await plugin.entries.appendEntry(AT_1337);
 
-    expect(reading(app, DAY)).toContain("{ 1.1.1 } - 13:27:43");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }");
     // No clock before the first keystroke in the new entry.
     expect(plugin.session.active()).toBeNull();
 
@@ -153,7 +155,7 @@ describe("deleting the entry being written", () => {
   });
 
   it("leaves the file alone when the entry it would settle is gone", async () => {
-    const survived = ["{ 1.1.1 } - 09:00:00", "first", "+ 00:01:00"].join("\n");
+    const survived = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
     const file = createFile(DAY, survived);
     const { plugin, app } = await start([file]);
 
@@ -168,7 +170,7 @@ describe("deleting the entry being written", () => {
 });
 
 describe("when the clock may start", () => {
-  const DRAFT = ["{ 1.1.1 } - 10:00:00", "prose", "- 00:01:00"].join("\n");
+  const DRAFT = ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n");
 
   it("starts on the writer's own typing, at the file's stored time", async () => {
     const { plugin } = await start([createFile(DAY, DRAFT)]);
@@ -196,8 +198,8 @@ describe("when the clock may start", () => {
 });
 
 describe("writing a duration", () => {
-  it("rewrites the duration line through the vault", async () => {
-    const file = createFile(DAY, ["{ 1.1.1 } - 10:00:00", "prose", "- 00:01:00"].join("\n"));
+  it("rewrites the clock row through the vault", async () => {
+    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
     plugin.entries.writeDuration(DAY, 1, "+", 342_000, true);
@@ -208,7 +210,7 @@ describe("writing a duration", () => {
   });
 
   it("skips the write when the entry it aimed at is gone", async () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "prose", "- 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n");
     const file = createFile(DAY, source);
     const { plugin, app } = await start([file]);
 
@@ -220,7 +222,7 @@ describe("writing a duration", () => {
   });
 
   it("pauses the live session onto the draft's own line", async () => {
-    const file = createFile(DAY, ["{ 1.1.1 } - 10:00:00", "prose", "- 00:00:00"].join("\n"));
+    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
     plugin.session.start(DAY, 1, 4000, AT_1337.getTime());
@@ -248,15 +250,49 @@ describe("writing a duration", () => {
   });
 });
 
+describe("a note in the old format", () => {
+  // The old duration line still parses as a clock row, so the parser would
+  // happily read this note as an entry — and settle would rewrite one field of
+  // it. The flag exists to refuse the note whole.
+  const LEGACY = ["{ 1.1.1 } - 10:00:00", "prose", "- 00:01:00"].join("\n");
+
+  it("refuses a settle and says why, leaving every byte alone", () => {
+    const file = createFile(DAY, LEGACY);
+    return start([file]).then(({ plugin }) => {
+      const view = liveEditor(file, LEGACY, LEGACY.indexOf("prose"));
+      const entry = parseEntries(LEGACY).entries[0];
+      if (entry === undefined) throw new Error("expected an entry");
+
+      plugin.entries.settle(view, entry);
+
+      expect(view.state.doc.toString()).toBe(LEGACY);
+      expect(noticeMessages()).toEqual([noticeLegacyFormat("settling this entry")]);
+      plugin.onunload();
+    });
+  });
+
+  it("refuses an append and says why", async () => {
+    const file = createFile(DAY, LEGACY);
+    const { plugin, app } = await start([file]);
+
+    await plugin.entries.appendEntry(AT_1337);
+
+    expect(reading(app, DAY)).toBe(LEGACY);
+    expect(noticeMessages()).toEqual([noticeLegacyFormat("appending an entry")]);
+
+    plugin.onunload();
+  });
+});
+
 describe("moving the caret", () => {
   const TWO = [
-    "{ 1.1.1 } - 10:00:00",
+    "{ 1.1.1 }",
     "first",
-    "+ 00:01:00",
+    "10:00:00 + 00:01:00",
     "",
-    "{ 1.2.2 } - 10:05:00",
+    "{ 1.2.2 }",
     "second",
-    "+ 00:02:00",
+    "10:05:00 + 00:02:00",
     ""
   ].join("\n");
 
@@ -290,7 +326,7 @@ describe("moving the caret", () => {
   });
 
   it("descends without starting a clock, on the parent's thread", () => {
-    const source = ["{ 1.1.1 } - 10:00:00", "first", "+ 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
     const file = createFile(DAY, source);
     return start([file]).then(({ plugin }) => {
       const view = liveEditor(file, source, source.indexOf("first"));
@@ -300,7 +336,7 @@ describe("moving the caret", () => {
       plugin.entries.descend(view, parent);
 
       expect(plugin.session.active()).toBeNull();
-      expect(view.state.doc.toString()).toContain("{ 2.1.2 } - ");
+      expect(view.state.doc.toString()).toContain("{ 2.1.2 }");
       expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
 
       plugin.onunload();

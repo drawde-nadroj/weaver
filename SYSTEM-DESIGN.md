@@ -23,21 +23,25 @@ it — run `npm run design`.
 
 ## 1. The record
 
-An entry is a marker line, its prose, and at most one duration line. A day note
-is a list of them plus the day's frontmatter. Everything else in the plugin
-exists to draw that list, move a caret through it, or write one of its fields.
+An entry is a marker line, its prose, and at most one clock row. A day note is a
+list of them plus the day's frontmatter. Everything else in the plugin exists to
+draw that list, move a caret through it, or write one of its fields.
+
+The clock row is the frame's bottom edge: the moment and the duration sit at its
+two ends, so the row you write is the row the frame is labelled with.
 
 | Field | Written by | Read by | Shape |
 | --- | --- | --- | --- |
-| Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.C.N } - HH:MM:SS`, matched as a prefix |
-| Prose | the writer's own typing | `parseEntries` | every line between the marker and the duration, trimmed at both ends |
-| Duration | `formatDurationLine` | `parseDurationLine` | `[+-=] HH:MM:SS`; `-` open, `=` paused, `+` settled |
+| Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.C.N }`, matched as a prefix |
+| Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row, trimmed at both ends |
+| Moment | the entry's first write | `parseClockRow` | `HH:MM:SS` at the head of the clock row |
+| Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS`; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats` | `scanFrontmatter`, `recountDay` | `date`, `travels`, `depth`, `duration` |
 
-<!-- claim: src/core/entries.ts#formatMarker @38836c80b7 -->
-<!-- claim: src/core/entries.ts#parseEntries @e2d41f4111 -->
-<!-- claim: src/core/duration.ts#parseDurationLine @b920b19453 -->
+<!-- claim: src/core/entries.ts#formatMarker @26f8d1081a -->
+<!-- claim: src/core/entries.ts#parseEntries @d348ea9601 -->
+<!-- claim: src/core/duration.ts#parseClockRow @a1ee9d6751 -->
 <!-- claim: src/core/close.ts#parseClose @1690b1d5c0 -->
 <!-- claim: src/core/day-stats.ts#recountDay @89a9e7f928 -->
 
@@ -51,10 +55,14 @@ new thread (`nextThread`).
 <!-- claim: src/core/entries.ts#nextThread @c576a5b869 -->
 <!-- claim: src/core/entries.ts#repairThreads @7919580f20 -->
 
-The parser is a prefix match, so `{ 1.2.3 } - 13:27 a title` is one entry whose
-first prose line is `a title`; the marker inside frontmatter or a fenced block is
-text (`src/core/document.ts#scanFrontmatter`, `src/core/document.ts#scanFences`).
-The documented example below is a file the tests parse, not a retyped sample.
+The parser is a prefix match, so `{ 1.2.3 } a title` is one entry whose first
+prose line is `a title`; the marker inside frontmatter or a fenced block is text
+(`src/core/document.ts#scanFrontmatter`, `src/core/document.ts#scanFences`). The
+clock row is the entry's last line, and either half may be absent: a row with
+only a moment, or only a duration, is still a clock row. A marker that still
+carries its old `- HH:MM:SS` clock sets `EntryIndex.legacyFormat`; every plan
+refuses such a note rather than read the clock as its first prose line. The
+documented example below is a file the tests parse, not a retyped sample.
 
 ## 2. The one writer
 
@@ -83,7 +91,7 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-<!-- claim: src/entries/engine.ts#EntryEngine @c64b56268d -->
+<!-- claim: src/entries/engine.ts#EntryEngine @cc6654df91 -->
 
 ## 3. The plans
 
@@ -92,21 +100,21 @@ transaction, so one undo reverses all of it.
 
 | Plan | Intent | Changes | Renumbers |
 | --- | --- | --- | --- |
-| `planStartEntry` | append a root at the tip | marker, blank line, `- 00:00:00` | no — new `N`, next thread |
-| `planChildEntry` | open a child under a settled entry | marker, blank line, `- 00:00:00` | no — inherits `C` |
+| `planStartEntry` | append a root at the tip | marker, blank line, `HH:MM:SS - 00:00:00` | no — new `N`, next thread |
+| `planChildEntry` | open a child under a settled entry | marker, blank line, `HH:MM:SS - 00:00:00` | no — inherits `C` |
 | `planDeleteEntry` | remove a subtree | the block and the blank separator below it | yes — surviving `C` values |
-| `planDuration` | write the clock | the duration line only | no |
+| `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
-<!-- claim: src/core/insert.ts#planStartEntry @53b98c9c7f -->
-<!-- claim: src/core/insert.ts#planChildEntry @632cb745a4 -->
-<!-- claim: src/core/insert.ts#planDeleteEntry @1a09429c57 -->
-<!-- claim: src/core/insert.ts#planDuration @e2a4897524 -->
-<!-- claim: src/core/close.ts#planCloseDay @22825a0841 -->
+<!-- claim: src/core/insert.ts#planStartEntry @43f3c82770 -->
+<!-- claim: src/core/insert.ts#planChildEntry @8d4231c9b9 -->
+<!-- claim: src/core/insert.ts#planDeleteEntry @86569127e3 -->
+<!-- claim: src/core/insert.ts#planDuration @543224e52c -->
+<!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
 
 Two invariants hold across every plan, and both are tested against
-`applyPlanToSource`, the pure oracle: **a settled `+` line is never rewritten**
+`applyPlanToSource`, the pure oracle: **a settled `+` half is never rewritten**
 (`planDuration` returns null for a settled entry), and **an insert never
 renumbers anything** (`planChildEntry` carries the parent's `C`). `cmChanges`
 converts a plan to CodeMirror's shape; the editor gets two dispatches, the change
@@ -123,8 +131,8 @@ now, and it is device-local: it is never synced, never written, and becomes
 evidence only when the engine writes it.
 
 `EntrySession` holds at most one `src/entries/session.ts#ActiveEntry` — the file
-path, the entry's `N`, the baseline milliseconds already in its duration line,
-and the wall clock the session started at. `elapsed` is baseline plus now minus
+path, the entry's `N`, the baseline milliseconds already in its clock row, and
+the wall clock the session started at. `elapsed` is baseline plus now minus
 start; nothing else reads a clock.
 
 <!-- claim: src/entries/session.ts#EntrySession @850ab8bcca -->
@@ -138,7 +146,7 @@ The transitions, and where each lives:
 | Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable |
 | Drop | the entry being written is deleted | `src/entries/engine.ts#deleteEntry` | none |
 
-<!-- claim: src/entries/engine.ts#EntryEngine @c64b56268d -->
+<!-- claim: src/entries/engine.ts#EntryEngine @cc6654df91 -->
 
 `afterEdit` is the only place a clock starts, and it starts on `typed` only —
 the annotation CodeMirror puts on real input. A vault reload, a decoration
@@ -148,7 +156,7 @@ spans every second (`startTicking`), which is why a running clock costs no
 transaction, no undo entry, and no re-render.
 
 <!-- claim: src/editor/duration-ticker.ts#startTicking @6da859596b -->
-<!-- claim: src/editor/stopwatch-widget.ts#DurationWidget @5f4bdceb89 -->
+<!-- claim: src/editor/stopwatch-widget.ts#DurationWidget @ec7c01f8fc -->
 
 ## 5. Geometry
 
@@ -166,7 +174,7 @@ Nothing reflows. The text decides where the box is, never the reverse.
   that has scrolled out of the render range falls back to its line block, whose
   centre is still the label's centre.
 - The constants that turn "a box" into this box — `LEFT_GUTTER`, `RIGHT_GUTTER`,
-  `MIN_AIR`, `NO_DURATION_PAD`, `INLINE_TITLE_PAD` — are in that file, not in CSS,
+  `MIN_AIR`, `NO_CLOCK_PAD`, `INLINE_TITLE_PAD` — are in that file, not in CSS,
   because they are measurements, not styling.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
@@ -186,7 +194,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Surface | Code | Writes | One undo | Empty |
 | --- | --- | --- | --- | --- |
 | Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing |
-| Duration row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
+| Clock row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
 | Start command | `src/main.ts#WeaverPlugin` | the root entry | the plan | `today's day note could not be found. Nothing was written.` |
@@ -197,16 +205,16 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
-<!-- claim: src/ui/navigator.ts#Navigator @c98123d156 -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @77f2d6cc2c -->
+<!-- claim: src/ui/navigator.ts#Navigator @ef46c8c66b -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @85ced77e71 -->
 
 The navigator is the only navigation: it never takes a `Scope`, never writes
 prose, and re-reads the document on every action
 (`src/ui/navigator.ts#buildItems`). The phone pinning is one pure decision,
 `shouldPinStopwatch`, true only when all four of phone, live session, caret on
-the last prose line, and a duration line exist.
+the last prose line, and a clock row exist.
 
-<!-- claim: src/editor/entry-keys.ts#shouldPinStopwatch @6b09f594a1 -->
+<!-- claim: src/editor/entry-keys.ts#shouldPinStopwatch @eefa36e514 -->
 
 ## 7. Settings, colour, and the look
 
@@ -286,7 +294,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-34 files, 150 exported symbols, 25 test files.
+34 files, 153 exported symbols, 25 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -296,28 +304,28 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/day-stats.ts` | core | 90 | 4 | no |
 | `src/core/day.ts` | core | 58 | 5 | no |
 | `src/core/document.ts` | core | 92 | 6 | no |
-| `src/core/duration.ts` | core | 53 | 4 | no |
-| `src/core/entries.ts` | core | 384 | 15 | no |
-| `src/core/frame.ts` | core | 94 | 7 | no |
-| `src/core/insert.ts` | core | 227 | 10 | no |
+| `src/core/duration.ts` | core | 110 | 6 | no |
+| `src/core/entries.ts` | core | 392 | 15 | no |
+| `src/core/frame.ts` | core | 96 | 7 | no |
+| `src/core/insert.ts` | core | 241 | 10 | no |
 | `src/core/navigator-stack.ts` | core | 40 | 4 | no |
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 55 | 5 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 265 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 271 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 40 | 4 | no |
 | `src/editor/entry-frame.ts` | editor | 351 | 2 | yes |
 | `src/editor/entry-keys.ts` | editor | 222 | 10 | no |
-| `src/editor/stopwatch-widget.ts` | editor | 140 | 2 | no |
+| `src/editor/stopwatch-widget.ts` | editor | 182 | 2 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
 | `src/entries/day-note.ts` | entries | 96 | 3 | yes |
-| `src/entries/engine.ts` | entries | 433 | 1 | yes |
+| `src/entries/engine.ts` | entries | 461 | 1 | yes |
 | `src/entries/session.ts` | entries | 47 | 2 | no |
 | `src/entries/writer.ts` | entries | 100 | 5 | yes |
-| `src/main.ts` | root | 299 | 1 | yes |
-| `src/notices.ts` | root | 41 | 12 | no |
+| `src/main.ts` | root | 306 | 1 | yes |
+| `src/notices.ts` | root | 46 | 13 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 173 | 1 | yes |
+| `src/reading/entry-processor.ts` | reading | 190 | 1 | yes |
 | `src/settings-tab.ts` | root | 221 | 1 | yes |
 | `src/settings.ts` | root | 186 | 6 | no |
 | `src/ui/css.ts` | ui | 73 | 4 | no |
@@ -365,15 +373,17 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-dcn-ink` | styled | `ui/dcn.ts` |
 | `weaver-dcn-num` | styled | `ui/dcn.ts` |
 | `weaver-duration` | styled | `editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
+| `weaver-duration-clock` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-duration-ink` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
+| `weaver-duration-moment` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-duration-num` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-duration-raw` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts` |
 | `weaver-duration-sigil` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
-| `weaver-entry-daylink` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` |
+| `weaver-entry-daylink` | styled | `editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-entry-head` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-prose` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-frame` | styled | `editor/entry-frame.ts`<br>`reading/entry-processor.ts` |
-| `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` |
+| `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-frame-layer` | styled | `editor/entry-frame.ts` |
 | `weaver-navigator` | styled | `ui/navigator.ts` |
 | `weaver-navigator-append` | styled | `ui/navigator.ts` |
@@ -421,17 +431,17 @@ depth: 2
 duration: 00:09:05
 ---
 
-{ 1.1.1 } - 16:10:00
+{ 1.1.1 }
 sparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]
-+ 00:04:12
+16:10:00 + 00:04:12
 
-{ 2.1.2 } - 16:14:12
+{ 2.1.2 }
 the thought this one opened, one dimension deeper
-+ 00:01:30
+16:14:12 + 00:01:30
 
-{ 2.1.3 } - 16:15:42
+{ 2.1.3 }
 and the one beside it, still open
-= 00:03:23
+16:15:42 = 00:03:23
 
 ✓ 17:02:00
 ```
@@ -447,11 +457,10 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | `src/editor/editor-path.ts` | 0 | 1 |
 | `src/editor/entry-frame.ts` | 0 | 2 |
 | `src/entries/engine.ts` | 0 | 1 |
-| `src/notices.ts` | 0 | 12 |
 | `src/ui/css.ts` | 0 | 4 |
 | `src/ui/dcn.ts` | 0 | 5 |
 
-Modules with no symbol named by any test: 8.
+Modules with no symbol named by any test: 7.
 
 ### Symbols
 
@@ -530,14 +539,16 @@ The line-level facts every parser in Weaver shares: where each line starts,
 
 #### `src/core/duration.ts`
 
-The duration line of an entry, and the clock it is written with.
+The clock row of an entry, and the clocks it is written with.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `DurationSigil` | type | 22 | `export type DurationSigil = "+" \| "-" \| "="` | `core/insert.ts`<br>`editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/engine.ts` | — |
-| `formatClock` | function | 25 | `export function formatClock(ms: number): string` | `core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts` |
-| `formatDurationLine` | function | 30 | `export function formatDurationLine(sigil: DurationSigil, ms: number): string` | `core/insert.ts` | `tests/duration.test.ts` |
-| `parseDurationLine` | function | 42 | `export function parseDurationLine(line: string):` | `core/entries.ts`<br>`reading/entry-processor.ts` | `tests/duration.test.ts` |
+| `DurationSigil` | type | 23 | `export type DurationSigil = "+" \| "-" \| "="` | `core/entries.ts`<br>`core/insert.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/engine.ts` | — |
+| `formatClock` | function | 26 | `export function formatClock(ms: number): string` | `core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts` |
+| `formatDurationLine` | function | 31 | `export function formatDurationLine(sigil: DurationSigil, ms: number): string` | `core/insert.ts` | — |
+| `ClockRow` | interface | 42 | `export interface ClockRow` | `reading/entry-processor.ts` | — |
+| `parseClockRow` | function | 71 | `export function parseClockRow(text: string): ClockRow \| null` | `core/entries.ts`<br>`core/insert.ts`<br>`reading/entry-processor.ts` | `tests/duration.test.ts` |
+| `formatClockRow` | function | 105 | `export function formatClockRow(time: string \| null, sigil: DurationSigil, ms: number): string` | `core/insert.ts` | `tests/duration.test.ts` |
 
 #### `src/core/entries.ts`
 
@@ -545,21 +556,21 @@ The entry: the unit a day note is made of.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `Entry` | interface | 24 | `export interface Entry` | `core/insert.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
-| `EntryIndex` | interface | 61 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
-| `MarkerPrefix` | interface | 78 | `export interface MarkerPrefix` | — | — |
-| `parseMarkerPrefix` | function | 101 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
-| `parseEntries` | function | 141 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/writer.test.ts` |
-| `findEntryAtLine` | function | 302 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
-| `findEntryAtOffset` | function | 311 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
-| `findCurrentEntry` | function | 319 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
-| `entryBySeq` | function | 329 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
-| `childrenOf` | function | 337 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `ui/navigator.ts` | `tests/entries.test.ts` |
-| `endOfSubtree` | function | 343 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
-| `nextSeq` | function | 348 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `nextThread` | function | 353 | `export function nextThread(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `formatMarker` | function | 358 | `export function formatMarker(d: number, c: number, n: number, time: string): string` | `core/insert.ts` | `tests/entries.test.ts` |
-| `repairThreads` | function | 369 | `export function repairThreads(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
+| `Entry` | interface | 27 | `export interface Entry` | `core/insert.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
+| `EntryIndex` | interface | 66 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
+| `MarkerPrefix` | interface | 94 | `export interface MarkerPrefix` | — | — |
+| `parseMarkerPrefix` | function | 109 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
+| `parseEntries` | function | 147 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/writer.test.ts` |
+| `findEntryAtLine` | function | 310 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
+| `findEntryAtOffset` | function | 319 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
+| `findCurrentEntry` | function | 327 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
+| `entryBySeq` | function | 337 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
+| `childrenOf` | function | 345 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `ui/navigator.ts` | `tests/entries.test.ts` |
+| `endOfSubtree` | function | 351 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
+| `nextSeq` | function | 356 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
+| `nextThread` | function | 361 | `export function nextThread(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
+| `formatMarker` | function | 366 | `export function formatMarker(d: number, c: number, n: number): string` | `core/insert.ts` | `tests/entries.test.ts` |
+| `repairThreads` | function | 377 | `export function repairThreads(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
 
 #### `src/core/frame.ts`
 
@@ -567,13 +578,13 @@ The frame around one entry: a box, and nothing else.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameColumn` | interface | 20 | `export interface FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `FrameBoxInput` | interface | 26 | `export interface FrameBoxInput` | — | — |
-| `FrameBox` | interface | 35 | `export interface FrameBox` | — | — |
-| `frameBox` | function | 48 | `export function frameBox(input: FrameBoxInput): FrameBox` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `FrameSpanInput` | interface | 55 | `export interface FrameSpanInput` | — | — |
-| `FrameSpan` | interface | 67 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
-| `frameSpan` | function | 88 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameColumn` | interface | 22 | `export interface FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameBoxInput` | interface | 28 | `export interface FrameBoxInput` | — | — |
+| `FrameBox` | interface | 37 | `export interface FrameBox` | — | — |
+| `frameBox` | function | 50 | `export function frameBox(input: FrameBoxInput): FrameBox` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameSpanInput` | interface | 57 | `export interface FrameSpanInput` | — | — |
+| `FrameSpan` | interface | 69 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
+| `frameSpan` | function | 90 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -585,12 +596,12 @@ The three plans that write entry text, and the arithmetic every plan shares.
 | `InsertPlan` | interface | 32 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
 | `planAppendLine` | function | 56 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
 | `planStartEntry` | function | 86 | `export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planChildEntry` | function | 101 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDeleteEntry` | function | 133 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDuration` | function | 178 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `offsetToLineCh` | function | 197 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
-| `cmChanges` | function | 210 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `applyPlanToSource` | function | 217 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
+| `planChildEntry` | function | 102 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDeleteEntry` | function | 135 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDuration` | function | 184 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `offsetToLineCh` | function | 211 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
+| `cmChanges` | function | 224 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `applyPlanToSource` | function | 231 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/navigator-stack.ts`
 
@@ -638,8 +649,8 @@ The entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `entryDecorationSet` | function | 117 | `export function entryDecorationSet( state: EditorState, settings: WeaverSettings, session: EntrySession, path: string, now: number, openDayLink?: (target: string, sourcePath: st...` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 235 | `export function entryDecorationsExtension( getSettings: () => WeaverSettings, getSession: () => EntrySession, getPath: () => string, openDayLink?: (target: string, sourcePath: s...` | `main.ts` | — |
+| `entryDecorationSet` | function | 116 | `export function entryDecorationSet( state: EditorState, settings: WeaverSettings, session: EntrySession, path: string, now: number, openDayLink?: (target: string, sourcePath: st...` | — | `tests/entry-decorations.test.ts` |
+| `entryDecorationsExtension` | function | 241 | `export function entryDecorationsExtension( getSettings: () => WeaverSettings, getSession: () => EntrySession, getPath: () => string, openDayLink?: (target: string, sourcePath: s...` | `main.ts` | — |
 
 #### `src/editor/entry-field.ts`
 
@@ -680,12 +691,12 @@ The two keys an entry owns, and the two edit events that keep the stopwatch
 
 #### `src/editor/stopwatch-widget.ts`
 
-The rendered duration line.
+The rendered clock row.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `DurationWidgetInput` | interface | 32 | `export interface DurationWidgetInput` | — | `tests/stopwatch-widget.test.ts` |
-| `DurationWidget` | class | 44 | `export class DurationWidget extends WidgetType` | `editor/entry-decorations.ts` | `tests/entry-decorations.test.ts`<br>`tests/stopwatch-widget.test.ts` |
+| `DurationWidgetInput` | interface | 36 | `export interface DurationWidgetInput` | — | `tests/stopwatch-widget.test.ts` |
+| `DurationWidget` | class | 56 | `export class DurationWidget extends WidgetType` | `editor/entry-decorations.ts` | `tests/entry-decorations.test.ts`<br>`tests/stopwatch-widget.test.ts` |
 
 #### `src/editor/view-registry.ts`
 
@@ -716,7 +727,7 @@ The only writer of entry text.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `EntryEngine` | class | 52 | `export class EntryEngine` | `main.ts` | — |
+| `EntryEngine` | class | 53 | `export class EntryEngine` | `main.ts` | — |
 
 #### `src/entries/session.ts`
 
@@ -745,7 +756,7 @@ Weaver: a day note is a linear list of entries.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 54 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts` |
+| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts` |
 
 #### `src/notices.ts`
 
@@ -765,6 +776,7 @@ Every user-facing string Weaver shows, so wording stays consistent.
 | `NAVIGATOR_HINT_TOUCH` | const | 30 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
 | `noticeCloseFrontmatter` | function | 33 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
 | `noticeCloseCodeBlock` | function | 38 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
+| `noticeLegacyFormat` | function | 43 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/append-entry.test.ts` |
 
 #### `src/reading/close-processor.ts`
 
@@ -780,7 +792,7 @@ Reading view: the same entry the editor draws, in the same frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `createEntryProcessor` | function | 69 | `export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
+| `createEntryProcessor` | function | 86 | `export function createEntryProcessor(plugin: WeaverPlugin): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
 
 #### `src/settings-tab.ts`
 

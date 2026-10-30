@@ -5,11 +5,15 @@ import { DurationWidget, type DurationWidgetInput } from "../src/editor/stopwatc
 function widget(overrides: Partial<DurationWidgetInput> = {}): DurationWidget {
   return new DurationWidget({
     n: 1,
+    time: "09:14:22",
     sigil: "-",
     ms: 0,
     active: false,
     color: "#f97316",
     d: 1,
+    dayLink: null,
+    openDayLink: null,
+    sourcePath: "",
     ...overrides
   });
 }

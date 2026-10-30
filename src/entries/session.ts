@@ -1,7 +1,7 @@
 /**
  * The live stopwatch: at most one entry is being written at a time.
  *
- * The baseline is what the entry's own duration line already holds, so a draft
+ * The baseline is what the entry's own clock row already holds, so a draft
  * resumed the next morning continues from where it stopped instead of restarting
  * at zero. Settled entries never resume: editing a typo in a `+` entry changes
  * nothing.

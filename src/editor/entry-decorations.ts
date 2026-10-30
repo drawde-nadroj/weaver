@@ -7,8 +7,8 @@
  * marked up, so the line stays editable and the digits stay white while the
  * punctuation carries the dimension's colour.
  *
- * The duration line is replaced by a block widget unless the selection touches
- * it; then it goes back to raw text. Block widgets may not come from a plugin,
+ * The clock row is replaced by a block widget unless the selection touches it;
+ * then it goes back to raw text. Block widgets may not come from a plugin,
  * which is why everything here is a `StateField`.
  *
  * Each of those two rows is also a rail's label and carries two extra pieces of
@@ -33,7 +33,6 @@ import {
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
 import { dayKey, dayKeyFromName } from "../core/day";
-import type { DurationSigil } from "../core/duration";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
@@ -68,7 +67,7 @@ function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string):
   }
 }
 
-/** ` - [[2026.10.26]]` after the clock, on any day that is not today. */
+/** ` [[2026.10.26]]` after the moment, on any day that is not today. */
 class DayLinkWidget extends WidgetType {
   constructor(
     readonly target: string,
@@ -87,7 +86,7 @@ class DayLinkWidget extends WidgetType {
     // Part of the marker's own row, so it is part of the top rail's label: its
     // background cuts the rail behind it like the rest of the label.
     span.className = "weaver-entry-daylink weaver-frame-label";
-    span.textContent = ` - [[${this.target}]]`;
+    span.textContent = ` [[${this.target}]]`;
     span.addEventListener("click", (event: Event) => {
       event.preventDefault();
       this.open(this.target, this.sourcePath);
@@ -161,7 +160,9 @@ export function entryDecorationSet(
     });
     addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
 
-    if (showDayLink) {
+    // The day link belongs beside the moment, on the clock row. An entry with no
+    // clock row has no other home for it, so it stays on the marker.
+    if (showDayLink && entry.clockLine === null) {
       ranges.push({
         from: prefixTo,
         to: prefixTo,
@@ -182,13 +183,13 @@ export function entryDecorationSet(
       });
     }
 
-    if (entry.durationLine === null || entry.durationLine >= state.doc.lines) continue;
+    if (entry.clockLine === null || entry.clockLine >= state.doc.lines) continue;
 
-    const duration = state.doc.line(entry.durationLine + 1);
-    if (touches(state, duration.from, duration.to)) {
+    const row = state.doc.line(entry.clockLine + 1);
+    if (touches(state, row.from, row.to)) {
       ranges.push({
-        from: duration.from,
-        to: duration.from,
+        from: row.from,
+        to: row.from,
         value: Decoration.line({
           class: "weaver-duration-raw",
           attributes: { style: vars, "data-weaver-n": String(entry.n) }
@@ -197,32 +198,37 @@ export function entryDecorationSet(
       // The bottom rail's label, exactly as the widget is: the same row, in the
       // file's own text.
       ranges.push({
-        from: duration.from,
-        to: duration.to,
+        from: row.from,
+        to: row.to,
         value: Decoration.mark({ class: LABEL_CLASS })
       });
       continue;
     }
 
     const active = session.activeFor(path, entry.n);
-    // While writing, the line is a live draft whatever the file holds; once
-    // settled it shows the sigil the file kept — `=` or a legacy `+`.
-    const sigil = active ? "-" : ((duration.text[0] ?? "-") as DurationSigil);
-    const ms = active ? session.elapsed(now) : entry.durationMs;
-    const to = duration.to < state.doc.length ? duration.to + 1 : duration.to;
+    // While writing, the row is a live draft whatever the file holds. Once
+    // settled it shows the duration the file kept — its sigil, which may be
+    // absent when the row carries only a moment.
+    const sigil = active ? "-" : (entry.duration?.sigil ?? null);
+    const ms = active ? session.elapsed(now) : (entry.duration?.ms ?? 0);
+    const to = row.to < state.doc.length ? row.to + 1 : row.to;
 
     ranges.push({
-      from: duration.from,
+      from: row.from,
       to,
       value: Decoration.replace({
         block: true,
         widget: new DurationWidget({
           n: entry.n,
+          time: entry.time,
           sigil,
           ms,
           active,
           color: dimensionColor(entry.d),
-          d: entry.d
+          d: entry.d,
+          dayLink: showDayLink ? basename : null,
+          openDayLink: openDayLink ?? null,
+          sourcePath: path
         })
       })
     });
