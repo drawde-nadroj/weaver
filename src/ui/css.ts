@@ -29,7 +29,8 @@ export function buildCss(settings: WeaverSettings): string {
     // the depth, so nothing is generated per level.
     [
       "body.weaver-unequal .weaver-entry-head,",
-      "body.weaver-unequal .weaver-entry-prose {",
+      "body.weaver-unequal .weaver-entry-prose,",
+      "body.weaver-unequal .weaver-entry-whisper {",
       "  font-size: calc(var(--weaver-entry-size) * max(0.72, 1 - 0.04 * min(var(--weaver-d, 1) - 1, 6)));",
       "}"
     ].join("\n"),

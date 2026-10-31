@@ -38,6 +38,7 @@ import { frameBox, frameSpan, type FrameColumn } from "../core/frame";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { entryIndexField } from "./entry-field";
+import { FRAME_EFFECTS, frameEffect } from "./frame-effects";
 
 /** Air between the marker's ink and the left rail, and the stub the frame leaves beside each corner. */
 const LEFT_GUTTER = 16;
@@ -50,10 +51,12 @@ const NO_CLOCK_PAD = 8;
 /** Air above a marker row when that row also carries prose (the legacy title case). */
 const INLINE_TITLE_PAD = 12;
 
-/** What the layer may ask the plugin: settings, the session, and a fallback path. */
+/** What the layer may ask the plugin: settings, the session, the model, and a fallback path. */
 export interface FrameHost {
   settings(): WeaverSettings;
   session(): EntrySession;
+  /** True while a whisper request for this entry has been pending long enough to show. */
+  reading(path: string, n: number): boolean;
   /** Used only when `editorInfoField` cannot name the file. */
   fallbackPath(): string;
 }
@@ -329,7 +332,17 @@ class EntryFrames {
       node.root.style.width = `${box.width}px`;
       node.root.style.height = `${span.bottom - span.top}px`;
       node.root.style.setProperty("--weaver-dcolor", dimensionColor(entry.d));
-      node.root.classList.toggle("is-live", session.activeFor(path, entry.n));
+
+      // One effect at a time, chosen by the registry rather than here: the box
+      // answers "what is happening now?", and a new effect costs this layer
+      // nothing.
+      const chosen = frameEffect({
+        live: session.activeFor(path, entry.n),
+        reading: this.host.reading(path, entry.n)
+      });
+      for (const effect of FRAME_EFFECTS) {
+        node.root.classList.toggle(effect.className, effect === chosen);
+      }
 
       seen.add(entry.n);
     }

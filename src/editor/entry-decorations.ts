@@ -123,6 +123,20 @@ export function entryDecorationSet(
       });
     }
 
+    // A whisper row carries no `--weaver-dcolor` and no `data-weaver-n`: it is the
+    // model's reading, so it is the one row that does not take the dimension's
+    // colour (the stylesheet's `.weaver-entry-whisper` rule says why), and the
+    // frame finds the marker row only.
+    for (const line of entry.whisperLines) {
+      if (line >= state.doc.lines) continue;
+      const row = state.doc.line(line + 1);
+      ranges.push({
+        from: row.from,
+        to: row.from,
+        value: Decoration.line({ class: "weaver-entry-whisper" })
+      });
+    }
+
     if (entry.clockLine === null || entry.clockLine >= state.doc.lines) continue;
 
     const row = state.doc.line(entry.clockLine + 1);

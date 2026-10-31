@@ -17,11 +17,18 @@
  * `proseLines` is trimmed at both ends: a blank line between the prose and the
  * clock row is spacing, not content, so the caret and the "last prose line" both
  * refer to a line the writer actually typed on.
+ *
+ * A whisper row — `~ <text>`, or `~ learn:` / `~ next:` — is not prose. It is the
+ * model's reading of the entry, written above the writer's words, and it is
+ * partitioned out here so that `title`, `proseFrom` and the duration row all
+ * describe what the writer wrote. A `~` line inside a fenced block is text, and
+ * stays prose.
  */
 
 import { lineStartsOf, scanFences, scanFrontmatter, type CodeFence } from "./document";
 import { parseClockRow, type DurationSigil } from "./duration";
 import type { TextChange } from "./insert";
+import { parseWhisperLine, type WhisperItem } from "./whisper";
 
 /** One entry: its marker, prose, clocks, and the offsets every surface reads. */
 export interface Entry {
@@ -53,6 +60,10 @@ export interface Entry {
   proseFrom: number;
   proseTo: number;
   proseLines: number[];
+  /** Zero-based indices of this entry's whisper rows, in document order. */
+  whisperLines: number[];
+  /** The parsed whisper, in document order; empty when there is none. */
+  whisper: WhisperItem[];
   firstProseLine: number | null;
   /** First prose line, trimmed; empty when the entry has no prose yet. */
   title: string;
@@ -210,7 +221,19 @@ export function parseEntries(source: string): EntryIndex {
     while (hi >= lo && (lines[hi] ?? "").trim() === "") hi -= 1;
 
     const proseLines: number[] = [];
-    for (let line = lo; line <= hi; line += 1) proseLines.push(line);
+    const whisperLines: number[] = [];
+    for (let line = lo; line <= hi; line += 1) {
+      // A `~` inside a fenced block is code, so the fence decides first.
+      if (!fences.inside.has(line) && parseWhisperLine(lines[line] ?? "") !== null) {
+        whisperLines.push(line);
+      } else {
+        proseLines.push(line);
+      }
+    }
+
+    const whisper = whisperLines
+      .map((line) => parseWhisperLine(lines[line] ?? ""))
+      .filter((item): item is WhisperItem => item !== null);
 
     const firstProseLine = proseLines[0] ?? null;
     const lastProseLine = proseLines[proseLines.length - 1] ?? null;
@@ -271,6 +294,8 @@ export function parseEntries(source: string): EntryIndex {
       proseFrom,
       proseTo,
       proseLines,
+      whisperLines,
+      whisper,
       firstProseLine,
       title,
       parent: parentIndex,

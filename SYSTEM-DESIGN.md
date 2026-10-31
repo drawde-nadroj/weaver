@@ -35,14 +35,15 @@ the same grammar the marker is drawn in.
 | Field | Written by | Read by | Shape |
 | --- | --- | --- | --- |
 | Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.B.N }`, matched as a prefix |
-| Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row, trimmed at both ends |
+| Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row that is not a whisper row, trimmed at both ends |
+| Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>`, two or three rows |
 | Moment | the entry's first write | `parseClockRow` | `HH:MM:SS` at the head of the clock row |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS`; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats` | `scanFrontmatter`, `recountDay` | `date`, `travels`, `depth`, `duration` |
 
 <!-- claim: src/core/entries.ts#formatMarker @4cd405bc96 -->
-<!-- claim: src/core/entries.ts#parseEntries @a03e1c1153 -->
+<!-- claim: src/core/entries.ts#parseEntries @6c04f0fc5c -->
 <!-- claim: src/core/duration.ts#parseClockRow @a1ee9d6751 -->
 <!-- claim: src/core/close.ts#parseClose @1690b1d5c0 -->
 <!-- claim: src/core/day-stats.ts#recountDay @89a9e7f928 -->
@@ -87,7 +88,10 @@ A day note has exactly one writer at a time, and one module owns it.
 Callers of `rewriteDay`, exhaustively —
 `src/entries/engine.ts#publish` (the ambient pause),
 `src/entries/engine.ts#startEntry`, `src/main.ts#closeDay`,
-`src/main.ts#refreshDayStats`. The editor path is
+`src/main.ts#refreshDayStats`, and the two whisper writes,
+`src/entries/engine.ts#landWhisper` (one answer arriving after its entry settled)
+and `src/entries/engine.ts#whisperDay` (a whole-day pass merged into one
+transaction). The editor path is
 `src/entries/engine.ts#EntryEngine` itself: settle, descend and deleteEntry
 dispatch a plan from `core/insert.ts` there, and §3 lists those plans. Nothing
 else writes a day note. The gate fails if
@@ -97,7 +101,7 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-<!-- claim: src/entries/engine.ts#EntryEngine @5ac8ac7965 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @2dc01bc34b -->
 
 ## 3. The plans
 
@@ -110,6 +114,7 @@ transaction, so one undo reverses all of it.
 | `planChildEntry` | open a child under a settled entry, above older siblings | marker, blank line, `HH:MM:SS - 00:00:00` | no — inherits `B` |
 | `planDeleteEntry` | remove a subtree | the block and the blank separator below it | yes — surviving `B` values |
 | `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
+| `planWhisper` | name an entry | whisper rows above the first prose line | no |
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
@@ -117,6 +122,7 @@ transaction, so one undo reverses all of it.
 <!-- claim: src/core/insert.ts#planChildEntry @61b30af668 -->
 <!-- claim: src/core/insert.ts#planDeleteEntry @7d2327a51c -->
 <!-- claim: src/core/insert.ts#planDuration @543224e52c -->
+<!-- claim: src/core/insert.ts#planWhisper @a9fb1e4a70 -->
 <!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
 
 Two invariants hold across every plan, and both are tested against
@@ -158,10 +164,10 @@ The transitions, and where each lives:
 | --- | --- | --- | --- |
 | Start | the writer's own input in a draft | `src/entries/engine.ts#afterEdit` | none |
 | Pause | a caret move, blur, wheel, touch, leaf change, hidden app, navigator open, the live entry deleted | `src/entries/engine.ts#pause` | `= HH:MM:SS`, not undoable |
-| Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable |
+| Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable — and, when the idle pause already answered, the whisper rows in the same transaction |
 | Drop | the entry being written is deleted | `src/entries/engine.ts#deleteEntry` | none |
 
-<!-- claim: src/entries/engine.ts#EntryEngine @5ac8ac7965 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @2dc01bc34b -->
 
 `afterEdit` is the only place a clock starts, and it starts on `typed` only —
 the annotation CodeMirror puts on real input. A vault reload, a decoration
@@ -212,6 +218,20 @@ Nothing reflows. The text decides where the box is, never the reverse.
 <!-- claim: src/core/frame.ts#frameSpan @324739146a -->
 <!-- claim: src/editor/entry-frame.ts#entryFrameExtension @049f956468 -->
 
+A box can also be *doing* something, and it says so with exactly one effect class
+at a time. `src/editor/frame-effects.ts#frameEffect` is the whole choice: each
+effect declares a class, a precedence and a predicate over the two states the layer
+can observe (the session is live in this entry; a whisper request for it has been
+pending long enough to be a wait), and the highest precedence that applies wins. So
+a new effect is one registry entry and one block of `styles.css` — `entry-frame.ts`
+does not change, and no two animations can ever run over each other. Precedence, not
+list order, is what makes `is-whispering` win over `is-live`: a draft is liveness,
+and the model speculating over it is a request in flight, and the transient fact is
+the one worth the animation.
+
+<!-- claim: src/editor/frame-effects.ts#frameEffect @6b669bb17e -->
+<!-- claim: src/editor/frame-effects.ts#FRAME_EFFECTS @e95f9b0e6d -->
+
 Frames are Live Preview only: `src/editor/entry-frame.ts#measure` returns early
 unless `editorLivePreviewField` is true. Source mode is the file's own text. In
 Reading view the same shape is a real element made by the post processor, so no
@@ -232,12 +252,19 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Navigator | `src/ui/navigator.ts#Navigator` | the child, the root, the deletion, the pause | the plan | `no entries yet — ＋ starts the first` |
 | Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
+| Whisper the day | `src/entries/engine.ts#whisperDay` | one whisper per settled entry that has none | the whole pass | `Nothing to whisper: every settled entry already has one, or a name.` |
 | Close day | `src/main.ts#WeaverPlugin` | `✓` plus the counters | the plan | `this day is already closed. Nothing was written.` |
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
-<!-- claim: src/ui/navigator.ts#Navigator @5d6dd9801d -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @5016308fa6 -->
+<!-- claim: src/ui/navigator.ts#Navigator @a91a40c961 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @0d93620970 -->
+
+A command's target is the day plane, and *Whisper the day* aims at the day note on
+screen — `src/entries/engine.ts#dayToWhisper` — falling back to today's note only
+when the open file's filename carries no day. A past day is a day: the note has the
+same shape and its entries are the same entries, so the pass follows the reader
+rather than the clock. Nothing else writes into a note it was not pointed at.
 
 The navigator is the only navigation: it never takes a `Scope`, never writes
 prose, and re-reads the document on every action
@@ -249,14 +276,16 @@ the last prose line, and a clock row exist.
 
 ## 7. Settings, colour, and the look
 
-Colour is a pure function of `D`: `dimensionColor(7)` is the same value in every
-vault and at every moment, and `dimensionColorVars` packages the two custom
-properties a line carries. Nothing is generated per level; the stylesheet is one
+Colour is a pure function of `D` — for the marker and the prose.
+`dimensionColor(7)` is the same value in every vault and at every moment, and
+`dimensionColorVars` packages the two custom properties a line carries. A whisper
+row is the one row that takes the note's own text colour, because the glyph alone
+does not survive being read next to prose. Nothing is generated per level; the stylesheet is one
 `calc()` over `--weaver-d`, and the runtime variables are written by `buildCss`
 into one `<style id="weaver-style">` element.
 
 <!-- claim: src/core/color.ts#dimensionColor @bbd0b078df -->
-<!-- claim: src/ui/css.ts#buildCss @cc404ff204 -->
+<!-- claim: src/ui/css.ts#buildCss @f25017d500 -->
 
 Settings land in one of the places listed here, never in a surface of their own:
 values that change the drawing go through `buildCss` (variables), values that
@@ -268,8 +297,8 @@ place an older spelling is read — the v2 `heading*` names. A stored name with 
 current name at all (`entryWeight`, dropped with the per-entry weight slider;
 `entryDate`, dropped with the per-entry date) is simply dropped.
 
-<!-- claim: src/settings.ts#normalizeSettings @fb3b51b396 -->
-<!-- claim: src/settings.ts#DEFAULT_SETTINGS @5ef4d6038f -->
+<!-- claim: src/settings.ts#normalizeSettings @9b768882e2 -->
+<!-- claim: src/settings.ts#DEFAULT_SETTINGS @6c4ca50d1c -->
 
 **Vocabulary is a coupling, not a preference.** The unit is an *entry*, its depth
 a *dimension*, its state *open* or *settled*. `heading` names Markdown syntax and
@@ -281,7 +310,10 @@ setting exists for theirs.
 ## 8. Every sentence the user sees
 
 `src/notices.ts` owns the text: the notice durations and every refusal and
-confirmation. A surface imports the string; it never retypes one. That is what
+confirmation — including a whisper pass's own two (`NOTICE_WHISPERING`, and the
+outcome `noticeWhispered` reports: what it wrote, out of what it tried, and why the
+rest did not land) and the refusal a device with no reachable endpoint earns
+(`NOTICE_WHISPER_UNREACHABLE`). A surface imports the string; it never retypes one. That is what
 keeps `docs/surfaces.md`'s "what does it show when there is nothing" honest — the
 sentence it quotes is a constant, and the generated module table says where it is
 used.
@@ -319,6 +351,7 @@ No unit test can see a pixel, and this document does not pretend otherwise.
 | a user-facing sentence | `notices.ts` only — then whatever quotes it |
 | a class or `data-` attribute | `styles.css` or the writer, `tests/` that selects it, the generated DOM table |
 | a command | `main.ts`, `README.md`'s command table, the generated command table |
+| a whisper rule | `core/whisper.ts`, `tests/whisper.test.ts`, and `WHISPER_PROMPT_VERSION` when the prompt's text moves |
 | an export | its doc comment — the gate requires one — and the sentence here that names it |
 
 If a change makes a sentence in this file false, the gate will say which one.
@@ -329,7 +362,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-34 files, 155 exported symbols, 25 test files.
+38 files, 198 exported symbols, 30 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -340,32 +373,36 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/day.ts` | core | 58 | 5 | no |
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 110 | 6 | no |
-| `src/core/entries.ts` | core | 392 | 15 | no |
+| `src/core/entries.ts` | core | 417 | 15 | no |
 | `src/core/frame.ts` | core | 96 | 7 | no |
-| `src/core/insert.ts` | core | 247 | 10 | no |
+| `src/core/insert.ts` | core | 319 | 12 | no |
 | `src/core/navigator-stack.ts` | core | 40 | 4 | no |
+| `src/core/whisper.ts` | core | 407 | 19 | no |
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 55 | 5 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 199 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 213 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 40 | 4 | no |
-| `src/editor/entry-frame.ts` | editor | 355 | 2 | yes |
+| `src/editor/entry-frame.ts` | editor | 368 | 2 | yes |
 | `src/editor/entry-keys.ts` | editor | 223 | 10 | no |
+| `src/editor/frame-effects.ts` | editor | 62 | 4 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 159 | 2 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
 | `src/entries/day-note.ts` | entries | 96 | 3 | yes |
-| `src/entries/engine.ts` | entries | 494 | 1 | yes |
+| `src/entries/engine.ts` | entries | 821 | 1 | yes |
 | `src/entries/session.ts` | entries | 47 | 2 | no |
 | `src/entries/writer.ts` | entries | 100 | 5 | yes |
-| `src/main.ts` | root | 298 | 1 | yes |
-| `src/notices.ts` | root | 48 | 14 | no |
+| `src/main.ts` | root | 355 | 1 | yes |
+| `src/model/whisper-model.ts` | root | 186 | 6 | yes |
+| `src/model/whisper-runner.ts` | root | 227 | 5 | no |
+| `src/notices.ts` | root | 133 | 19 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 159 | 1 | yes |
-| `src/settings-tab.ts` | root | 208 | 1 | yes |
-| `src/settings.ts` | root | 188 | 6 | no |
-| `src/ui/css.ts` | ui | 71 | 4 | no |
+| `src/reading/entry-processor.ts` | reading | 173 | 1 | yes |
+| `src/settings-tab.ts` | root | 279 | 1 | yes |
+| `src/settings.ts` | root | 245 | 8 | no |
+| `src/ui/css.ts` | ui | 72 | 4 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
-| `src/ui/navigator.ts` | ui | 451 | 1 | no |
+| `src/ui/navigator.ts` | ui | 454 | 1 | no |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
 ### Commands
@@ -375,6 +412,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `weaver:start-entry` | Start an entry | `plus` | `Mod,Shift+E` |
 | `weaver:descend` | Descend into a child entry | `arrow-down-right` | — |
 | `weaver:navigate` | Today's entries | `list` | `Mod,Shift+P` |
+| `weaver:whisper-day` | Whisper the day | `sparkles` | — |
 | `weaver:close-day` | Close the day | `check-circle` | — |
 
 ### Settings
@@ -392,6 +430,11 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `portEmphasisColors` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entryFrames` | `true` | `editor/entry-frame.ts`<br>`settings-tab.ts` |
 | `frameFollowsIndent` | `true` | `main.ts`<br>`settings-tab.ts` |
+| `whisperEnabled` | `false` | `main.ts`<br>`settings-tab.ts` |
+| `whisperEndpoint` | `"http://127.0.0.1:8000/v1"` | `main.ts`<br>`settings-tab.ts` |
+| `whisperModelId` | `"Qwen3.5-4B-MLX-4bit"` | `main.ts`<br>`settings-tab.ts` |
+| `whisperApiKey` | `""` | `main.ts`<br>`settings-tab.ts` |
+| `whisperThreads` | `false` | `entries/engine.ts`<br>`settings-tab.ts` |
 | `debug` | `false` | `main.ts`<br>`settings-tab.ts` |
 
 The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the three v2 spellings and nothing else reads them.
@@ -415,6 +458,7 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-duration-sigil` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
 | `weaver-entry-head` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-prose` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
+| `weaver-entry-whisper` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-frame` | styled | `editor/entry-frame.ts`<br>`reading/entry-processor.ts` |
 | `weaver-frame-fixed` | styled | `main.ts` |
 | `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
@@ -555,7 +599,7 @@ The day's name, and nothing else.
 | `DayNoteOptions` | interface | 16 | `export interface DayNoteOptions` | `entries/day-note.ts` | — |
 | `dayKey` | function | 22 | `export function dayKey(now: Date): string` | `entries/day-note.ts`<br>`main.ts` | `tests/day-note.test.ts` |
 | `dayNotePath` | function | 27 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | `entries/day-note.ts` | `tests/day-note.test.ts`<br>`tests/start-entry.test.ts` |
-| `dayKeyFromName` | function | 40 | `export function dayKeyFromName(basename: string): string \| null` | — | `tests/day-note.test.ts` |
+| `dayKeyFromName` | function | 40 | `export function dayKeyFromName(basename: string): string \| null` | `entries/engine.ts` | `tests/day-note.test.ts` |
 | `dayFrontmatter` | function | 47 | `export function dayFrontmatter(day: string): string` | `entries/day-note.ts` | `tests/day-note.test.ts` |
 
 #### `src/core/document.ts`
@@ -590,21 +634,21 @@ The entry: the unit a day note is made of.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `Entry` | interface | 27 | `export interface Entry` | `core/insert.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
-| `EntryIndex` | interface | 66 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
-| `MarkerPrefix` | interface | 94 | `export interface MarkerPrefix` | — | — |
-| `parseMarkerPrefix` | function | 109 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
-| `parseEntries` | function | 147 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
-| `findEntryAtLine` | function | 310 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
-| `findEntryAtOffset` | function | 319 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
-| `findCurrentEntry` | function | 327 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
-| `entryBySeq` | function | 337 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
-| `childrenOf` | function | 345 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `core/insert.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
-| `endOfSubtree` | function | 351 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
-| `nextSeq` | function | 356 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `nextBranch` | function | 361 | `export function nextBranch(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `formatMarker` | function | 366 | `export function formatMarker(d: number, b: number, n: number): string` | `core/insert.ts` | `tests/entries.test.ts` |
-| `repairBranches` | function | 377 | `export function repairBranches(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
+| `Entry` | interface | 34 | `export interface Entry` | `core/insert.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
+| `EntryIndex` | interface | 77 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
+| `MarkerPrefix` | interface | 105 | `export interface MarkerPrefix` | — | — |
+| `parseMarkerPrefix` | function | 120 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
+| `parseEntries` | function | 158 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
+| `findEntryAtLine` | function | 335 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
+| `findEntryAtOffset` | function | 344 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
+| `findCurrentEntry` | function | 352 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
+| `entryBySeq` | function | 362 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
+| `childrenOf` | function | 370 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `core/insert.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
+| `endOfSubtree` | function | 376 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
+| `nextSeq` | function | 381 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
+| `nextBranch` | function | 386 | `export function nextBranch(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
+| `formatMarker` | function | 391 | `export function formatMarker(d: number, b: number, n: number): string` | `core/insert.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
+| `repairBranches` | function | 402 | `export function repairBranches(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
 
 #### `src/core/frame.ts`
 
@@ -626,16 +670,18 @@ The three plans that write entry text, and the arithmetic every plan shares.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `TextChange` | interface | 26 | `export interface TextChange` | `core/entries.ts`<br>`entries/writer.ts` | — |
-| `InsertPlan` | interface | 33 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `planAppendLine` | function | 57 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
-| `planStartEntry` | function | 87 | `export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planChildEntry` | function | 107 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDeleteEntry` | function | 141 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDuration` | function | 190 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `offsetToLineCh` | function | 217 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
-| `cmChanges` | function | 230 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `applyPlanToSource` | function | 237 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
+| `TextChange` | interface | 31 | `export interface TextChange` | `core/entries.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | — |
+| `InsertPlan` | interface | 38 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `planAppendLine` | function | 62 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
+| `planStartEntry` | function | 92 | `export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planChildEntry` | function | 112 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDeleteEntry` | function | 146 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDuration` | function | 195 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planWhisper` | function | 237 | `export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planThread` | function | 266 | `export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan \| null` | `entries/engine.ts` | — |
+| `offsetToLineCh` | function | 289 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
+| `cmChanges` | function | 302 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `applyPlanToSource` | function | 309 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/navigator-stack.ts`
 
@@ -647,6 +693,32 @@ The return stack: where a jump came from.
 | `STACK_LIMIT` | const | 19 | `export const STACK_LIMIT = 8` | — | `tests/navigator-stack.test.ts` |
 | `pushStop` | function | 27 | `export function pushStop(stops: readonly Stop[], stop: Stop, limit = STACK_LIMIT): Stop[]` | `entries/engine.ts` | `tests/navigator-stack.test.ts` |
 | `popStop` | function | 36 | `export function popStop(stops: readonly Stop[]):` | `ui/navigator.ts` | `tests/navigator-stack.test.ts` |
+
+#### `src/core/whisper.ts`
+
+The whisper: the model's reading of one entry, written as `~` rows above its
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `WhisperType` | type | 23 | `export type WhisperType = "name" \| "learn" \| "next" \| "ask" \| "thread"` | — | — |
+| `WhisperItem` | interface | 26 | `export interface WhisperItem` | `core/entries.ts`<br>`core/insert.ts`<br>`entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `WhisperInput` | interface | 32 | `export interface WhisperInput` | `entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper-runner.test.ts`<br>`tests/whisper.test.ts` |
+| `WHISPER_GLYPH` | const | 42 | `export const WHISPER_GLYPH = "~"` | — | — |
+| `WHISPER_LINE` | const | 53 | `export const WHISPER_LINE = /^[ \t]*~[ ](?:(learn\|next\|ask\|thread):[ ])?((?!(?:learn\|next\|ask\|thread):)\S.*)$/` | — | — |
+| `WHISPER_MAX_LINES` | const | 56 | `export const WHISPER_MAX_LINES = 3` | `core/insert.ts` | — |
+| `WHISPER_WORD_LIMITS` | const | 65 | `export const WHISPER_WORD_LIMITS: Readonly<Record<WhisperType, number>> =` | — | — |
+| `WHISPER_MAX_WORDS` | const | 74 | `export const WHISPER_MAX_WORDS = 14` | — | — |
+| `WHISPER_NEGATION` | const | 85 | `export const WHISPER_NEGATION = /(,\s*not\b\|\bnot just\b[^.]*\bbut\b\|\brather than\b\|\binstead of\b)/i` | — | — |
+| `WHISPER_PROMPT_VERSION` | const | 89 | `export const WHISPER_PROMPT_VERSION = 5` | — | — |
+| `parseWhisperLine` | function | 103 | `export function parseWhisperLine(line: string): WhisperItem \| null` | `core/entries.ts`<br>`reading/entry-processor.ts` | `tests/whisper.test.ts` |
+| `formatWhisperLine` | function | 114 | `export function formatWhisperLine(item: WhisperItem): string` | `core/insert.ts` | `tests/whisper.test.ts` |
+| `whisperKey` | function | 133 | `export function whisperKey(input: WhisperInput): string` | `entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts`<br>`tests/whisper.test.ts` |
+| `validateWhisper` | function | 155 | `export function validateWhisper( items: readonly unknown[] \| null, input: WhisperInput ):` | `entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper.test.ts` |
+| `WhisperDayEntry` | interface | 249 | `export interface WhisperDayEntry` | `entries/engine.ts` | — |
+| `whisperThreadPrompt` | function | 286 | `export function whisperThreadPrompt( day: readonly WhisperDayEntry[], own: WhisperDayEntry ):` | `entries/engine.ts` | — |
+| `validateThread` | function | 310 | `export function validateThread( items: readonly unknown[] \| null, day: readonly WhisperDayEntry[], own: WhisperDayEntry ):` | `entries/engine.ts` | — |
+| `whisperPrompt` | function | 351 | `export function whisperPrompt(input: WhisperInput):` | `entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper.test.ts` |
+| `parseWhisperResponse` | function | 379 | `export function parseWhisperResponse(text: string): unknown[] \| null` | `entries/engine.ts`<br>`model/whisper-runner.ts` | `tests/whisper.test.ts` |
 
 #### `src/editor/close-decorations.ts`
 
@@ -684,7 +756,7 @@ The entry, drawn.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `entryDecorationSet` | function | 76 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number ): DecorationSet` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 178 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string ): Extension` | `main.ts` | — |
+| `entryDecorationsExtension` | function | 192 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string ): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-field.ts`
 
@@ -693,7 +765,7 @@ The entry index as editor state: one parse per document change, shared by the
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `refreshEntriesEffect` | const | 11 | `export const refreshEntriesEffect = StateEffect.define<void>()` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/entry-field.test.ts` |
-| `programmaticWrite` | const | 22 | `export const programmaticWrite = Annotation.define<boolean>()` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`entries/writer.ts`<br>`ui/navigator.ts` | — |
+| `programmaticWrite` | const | 22 | `export const programmaticWrite = Annotation.define<boolean>()` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`ui/navigator.ts` | — |
 | `entryIndexField` | const | 25 | `export const entryIndexField = StateField.define<EntryIndex>(` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/close-decorations.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-field.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/plugin.test.ts`<br>`tests/start-entry.test.ts` |
 | `entryIndexExtension` | function | 37 | `export function entryIndexExtension(): Extension` | `main.ts` | — |
 
@@ -703,8 +775,8 @@ The frame around every entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameHost` | interface | 54 | `export interface FrameHost` | — | — |
-| `entryFrameExtension` | function | 346 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
+| `FrameHost` | interface | 55 | `export interface FrameHost` | — | — |
+| `entryFrameExtension` | function | 359 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-keys.ts`
 
@@ -723,6 +795,17 @@ The two keys an entry owns, and the two edit events that keep the stopwatch
 | `entryKeysExtension` | function | 144 | `export function entryKeysExtension(host: EntryKeyHost): Extension` | `main.ts` | — |
 | `entryEditExtension` | function | 156 | `export function entryEditExtension(host: EntryEditHost): Extension` | `main.ts` | — |
 
+#### `src/editor/frame-effects.ts`
+
+What a drawn frame can be doing, and which single effect shows it.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `FrameActivity` | interface | 14 | `export interface FrameActivity` | — | — |
+| `FrameEffect` | interface | 22 | `export interface FrameEffect` | — | — |
+| `FRAME_EFFECTS` | const | 38 | `export const FRAME_EFFECTS: readonly FrameEffect[] = [` | `editor/entry-frame.ts` | `tests/frame-effects.test.ts` |
+| `frameEffect` | function | 52 | `export function frameEffect(activity: FrameActivity): FrameEffect \| null` | `editor/entry-frame.ts` | `tests/frame-effects.test.ts` |
+
 #### `src/editor/stopwatch-widget.ts`
 
 The rendered clock row.
@@ -738,8 +821,8 @@ The live editor views, in one place.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
-| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
+| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `viewRegistryExtension` | const | 25 | `export const viewRegistryExtension = ViewPlugin.fromClass( class` | `main.ts` | — |
 | `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
 | `findEditorViewForFile` | function | 43 | `export function findEditorViewForFile(file: TFile): EditorView \| null` | `entries/engine.ts`<br>`entries/writer.ts` | — |
@@ -761,7 +844,7 @@ The only writer of entry text.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `EntryEngine` | class | 58 | `export class EntryEngine` | `main.ts` | — |
+| `EntryEngine` | class | 81 | `export class EntryEngine` | `main.ts` | — |
 
 #### `src/entries/session.ts`
 
@@ -790,7 +873,32 @@ Weaver: a day note is a linear list of entries.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts` |
+| `WeaverPlugin` | class | 58 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts` |
+
+#### `src/model/whisper-model.ts`
+
+The model a whisper comes from.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `WhisperRequest` | interface | 17 | `export interface WhisperRequest` | — | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `WhisperFailure` | type | 29 | `export type WhisperFailure = \|` | `entries/engine.ts`<br>`notices.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `WhisperReply` | type | 35 | `export type WhisperReply = \|` | — | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `WhisperModel` | interface | 40 | `export interface WhisperModel` | `main.ts`<br>`model/whisper-runner.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `NoModel` | const | 53 | `export const NoModel: WhisperModel =` | `entries/engine.ts`<br>`main.ts`<br>`model/whisper-runner.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
+| `OmLxModel` | class | 130 | `export class OmLxModel implements WhisperModel` | `main.ts` | `tests/whisper-model.test.ts` |
+
+#### `src/model/whisper-runner.ts`
+
+The runner: when a whisper is asked for, and what becomes of the answer.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `WHISPER_IDLE_MS` | const | 30 | `export const WHISPER_IDLE_MS = 800` | — | `tests/whisper-runner.test.ts` |
+| `WHISPER_READING_DELAY_MS` | const | 39 | `export const WHISPER_READING_DELAY_MS = 200` | — | `tests/whisper-runner.test.ts` |
+| `WHISPER_FAILURE_LIMIT` | const | 45 | `export const WHISPER_FAILURE_LIMIT = 2` | `entries/engine.ts` | — |
+| `WhisperRunnerOptions` | interface | 48 | `export interface WhisperRunnerOptions` | — | — |
+| `WhisperRunner` | class | 59 | `export class WhisperRunner` | `main.ts` | `tests/whisper-act.test.ts`<br>`tests/whisper-runner.test.ts` |
 
 #### `src/notices.ts`
 
@@ -798,20 +906,25 @@ Every user-facing string Weaver shows, so wording stays consistent.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `NOTICE_REFUSAL_MS` | const | 7 | `export const NOTICE_REFUSAL_MS = 6000` | `entries/engine.ts`<br>`main.ts` | — |
-| `NOTICE_NOOP_MS` | const | 9 | `export const NOTICE_NOOP_MS = 3000` | `main.ts` | — |
-| `NOTICE_PARTIAL_MS` | const | 11 | `export const NOTICE_PARTIAL_MS = 8000` | — | — |
-| `NOTICE_NOTHING_WRITTEN` | const | 14 | `export const NOTICE_NOTHING_WRITTEN = "Nothing was written."` | — | — |
-| `NOTICE_NEEDS_EDITING` | const | 17 | `export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
-| `NOTICE_NEEDS_ENTRY` | const | 19 | `export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
-| `NOTICE_DAY_CLOSED` | const | 21 | `export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $` | `main.ts` | — |
-| `NOTICE_DAY_ALREADY_CLOSED` | const | 23 | `export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $` | `main.ts` | — |
-| `NOTICE_NO_DAY_NOTE` | const | 25 | `export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $` | `entries/engine.ts`<br>`main.ts` | — |
-| `NAVIGATOR_HINT_KEYS` | const | 28 | `export const NAVIGATOR_HINT_KEYS = "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close"` | `ui/navigator.ts` | — |
-| `NAVIGATOR_HINT_TOUCH` | const | 32 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
-| `noticeCloseFrontmatter` | function | 35 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
-| `noticeCloseCodeBlock` | function | 40 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
-| `noticeLegacyFormat` | function | 45 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_REFUSAL_MS` | const | 9 | `export const NOTICE_REFUSAL_MS = 6000` | `entries/engine.ts`<br>`main.ts` | — |
+| `NOTICE_NOOP_MS` | const | 11 | `export const NOTICE_NOOP_MS = 3000` | `main.ts` | — |
+| `NOTICE_PARTIAL_MS` | const | 13 | `export const NOTICE_PARTIAL_MS = 8000` | — | — |
+| `NOTICE_NOTHING_WRITTEN` | const | 16 | `export const NOTICE_NOTHING_WRITTEN = "Nothing was written."` | — | — |
+| `NOTICE_NEEDS_EDITING` | const | 19 | `export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_NEEDS_ENTRY` | const | 21 | `export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_DAY_CLOSED` | const | 23 | `export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $` | `main.ts` | — |
+| `NOTICE_DAY_ALREADY_CLOSED` | const | 25 | `export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $` | `main.ts` | — |
+| `NOTICE_NO_DAY_NOTE` | const | 27 | `export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $` | `entries/engine.ts`<br>`main.ts` | — |
+| `NOTICE_WHISPERING` | const | 30 | `export const NOTICE_WHISPERING = "Whispering the day…"` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `NOTICE_WHISPER_UNREACHABLE` | const | 33 | `export const NOTICE_WHISPER_UNREACHABLE = "No whisper endpoint is reachable from this device."` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `WhisperPass` | interface | 36 | `export interface WhisperPass` | — | — |
+| `whisperFailurePhrase` | function | 59 | `export function whisperFailurePhrase(failure: WhisperFailure): string` | `entries/engine.ts`<br>`model/whisper-runner.ts` | — |
+| `noticeWhispered` | function | 90 | `export function noticeWhispered(pass: WhisperPass): string` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `NAVIGATOR_HINT_KEYS` | const | 113 | `export const NAVIGATOR_HINT_KEYS = "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close"` | `ui/navigator.ts` | — |
+| `NAVIGATOR_HINT_TOUCH` | const | 117 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
+| `noticeCloseFrontmatter` | function | 120 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
+| `noticeCloseCodeBlock` | function | 125 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
+| `noticeLegacyFormat` | function | 130 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/start-entry.test.ts` |
 
 #### `src/reading/close-processor.ts`
 
@@ -827,11 +940,11 @@ Reading view: the same entry the editor draws, in the same frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `createEntryProcessor` | function | 77 | `export function createEntryProcessor(): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
+| `createEntryProcessor` | function | 79 | `export function createEntryProcessor(): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
 
 #### `src/settings-tab.ts`
 
-The settings surface: four groups, every control applied live.
+The settings surface: five groups, every control applied live.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
@@ -844,11 +957,13 @@ Weaver settings model.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `WeaverSettings` | interface | 15 | `export interface WeaverSettings` | `editor/entry-frame.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | — |
-| `WeaverData` | interface | 48 | `export interface WeaverData` | `main.ts` | — |
-| `DEFAULT_SETTINGS` | const | 54 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/day-note.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts` |
-| `isValidEntrySize` | function | 76 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
-| `normalizeSettings` | function | 134 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
-| `normalizeData` | function | 173 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
+| `WeaverData` | interface | 64 | `export interface WeaverData` | `main.ts` | — |
+| `DEFAULT_SETTINGS` | const | 70 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/day-note.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts` |
+| `isValidEntrySize` | function | 98 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
+| `isValidWhisperEndpoint` | function | 105 | `export function isValidWhisperEndpoint(value: string): boolean` | — | `tests/settings.test.ts` |
+| `whisperReachable` | function | 120 | `export function whisperReachable(endpoint: string, mobile: boolean): boolean` | `main.ts` | `tests/settings.test.ts` |
+| `normalizeSettings` | function | 185 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
+| `normalizeData` | function | 230 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
 
 #### `src/ui/css.ts`
 
@@ -858,8 +973,8 @@ The generated stylesheet: the five numbers a note is drawn with, and the two
 | --- | --- | --- | --- | --- | --- |
 | `STYLE_ID` | const | 11 | `export const STYLE_ID = "weaver-style"` | — | — |
 | `buildCss` | function | 14 | `export function buildCss(settings: WeaverSettings): string` | — | — |
-| `applyCss` | function | 55 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
-| `removeCss` | function | 68 | `export function removeCss(): void` | `main.ts` | — |
+| `applyCss` | function | 56 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
+| `removeCss` | function | 69 | `export function removeCss(): void` | `main.ts` | — |
 
 #### `src/ui/dcn.ts`
 

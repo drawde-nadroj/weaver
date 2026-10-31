@@ -1,5 +1,5 @@
 /**
- * The settings surface: four groups, every control applied live.
+ * The settings surface: five groups, every control applied live.
  *
  * The tab owns no rules of its own — it writes the settings model and calls
  * `commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.
@@ -14,8 +14,8 @@ import { DEFAULT_SETTINGS, isValidEntrySize } from "./settings";
 const INDENT_LIMIT = 24;
 
 /**
- * Settings UI, in four groups: what is written, where the day note is, how an
- * entry looks, and the rest.
+ * Settings UI, in five groups: what is written, where the day note is, how an
+ * entry looks, what reads it, and the rest.
  *
  * Every control writes through `commit()` so changes apply live.
  */
@@ -43,6 +43,7 @@ export class WeaverSettingTab extends PluginSettingTab {
     this.renderWriting(containerEl);
     this.renderDay(containerEl);
     this.renderLook(containerEl);
+    this.renderWhisper(containerEl);
     this.renderAdvanced(containerEl);
   }
 
@@ -188,6 +189,76 @@ export class WeaverSettingTab extends PluginSettingTab {
           this.plugin.settings.frameFollowsIndent = value;
           this.commit();
         });
+      });
+  }
+
+  private renderWhisper(containerEl: HTMLElement): void {
+    containerEl.createEl("h3", { text: "Whisper" });
+
+    new Setting(containerEl)
+      .setName("Whisper settled entries")
+      .setDesc("Write one to three `~` rows above a settled entry: the model's reading of what it holds.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.whisperEnabled).onChange((value) => {
+          this.plugin.settings.whisperEnabled = value;
+          this.commit();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Place each entry in its day")
+      .setDesc(
+        "Ask a second question per entry: which earlier entry it repeats or picks up. It costs one request per entry, and a small model answers it thinly — about one usable placement per day's twenty entries."
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.whisperThreads).onChange((value) => {
+          this.plugin.settings.whisperThreads = value;
+          this.commit();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Endpoint")
+      .setDesc(
+        "An address this device can reach. 127.0.0.1 is this machine only; the machine's own reachable name makes whispers work on a phone too."
+      )
+      .addText((text) => {
+        text
+          .setValue(this.plugin.settings.whisperEndpoint)
+          .setPlaceholder(DEFAULT_SETTINGS.whisperEndpoint)
+          .onChange((value) => {
+            this.plugin.settings.whisperEndpoint = value.trim();
+            this.commit();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Model")
+      .setDesc(
+        "The model's name at that endpoint. A thinking model spends the whole answer budget on its reasoning and returns no text, so turn thinking off in that model's own settings, or use a non-thinking model."
+      )
+      .addText((text) => {
+        text
+          .setValue(this.plugin.settings.whisperModelId)
+          .setPlaceholder(DEFAULT_SETTINGS.whisperModelId)
+          .onChange((value) => {
+            this.plugin.settings.whisperModelId = value.trim();
+            this.commit();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("API key")
+      .setDesc(
+        "Kept in this plugin's data.json in plain text, and it syncs with the vault. Leave it empty for a local endpoint."
+      )
+      .addText((text) => {
+        text
+          .setValue(this.plugin.settings.whisperApiKey)
+          .onChange((value) => {
+            this.plugin.settings.whisperApiKey = value.trim();
+            this.commit();
+          });
       });
   }
 

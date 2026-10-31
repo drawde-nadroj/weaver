@@ -708,6 +708,30 @@ export class Setting {
   }
 }
 
+/** Every request the stub was asked to make, in order. */
+export const requestUrlCalls: Array<Record<string, unknown>> = [];
+
+/**
+ * What the stub's `requestUrl` answers, by default an unreachable endpoint: a
+ * `599` with no payload. A test that needs a real status and a real body replaces
+ * this, which is how the model port is exercised without a socket.
+ */
+export const requestUrlReply: { status: number; json: unknown; text: string } = {
+  status: 599,
+  json: null,
+  text: ""
+};
+
+/** `requestUrl`: records the request, then answers whatever `requestUrlReply` says. */
+export async function requestUrl(request: Record<string, unknown>): Promise<{
+  status: number;
+  json: unknown;
+  text: string;
+}> {
+  requestUrlCalls.push(request);
+  return { ...requestUrlReply };
+}
+
 export function debounce<T extends (...args: never[]) => unknown>(fn: T): T {
   return fn;
 }

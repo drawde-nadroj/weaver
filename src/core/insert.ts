@@ -21,6 +21,11 @@ import {
   type Entry,
   type EntryIndex
 } from "./entries";
+import {
+  formatWhisperLine,
+  WHISPER_MAX_LINES,
+  type WhisperItem
+} from "./whisper";
 
 /** One replacement in the document, in absolute offsets. */
 export interface TextChange {
@@ -210,6 +215,73 @@ export function planDuration(
   return {
     changes: [{ from: entry.clockFrom, to: entry.clockTo, text: target }],
     selection: { from: entry.proseFrom, to: entry.proseFrom }
+  };
+}
+
+/**
+ * Writes a whisper above an entry's first prose line. One insertion, so one
+ * undo.
+ *
+ * A whisper is the model's reading of a settled thought, so this plan refuses
+ * every case where it would be a guess: a note it cannot read whole, an answer
+ * with no rows or more than three, an entry that already has one — written once,
+ * never rewritten — an entry with nothing to read, an entry with no clock row to
+ * sit above, and an entry the writer named on the marker row himself. It does
+ * not look at `entry.state`: settle runs while the entry is still `draft`, so
+ * the callers decide who may be whispered.
+ *
+ * The inserted text is newline-terminated and the selection lands past it, so
+ * the plan is valid against the text it produces. No caller uses that selection
+ * to move a caret: the writer is somewhere else, by construction.
+ */
+export function planWhisper(
+  _source: string,
+  index: EntryIndex,
+  entry: Entry,
+  whisper: readonly WhisperItem[]
+): InsertPlan | null {
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
+  if (whisper.length === 0 || whisper.length > WHISPER_MAX_LINES) return null;
+  if (entry.whisperLines.length > 0) return null;
+  if (entry.firstProseLine === null || entry.clockLine === null) return null;
+  if ((index.lines[entry.line] ?? "").slice(entry.markerEnd - entry.from).trim() !== "") return null;
+
+  const at = index.lineStarts[entry.firstProseLine] ?? 0;
+  const text = `${whisper.map(formatWhisperLine).join(NEWLINE)}${NEWLINE}`;
+
+  return {
+    changes: [{ from: at, to: at, text }],
+    selection: { from: at + text.length, to: at + text.length }
+  };
+}
+
+/**
+ * Appends one row to an entry that already carries a whisper.
+ *
+ * The day pass may add a `thread:` row to a reading written earlier — the day it
+ * refers to did not exist when the reading was written. Nothing is rewritten: the
+ * row goes directly below the last whisper row, so the reading above it is the same
+ * bytes it was.
+ */
+export function planThread(
+  source: string,
+  index: EntryIndex,
+  entry: Entry,
+  item: WhisperItem
+): InsertPlan | null {
+  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
+  if (entry.whisperLines.length === 0) return null;
+  if (entry.whisper.some((row) => row.type === "thread")) return null;
+
+  const last = entry.whisperLines[entry.whisperLines.length - 1] as number;
+  const text = formatWhisperLine(item);
+  const at = index.lineStarts[last + 1];
+  const inserted = at === undefined ? `${NEWLINE}${text}` : `${text}${NEWLINE}`;
+  const from = at === undefined ? source.length : at;
+
+  return {
+    changes: [{ from, to: from, text: inserted }],
+    selection: { from: from + inserted.length, to: from + inserted.length }
   };
 }
 

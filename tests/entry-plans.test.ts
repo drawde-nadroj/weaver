@@ -9,6 +9,7 @@ import {
   planDeleteEntry,
   planDuration,
   planStartEntry,
+  planWhisper,
   type InsertPlan
 } from "../src/core/insert";
 
@@ -384,5 +385,122 @@ describe("settling and descending", () => {
       ].join("\n")
     );
     expect(next.slice(0, child.selection.from).endsWith("{ 2.1.2 }\n")).toBe(true);
+  });
+});
+
+describe("planWhisper", () => {
+  const SOURCE = [
+    "{ 1.1.1 }",
+    "the marker row's own words",
+    "10:00:00 + 00:01:00"
+  ].join("\n");
+
+  it("inserts above the first prose line, keeping the clock row last", () => {
+    const index = parseEntries(SOURCE);
+    const entry = index.entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+
+    const plan = planWhisper(SOURCE, index, entry, [
+      { type: "name", text: "a pricing decision" },
+      { type: "next", text: "read it once more" }
+    ]);
+    if (plan === null) throw new Error("expected a whisper plan");
+
+    const next = applied(SOURCE, plan);
+    expect(next).toBe(
+      [
+        "{ 1.1.1 }",
+        "~ a pricing decision",
+        "~ next: read it once more",
+        "the marker row's own words",
+        "10:00:00 + 00:01:00"
+      ].join("\n")
+    );
+    // One insertion: the selection is the empty range past the new rows.
+    expect(plan.changes.length).toBe(1);
+    expect(plan.changes[0]?.from).toBe(plan.changes[0]?.to);
+    expect(plan.selection.from).toBe(SOURCE.indexOf("the marker row's own words") + "~ a pricing decision\n~ next: read it once more\n".length);
+    expect(parseEntries(next).entries[0]?.title).toBe("the marker row's own words");
+  });
+
+  it("lands above a prose line that sits after a blank one", () => {
+    const source = ["{ 1.1.1 }", "", "written prose", "10:00:00 + 00:01:00"].join("\n");
+    const index = parseEntries(source);
+    const entry = index.entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+
+    const plan = planWhisper(source, index, entry, [{ type: "name", text: "written prose, read" }]);
+    if (plan === null) throw new Error("expected a whisper plan");
+
+    expect(applied(source, plan)).toBe(
+      [
+        "{ 1.1.1 }",
+        "",
+        "~ written prose, read",
+        "written prose",
+        "10:00:00 + 00:01:00"
+      ].join("\n")
+    );
+  });
+
+  it("refuses an entry that already has a whisper", () => {
+    const source = ["{ 1.1.1 }", "~ a reading", "prose", "10:00:00"].join("\n");
+    const index = parseEntries(source);
+    const entry = index.entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+
+    expect(planWhisper(source, index, entry, [{ type: "name", text: "another" }])).toBeNull();
+  });
+
+  it("refuses a marker row the writer already named", () => {
+    const index = parseEntries(SOURCE);
+    const entry = index.entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+
+    const titled = "{ 1.1.1 } a title of my own\nprose\n10:00:00";
+    const titledIndex = parseEntries(titled);
+    const titledEntry = titledIndex.entries[0];
+    if (titledEntry === undefined) throw new Error("expected an entry");
+    expect(planWhisper(titled, titledIndex, titledEntry, [{ type: "name", text: "x" }])).toBeNull();
+
+    // The same entry without a name on the marker row is writable.
+    expect(planWhisper(SOURCE, index, entry, [{ type: "name", text: "x" }])).not.toBeNull();
+  });
+
+  it("refuses an entry with no prose and an entry with no clock row", () => {
+    const empty = "{ 1.1.1 }\n\n10:00:00";
+    const emptyIndex = parseEntries(empty);
+    const emptyEntry = emptyIndex.entries[0];
+    if (emptyEntry === undefined) throw new Error("expected an entry");
+    expect(emptyEntry.firstProseLine).toBeNull();
+    expect(planWhisper(empty, emptyIndex, emptyEntry, [{ type: "name", text: "x" }])).toBeNull();
+
+    const unclosed = "{ 1.1.1 }\nprose";
+    const unclosedIndex = parseEntries(unclosed);
+    const unclosedEntry = unclosedIndex.entries[0];
+    if (unclosedEntry === undefined) throw new Error("expected an entry");
+    expect(unclosedEntry.clockLine).toBeNull();
+    expect(planWhisper(unclosed, unclosedIndex, unclosedEntry, [{ type: "name", text: "x" }])).toBeNull();
+  });
+
+  it("refuses an empty answer, an essay, and a legacy note", () => {
+    const index = parseEntries(SOURCE);
+    const entry = index.entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+
+    expect(planWhisper(SOURCE, index, entry, [])).toBeNull();
+    expect(
+      planWhisper(SOURCE, index, entry, [
+        { type: "name", text: "a" },
+        { type: "learn", text: "b" },
+        { type: "next", text: "c" },
+        { type: "name", text: "d" }
+      ])
+    ).toBeNull();
+
+    const legacy = "{ 1.1.1 } - 10:00:00\nprose";
+    const legacyIndex = parseEntries(legacy);
+    expect(legacyIndex.legacyFormat).toBe(true);
+    expect(planWhisper(legacy, legacyIndex, legacyIndex.entries[0] as never, [{ type: "name", text: "x" }])).toBeNull();
   });
 });

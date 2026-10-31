@@ -72,6 +72,81 @@ the toolbar. On an open entry it settles first — the same two transactions —
 opens the child above older siblings. With the caret outside an entry it refuses:
 `put the caret in an entry. Nothing was written.`
 
+## Flow: whisper
+
+Every settled entry may carry a **whisper**: two or three `~` rows above its prose —
+the subject (a bare name, the anchor the navigator and a search both use), what it
+names but has not settled (`learn:`), what it would do next (`next:`), and the
+question it leaves open (`ask:`). It is written once and never rewritten or
+retracted — editing the prose afterwards leaves the row where it is, and the
+writer's own edit is the only thing that removes one.
+
+1. **Warm.** While a draft is being written, an idle pause of 800 ms asks the model
+   once. If the answer is back when `⏎` settles the entry, the rows and the `+` land
+   in one transaction: one `⌘Z` removes both. Nothing about the entry moves except
+   its height.
+2. **Cold.** `⏎` pressed before the answer arrives settles exactly as it did before
+   whispers existed: `+` alone, immediately, nothing waiting. The answer is asked for
+   at settle; when it comes — a second or two later — it is written as its own
+   undoable transaction, above the prose.
+3. **Held while you are there.** A deferred whisper never lands while the caret is
+   inside that entry: a line arriving between two keystrokes moves the text being
+   read. It stays unwhispered until the caret leaves, and *Whisper the day* is the
+   repair for the ones that were missed.
+4. **Discarded when the text moved.** Every answer is guarded by a fingerprint of
+   the prose and the ancestors' first lines it was asked over. If the prose changed
+   in the meantime, the answer is dropped — that is the whole invalidation rule, and
+   it is why `-`→`+` and a neighbour's own whisper never throw one away.
+5. **You can see it is reading.** Once a request has been pending for 200 ms, the
+   entry's frame shows one ring leaving its centre and dying at the edge, again every
+   1.6 s, instead of the travel that means "being written". A request that answers
+   inside 200 ms shows nothing at all. It stops the moment the answer lands, and it is
+   what tells you a held landing is still coming. With reduced motion the ring becomes
+   a still dashed rule inside the box.
+6. ***Whisper the day.*** One pass over **the day note on screen** — today's when no
+   day note is open, because a past day's note is the same shape and its settled
+   entries are the same entries: every settled entry that has no whisper, no name
+   typed after its marker, and prose to read is asked about, in document order, each
+   child after its parent's new name. A note whose filename carries no day is not a
+   day note, so the pass falls back to today rather than write into it. All of it
+   lands in one transaction, one undo.
+
+With *Place each entry in its day* on, one further request per entry asks which earlier
+entry it repeats or picks up, and a validated answer becomes a `thread:` row — cited by
+the earlier entry's address, and refused when it cites nothing or cites itself. The
+branch already draws ancestry, so only a cross-branch relation earns the row; a 4B
+produces roughly one usable placement per day's twenty entries, which is why the
+setting is off by default.
+
+Writes: the whisper rows, above the first prose line. A warm answer shares settle's
+transaction; anything else is one transaction of its own. Undo: one step for each.
+
+Refused silently, with nothing written and no notice: an answer that breaks the
+register (a row past its word limit, a question mark outside `ask:`, an `ask:` row
+that does not ask, the antithesis, an em dash, a second `~`, the entry's own opening
+line, its address, a line an ancestor already carries), a note whose frontmatter or
+code block is unclosed, a marker row the writer already named, and an entry that
+already has a whisper.
+
+Because `Whisper the day` is a command the writer chose, it reports what it actually
+did, not merely that it finished. `Nothing to whisper: every settled entry already
+has one, or a name.` means exactly that — there was no candidate. Otherwise the
+sentence carries the count it wrote out of the candidates it tried, and the reason
+the rest did not land. A status is reported as the thing it says — the endpoint
+`refused this device (HTTP 401)`, `has no such model (HTTP 404)`, `is rate-limiting
+(HTTP 429)`, `failed (HTTP 507)`, `rejected the request (HTTP 400)` — followed by the
+server's own message when it sent one, because that is the sentence with the fix in
+it (`… does not fit under the dynamic memory ceiling`). The other two reasons are
+`the endpoint did not answer` (nothing came back at all) and `the model returned no
+text`, and the last is how many answers did not fit the register. Two failed requests in a row end the pass instead of spending
+one request per entry on an address that is not answering. With the setting off, or
+an address this device cannot reach, it says
+`No whisper endpoint is reachable from this device.` and writes nothing.
+
+Two transport failures in a row and this device stops asking until the plugin
+reloads — silently, with one line in the console when *Debug logging* is on. A
+validation failure is not counted: the endpoint answered, the register was not met.
+
 ## Flow: delete an entry
 
 1. `⌘⇧P`, select a row, `x` — or tap that row's `✕` twice.

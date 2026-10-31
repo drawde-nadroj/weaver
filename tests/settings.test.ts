@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SETTINGS, normalizeData, normalizeSettings } from "../src/settings";
+import {
+  DEFAULT_SETTINGS,
+  isValidWhisperEndpoint,
+  normalizeData,
+  normalizeSettings,
+  whisperReachable
+} from "../src/settings";
 
 describe("normalizeSettings", () => {
   it("fills every field for an empty payload", () => {
@@ -106,5 +112,52 @@ describe("normalizeData", () => {
   it("falls back to the defaults for anything else", () => {
     expect(normalizeData("nonsense").settings).toEqual(DEFAULT_SETTINGS);
     expect(normalizeData(null).settings).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe("whisper settings", () => {
+  it("is off by default, with a local endpoint and no key", () => {
+    expect(DEFAULT_SETTINGS.whisperEnabled).toBe(false);
+    expect(DEFAULT_SETTINGS.whisperEndpoint).toBe("http://127.0.0.1:8000/v1");
+    expect(DEFAULT_SETTINGS.whisperModelId).toBe("Qwen3.5-4B-MLX-4bit");
+    expect(DEFAULT_SETTINGS.whisperApiKey).toBe("");
+  });
+
+  it("normalizes the four fields as text and a switch", () => {
+    const normalized = normalizeSettings({
+      whisperEnabled: true,
+      whisperEndpoint: "http://127.0.0.1:9000/v1",
+      whisperModelId: "a-model",
+      whisperApiKey: "secret"
+    });
+
+    expect(normalized.whisperEnabled).toBe(true);
+    expect(normalized.whisperEndpoint).toBe("http://127.0.0.1:9000/v1");
+    expect(normalized.whisperModelId).toBe("a-model");
+    expect(normalized.whisperApiKey).toBe("secret");
+
+    expect(normalizeSettings({ whisperEnabled: "on" }).whisperEnabled).toBe(false);
+    expect(normalizeSettings({ whisperEndpoint: 7 }).whisperEndpoint).toBe(
+      DEFAULT_SETTINGS.whisperEndpoint
+    );
+  });
+
+  it("accepts only an absolute http(s) endpoint", () => {
+    expect(isValidWhisperEndpoint("http://127.0.0.1:8000/v1")).toBe(true);
+    expect(isValidWhisperEndpoint("https://jordan-mac.tail570e1d.ts.net:8000/v1")).toBe(true);
+    expect(isValidWhisperEndpoint("")).toBe(false);
+    expect(isValidWhisperEndpoint("not a url")).toBe(false);
+    expect(isValidWhisperEndpoint("127.0.0.1:8000")).toBe(false);
+  });
+
+  it("refuses a loopback endpoint on a phone, and only there", () => {
+    expect(whisperReachable("http://127.0.0.1:8000/v1", false)).toBe(true);
+    expect(whisperReachable("http://127.0.0.1:8000/v1", true)).toBe(false);
+    expect(whisperReachable("http://localhost:8000/v1", true)).toBe(false);
+    expect(whisperReachable("http://0.0.0.0:8000/v1", true)).toBe(false);
+    expect(whisperReachable("http://[::1]:8000/v1", true)).toBe(false);
+    expect(whisperReachable("https://jordan-mac.tail570e1d.ts.net:8000/v1", true)).toBe(true);
+    expect(whisperReachable("", false)).toBe(false);
+    expect(whisperReachable("not a url", false)).toBe(false);
   });
 });

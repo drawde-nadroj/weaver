@@ -70,6 +70,7 @@ starts no clock: an entry nobody has touched has no time in it.
 | `weaver:start-entry` | Start an entry | `Mod+Shift+E` | `plus` |
 | `weaver:descend` | Descend into a child entry | — | `arrow-down-right` |
 | `weaver:navigate` | Today's entries | `Mod+Shift+P` | `list` |
+| `weaver:whisper-day` | Whisper the day | — | `sparkles` |
 | `weaver:close-day` | Close the day | — | `check-circle` |
 
 Every command carries an icon. Obsidian has no API that places a command on the
@@ -167,6 +168,24 @@ changes, and only when *Write day counters* is on.
 
 **Close mark** — `✓ HH:MM:SS` on its own line, at most one per day.
 
+**Whisper rows** — two or three lines above an entry's first prose line, each
+beginning `~ `: a bare name (up to ten words, the subject you would search for), then
+at most one each of `learn: <what it has not settled>` (twelve words), `next: <an
+imperative>` (twelve), and `ask: <a question, ending in "?">` (fourteen). The name is
+the anchor — it is what the navigator shows — and the other rows carry the reading.
+A question mark belongs to `ask:` alone, and the first person's own negations ("i
+need not fear", "the data doesn't lie") are allowed: what the register refuses is the
+antithesis, `X, not Y`. The
+glyph is the provenance — it is how a reader, and a reload, tells the model's
+reading from the writer's prose, and a note carries nothing else to do it with. A
+single leading `~` is inert in Markdown, `~~` can never form (the row needs a space
+after the glyph, and its text may not contain a second one), and a `~` line inside a
+fenced block is text. Whisper rows are not prose: the title is still the first line
+the writer typed, and the caret, the duration row and the title all refer to the
+writer's own words. The rows take the note's own text colour — the one row that does
+not take the dimension's — and the navigator labels an entry with its whisper name
+before its title.
+
 ## Settings
 
 | Group | Setting | Default | Effect |
@@ -182,6 +201,11 @@ changes, and only when *Write day counters* is on.
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
 | Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the moment labels the bottom-left corner, the duration the bottom-right, each running through the middle of the row and cut behind its label. |
 | Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note. |
+| Whisper | Whisper settled entries | off | Write one to three `~` rows above a settled entry: the model's reading of what it holds. |
+| Whisper | Place each entry in its day | off | One extra request per entry, asking which earlier entry it repeats or picks up. A small model answers thinly — measured, about one usable placement per day's twenty entries — so it is off by default. |
+| Whisper | Endpoint | `http://127.0.0.1:8000/v1` | An address this device can reach. `127.0.0.1` is this machine only; the machine's own reachable name makes whispers work on a phone too. |
+| Whisper | Model | `Qwen3.5-4B-MLX-4bit` | The model's name at that endpoint. A **thinking** model spends the whole 160-token answer budget on its reasoning and returns no text, so turn thinking off in that model's own settings (in oMLX, the model's settings: **Enable thinking** off), or use a non-thinking model. |
+| Whisper | API key | empty | Kept in `data.json` in plain text, and it syncs with the vault. Empty for a local endpoint. |
 | Advanced | Debug logging | off | Verbose console output. |
 
 No setting is read while colouring: `dimensionColor(7)` is the same value in every
@@ -340,8 +364,8 @@ These need a live Obsidian and are not covered by `npm test`:
   keeps its height while the digits change.
 - `⇧⏎` inside an open entry adds a line, on a desk.
 - The palette lists exactly *Start an entry*, *Descend into a child entry*,
-  *Today's entries* and *Close the day*; there is no line-break command, and every
-  row shows its icon.
+  *Today's entries*, *Whisper the day* and *Close the day*; there is no line-break
+  command, and every row shows its icon.
 - *Descend into a child entry* with the caret in a settled entry puts the child
   immediately under the parent, above any older siblings.
 - *Descend into a child entry* on an open entry settles it first, then opens the
@@ -396,6 +420,39 @@ card open.
   either side.
 - Frames, phone: the box reaches the pane's edge, and the moment and the duration
   read on one line at the bottom two corners.
+- Whisper, warm: with *Whisper settled entries* on and oMLX answering, write about
+  forty dictated words, pause two seconds, press `⏎`. The `~` rows appear above the
+  prose in the same undo as `+` — one `⌘Z` removes both — neutral where the prose is
+  tinted, and the navigator row shows the whisper name.
+- Whisper, cold: type continuously and press `⏎` inside a second. `+` lands at once
+  and nothing waits; a second or two later the rows appear above the prose without
+  the landing moving the caret, as their own undo step.
+- Whisper, the hold: the same, with the caret kept in that entry. No whisper lands
+  while the caret is there; moving to the next entry lets it land.
+- Whisper, the day: open a note with five unwhispered entries — today's or any past
+  day, the command follows the note on screen — and run *Whisper the day*: one
+  notice, then one notice with the count, every entry carrying a whisper, and one
+  `⌘Z` removing all five.
+- Whisper, a dead endpoint: point the endpoint at a port that refuses connections.
+  `⏎` behaves exactly as before and no notice appears; after two failed requests
+  nothing more is asked, and `[Weaver]` logs `the endpoint did not answer` once with
+  *Debug logging* on. *Whisper the day* then says
+  `No whisper was written: the endpoint did not answer.` — and, on an endpoint that
+  wants a key it was not given, `the endpoint refused this device (HTTP 401): API key
+  required.` A status is never flattened into one verdict: a 404 says the endpoint has
+  no such model, a 5xx says it failed, and each carries the server's own sentence
+  (`… does not fit under the dynamic memory ceiling`) because that is the one with the
+  fix in it.
+- Whisper, Reading view: the rows render as plain text at the entry's indent, in the
+  note's colour, inside the frame, with the static frame's rails unchanged.
+- Whisper, in flight: type, pause, and watch the entry's frame. Once the request has
+  been pending for 200 ms the travel stops and one ring leaves the box's centre and
+  dies at its edge, again every 1.6 s, behind the words; it disappears when the answer
+  lands. A request answered inside 200 ms shows nothing. With *Reduce motion* on, the
+  ring is a still dashed rule instead, and it still appears and disappears.
+- Whisper, phone: a note whispered on the desktop renders its rows neutral, indented
+  by the phone step, inside the frame. Capturing on the phone with the default
+  loopback endpoint settles with no delay and asks nothing.
 
 ## Known limits
 

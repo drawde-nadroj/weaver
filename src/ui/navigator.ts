@@ -384,10 +384,13 @@ export class Navigator {
       time.textContent = item.entry.time ?? "";
       open.appendChild(time);
 
-      if (item.entry.title !== "") {
+      // The reading first, then the writer's own words: a whisper is what the
+      // entry holds, a title is how it starts.
+      const label = item.entry.whisper[0]?.text ?? item.entry.title;
+      if (label !== "") {
         const titleSpan = document.createElement("span");
         titleSpan.className = "weaver-navigator-title";
-        titleSpan.textContent = item.entry.title;
+        titleSpan.textContent = label;
         open.appendChild(titleSpan);
       }
 

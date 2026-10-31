@@ -19,12 +19,14 @@ import { closeDecorationsExtension } from "./editor/close-decorations";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
 import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
-import { entryIndexExtension, refreshEntriesEffect } from "./editor/entry-field";
+import { entryIndexExtension, programmaticWrite, refreshEntriesEffect } from "./editor/entry-field";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
 import { EntryEngine } from "./entries/engine";
 import { resolveDayNote } from "./entries/day-note";
 import { EntrySession } from "./entries/session";
 import { minimalChange, rewriteDay } from "./entries/writer";
+import { NoModel, OmLxModel, type WhisperModel } from "./model/whisper-model";
+import { WhisperRunner } from "./model/whisper-runner";
 import {
   NOTICE_DAY_ALREADY_CLOSED,
   NOTICE_DAY_CLOSED,
@@ -35,7 +37,7 @@ import {
 } from "./notices";
 import { createCloseProcessor } from "./reading/close-processor";
 import { createEntryProcessor } from "./reading/entry-processor";
-import { normalizeData, type WeaverData, type WeaverSettings } from "./settings";
+import { normalizeData, whisperReachable, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
 import { Navigator } from "./ui/navigator";
@@ -59,6 +61,8 @@ export default class WeaverPlugin extends Plugin {
 
   session = new EntrySession();
   entries!: EntryEngine;
+  /** The model that reads settled entries, and the cache it reads them into. */
+  whisper!: WhisperRunner;
   /** Where the navigator's last moves came from, oldest first. */
   stack: { stops: Stop[] } = { stops: [] };
 
@@ -72,6 +76,17 @@ export default class WeaverPlugin extends Plugin {
 
     this.session = new EntrySession();
     this.entries = new EntryEngine(this);
+    this.whisper = new WhisperRunner({
+      // Read fresh every call: a changed endpoint or model takes effect at once.
+      // `NoModel` when the feature is off, and when a loopback address arrives on
+      // a phone — an address that can only ever mean the reader's own device.
+      model: () => this.whisperModel(),
+      land: (path, n, key, whisper) => this.entries.landWhisper(path, n, key, whisper),
+      log: (...args: unknown[]) => this.log(...args),
+      // A box's effect is chosen while measuring, so the frame has to be told
+      // when an entry starts or stops waiting.
+      onChange: () => this.repaintFrames()
+    });
 
     this.registerEditorExtension([
       viewRegistryExtension,
@@ -84,6 +99,7 @@ export default class WeaverPlugin extends Plugin {
       entryFrameExtension({
         settings: () => this.settings,
         session: () => this.session,
+        reading: (path, n) => this.whisper.pendingFor(path, n),
         fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? ""
       }),
       entryKeysExtension(this),
@@ -108,6 +124,8 @@ export default class WeaverPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.whisper.clear();
+
     if (this.dayStatsTimer !== null) {
       window.clearTimeout(this.dayStatsTimer);
       this.dayStatsTimer = null;
@@ -126,6 +144,25 @@ export default class WeaverPlugin extends Plugin {
 
   log(...args: unknown[]): void {
     if (this.settings.debug) console.log("[Weaver]", ...args);
+  }
+
+  /**
+   * The model this device may ask, or `NoModel`.
+   *
+   * `NoModel` when the feature is off, and when a loopback address arrives on a
+   * phone: `data.json` syncs, so `127.0.0.1` travels with the vault and can only
+   * ever mean the reader's own device. Nothing is asked, and nothing is counted
+   * as a failure.
+   */
+  whisperModel(): WhisperModel {
+    if (!this.settings.whisperEnabled) return NoModel;
+    if (!whisperReachable(this.settings.whisperEndpoint, isMobile())) return NoModel;
+
+    return new OmLxModel(
+      this.settings.whisperEndpoint,
+      this.settings.whisperModelId,
+      this.settings.whisperApiKey
+    );
   }
 
   /**
@@ -150,6 +187,8 @@ export default class WeaverPlugin extends Plugin {
   onSettingsChange(): void {
     this.syncBodyClasses();
     applyCss(this.settings);
+    // An answer from the previous endpoint or model must not be served.
+    this.whisper.clear();
 
     for (const view of registeredEditorViews()) {
       view.dispatch({ effects: refreshEntriesEffect.of(undefined) });
@@ -162,6 +201,16 @@ export default class WeaverPlugin extends Plugin {
    * The engine speaks for a missing note — one refusal, in one place — so this
    * returns quietly when there is nothing to show.
    */
+  /** Re-measures the open notes, so a frame effect that changed on its own is drawn. */
+  repaintFrames(): void {
+    for (const view of registeredEditorViews()) {
+      view.dispatch({
+        effects: refreshEntriesEffect.of(undefined),
+        annotations: programmaticWrite.of(true)
+      });
+    }
+  }
+
   async openNavigator(): Promise<void> {
     const view = await this.entries.revealToday(new Date());
     if (view === null || this.navigator?.isOpen === true) return;
@@ -235,6 +284,14 @@ export default class WeaverPlugin extends Plugin {
       icon: "list",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "P" }],
       callback: () => void this.openNavigator()
+    });
+
+    // The retroactive pass: every settled entry that has no whisper yet.
+    this.addCommand({
+      id: "whisper-day",
+      name: "Whisper the day",
+      icon: "sparkles",
+      callback: () => void this.entries.whisperDay()
     });
 
     this.addCommand({

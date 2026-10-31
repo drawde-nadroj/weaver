@@ -1,5 +1,7 @@
 /** Every user-facing string Weaver shows, so wording stays consistent. */
 
+import type { WhisperFailure } from "./model/whisper-model";
+
 /**
  * How long a notice stays up, by what it is telling you: a refusal you must act
  * on, a plain no-op, or a warning that something was only half done.
@@ -23,6 +25,89 @@ export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed a
 export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. ${NOTICE_NOTHING_WRITTEN}`;
 /** The refusal when today's note cannot be found, created or opened. */
 export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. ${NOTICE_NOTHING_WRITTEN}`;
+
+/** The moment a whole-day whisper pass begins. */
+export const NOTICE_WHISPERING = "Whispering the day…";
+
+/** The refusal when this device cannot reach a whisper endpoint at all. */
+export const NOTICE_WHISPER_UNREACHABLE = "No whisper endpoint is reachable from this device.";
+
+/** What a whole-day whisper pass had to work with, and what became of it. */
+export interface WhisperPass {
+  /** Settled entries that were candidates: no whisper, no name typed after the marker, and prose to read. */
+  targets: number;
+  /** How many of them got their whisper in this pass. */
+  written: number;
+  /** Entered answers the register refused: the endpoint answered, the register was not met. */
+  rejected: number;
+  /** The request that produced nothing, when one did — it is the thing to fix. */
+  failure: WhisperFailure | null;
+  /** Threads added to readings, which place an entry in its day. */
+  threads: number;
+}
+
+/** A status as the thing it actually says, so a 507 is not reported as a 401. */
+function statusVerdict(status: number): string {
+  if (status === 401 || status === 403) return "refused this device";
+  if (status === 404) return "has no such model";
+  if (status === 429) return "is rate-limiting";
+  if (status >= 500) return "failed";
+  return "rejected the request";
+}
+
+/** A failure as one clause, so the log and the notice cannot disagree. */
+export function whisperFailurePhrase(failure: WhisperFailure): string {
+  switch (failure.kind) {
+    case "refused": {
+      const head = `the endpoint ${statusVerdict(failure.status)} (HTTP ${failure.status})`;
+      if (failure.detail === null) return head;
+      // The notice supplies the sentence's full stop, so the server's own does
+      // not get to become a second one.
+      return `${head}: ${failure.detail.replace(/\.$/, "")}`;
+    }
+    case "empty":
+      // A thinking model that spends the whole answer budget reasoning looks
+      // like silence; `finish: length` is what tells the writer what to change.
+      if (failure.finish === "length") {
+        return "the model used the whole answer on its reasoning (finish: length) — turn thinking off for that model, or use a non-thinking one";
+      }
+      return failure.finish === null
+        ? "the model returned no text"
+        : `the model returned no text (finish: ${failure.finish})`;
+    case "unreachable":
+      return "the endpoint did not answer";
+  }
+}
+
+/**
+ * What a whole-day pass earned.
+ *
+ * The count alone was not enough: "nothing to whisper" is a claim about the note,
+ * and a pass whose every request was refused was saying it about 21 unwhispered
+ * entries. A pass now names what it wrote, out of what it tried, and why the rest
+ * did not land.
+ */
+export function noticeWhispered(pass: WhisperPass): string {
+  if (pass.targets === 0) {
+    return "Nothing to whisper: every settled entry already has one, or a name.";
+  }
+  if (pass.written === pass.targets) {
+    return `Whispered ${pass.written} ${pass.written === 1 ? "entry" : "entries"}.`;
+  }
+
+  const tail = pass.threads > 0 ? ` ${pass.threads} placed in the day.` : "";
+
+  const reason =
+    pass.failure !== null
+      ? whisperFailurePhrase(pass.failure)
+      : pass.rejected > 0
+        ? `${pass.rejected} ${pass.rejected === 1 ? "answer" : "answers"} did not fit the register`
+        : "the entries changed while they were being read";
+
+  return (pass.written === 0
+    ? `No whisper was written: ${reason}.`
+    : `Whispered ${pass.written} of ${pass.targets} entries: ${reason}.`) + tail;
+}
 
 /** The navigator's footer on a desk: the whole key map, where it is pressed. */
 export const NAVIGATOR_HINT_KEYS =

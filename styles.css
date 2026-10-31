@@ -37,7 +37,8 @@ body {
  * declared rather than competed for. */
 .weaver-duration,
 .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head,
-.markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose {
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose,
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-whisper {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step)
   );
@@ -48,6 +49,15 @@ body {
 }
 
 .weaver-entry-prose {
+  font-size: var(--weaver-entry-size);
+  line-height: var(--weaver-entry-line-height);
+}
+
+/* A whisper is the model's reading, so it is the one row that does not take the
+ * dimension's colour. Provenance has to survive a reload, and the only
+ * provenance a note carries is what a reader can see: the glyph, and this. */
+.weaver-entry-whisper {
+  color: var(--text-normal);
   font-size: var(--weaver-entry-size);
   line-height: var(--weaver-entry-line-height);
 }
@@ -145,7 +155,8 @@ body.weaver-frame-fixed .markdown-source-view.mod-cm6 .cm-line.weaver-duration-r
 /* Same four classes on a phone, so the narrower step wins there too. */
 body.weaver-phone .weaver-duration,
 body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head,
-body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose {
+body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-prose,
+body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-entry-whisper {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) * var(--weaver-indent-step-mobile)
   );
@@ -188,6 +199,10 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   position: absolute;
   font-size: var(--weaver-entry-size);
   border-radius: 10px;
+  /* A frame effect paints inside the box and dies at its edge, so no entry's
+   * animation can wash the next one. The box holds no text: the labels are rows
+   * in the layer above it. */
+  overflow: hidden;
   /* An inset shadow rather than a border: the ring sits exactly on the box's
    * edge, so no layout is affected and no pixel of text moves. */
   box-shadow: inset 0 0 0 1px
@@ -235,6 +250,42 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   }
 }
 
+/* The entry being read: one ring leaves the box's centre and dies at its edge,
+ * once every 1.6 seconds, behind the words. It is not the travel above, and it
+ * must not become it: that one says "time is passing, this way", and this one
+ * says "something is being read; no time is passing". The frame layer chooses
+ * one of the two (`src/editor/frame-effects.ts`), so they never animate at once.
+ *
+ * `transform` and `opacity` only: no layout, no repaint of the ring, and the
+ * compositor does the work while a 4B model thinks. `overflow: hidden` on the
+ * box is what stops the ring at the edge. */
+.weaver-frame.is-whispering::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 140%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 60%, transparent);
+  pointer-events: none;
+  animation: weaver-frame-ripple 1.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+
+@keyframes weaver-frame-ripple {
+  from {
+    transform: translate(-50%, -50%) scale(0.06);
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.3;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .weaver-frame {
     transition: none;
@@ -243,6 +294,25 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   .weaver-frame.is-live::after {
     animation: none;
     background: none;
+  }
+
+  /* No motion, but not no signal: a loading indicator that indicates nothing is
+   * worse than a still one. The ring becomes a dashed rule inside the box, which
+   * appears while the entry is being read and leaves when the answer lands. */
+  .weaver-frame.is-whispering::before {
+    animation: none;
+    top: 6px;
+    left: 6px;
+    width: auto;
+    height: auto;
+    right: 6px;
+    bottom: 6px;
+    aspect-ratio: auto;
+    transform: none;
+    border-radius: inherit;
+    border: 1px dashed
+      color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 55%, transparent);
+    opacity: 1;
   }
 }
 
@@ -293,11 +363,13 @@ body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static {
   margin-left: 0;
 }
 
-body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose {
+body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose,
+body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-whisper {
   padding-left: var(--weaver-frame-indent);
 }
 
-body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose {
+body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose,
+body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-whisper {
   padding-left: calc(
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
       var(--weaver-indent-step-mobile)

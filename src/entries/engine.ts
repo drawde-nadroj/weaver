@@ -15,23 +15,42 @@ import { MarkdownView, Notice, TFile, type App } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { Transaction, type StateEffect } from "@codemirror/state";
 
+import { dayKeyFromName } from "../core/day";
 import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
   findEntryAtOffset,
+  formatMarker,
   parseEntries,
   type Entry,
   type EntryIndex
 } from "../core/entries";
 import {
+  applyPlanToSource,
   cmChanges,
   offsetToLineCh,
   planChildEntry,
   planDeleteEntry,
   planDuration,
   planStartEntry,
-  type InsertPlan
+  planThread,
+  planWhisper,
+  type InsertPlan,
+  type TextChange
 } from "../core/insert";
+import {
+  parseWhisperResponse,
+  validateThread,
+  validateWhisper,
+  whisperKey,
+  whisperPrompt,
+  whisperThreadPrompt,
+  type WhisperDayEntry,
+  type WhisperInput,
+  type WhisperItem
+} from "../core/whisper";
+import { NoModel, type WhisperFailure } from "../model/whisper-model";
+import { WHISPER_FAILURE_LIMIT } from "../model/whisper-runner";
 import { pushStop, type Stop } from "../core/navigator-stack";
 import { editorPathOf } from "../editor/editor-path";
 import { entryIndexField, programmaticWrite, refreshEntriesEffect } from "../editor/entry-field";
@@ -45,9 +64,13 @@ import {
   NOTICE_NEEDS_ENTRY,
   NOTICE_NO_DAY_NOTE,
   NOTICE_REFUSAL_MS,
+  NOTICE_WHISPERING,
+  NOTICE_WHISPER_UNREACHABLE,
   noticeCloseCodeBlock,
   noticeCloseFrontmatter,
-  noticeLegacyFormat
+  noticeLegacyFormat,
+  noticeWhispered,
+  whisperFailurePhrase
 } from "../notices";
 import type WeaverPlugin from "../main";
 import { ensureDayNote, resolveDayNote } from "./day-note";
@@ -198,10 +221,20 @@ export class EntryEngine {
     const plan = planDuration(source, index, current, "+", ms);
     if (plan === null) return;
 
+    // A warm whisper goes in the same transaction as `+`, so one undo takes the
+    // whole settle back. A cold one is asked for and lands later, as its own
+    // undoable transaction: settle is the most-used key, and nothing waits.
+    const input = this.whisperInput(index, current);
+    const cached = input === null ? null : this.plugin.whisper.peek(input);
+    const whisperPlan =
+      input === null || cached === null ? null : planWhisper(source, index, current, cached);
+
     view.dispatch({
-      changes: cmChanges(plan.changes),
+      changes: cmChanges([...plan.changes, ...(whisperPlan?.changes ?? [])]),
       annotations: programmaticWrite.of(true)
     });
+
+    if (input !== null && cached === null) this.plugin.whisper.request(path, current.n, input);
   }
 
   /**
@@ -268,6 +301,13 @@ export class EntryEngine {
 
     if (typed && at !== null && at.state === "draft" && !this.session.activeFor(path, at.n)) {
       this.session.start(path, at.n, at.duration?.ms ?? 0, Date.now());
+    }
+
+    // Speculation, not a write: every edit pushes the idle timer back, and an
+    // answer that arrives before `⏎` makes the settle warm.
+    if (typed && at !== null && at.state === "draft") {
+      const input = this.whisperInput(index, at);
+      if (input !== null) this.plugin.whisper.arm(path, at.n, input);
     }
 
     this.refreshSoon(view);
@@ -463,6 +503,293 @@ export class EntryEngine {
       return null;
     }
     return editor;
+  }
+
+  /**
+   * The model's view of one entry: its prose, its marker, and the ancestors
+   * above it, root first.
+   *
+   * `null` when there is nothing to read. An ancestor contributes its own first
+   * prose line, and its name when a whisper already gave it one — so a child's
+   * reading can see the branch it is written into without the prompt having to
+   * describe the note's shape.
+   *
+   * `names` is the whole-day pass's own bookkeeping: a name it has just collected
+   * but not yet written, so a child reads after its parent's new name.
+   */
+  private whisperInput(
+    index: EntryIndex,
+    entry: Entry,
+    names: ReadonlyMap<number, string> = new Map()
+  ): WhisperInput | null {
+    if (entry.proseLines.length === 0) return null;
+
+    const ancestors: WhisperInput["ancestors"] = [];
+    let at = entry.parent;
+    while (at !== null) {
+      const ancestor = index.entries[at];
+      if (ancestor === undefined) break;
+      ancestors.unshift({
+        title: ancestor.title,
+        whisper: names.get(at) ?? ancestor.whisper[0]?.text ?? null
+      });
+      at = ancestor.parent;
+    }
+
+    return {
+      marker: formatMarker(entry.d, entry.b, entry.n),
+      prose: entry.proseLines.map((line) => index.lines[line] ?? "").join("\n"),
+      ancestors
+    };
+  }
+
+  /**
+   * The day note this command reads: the one on screen when its filename carries
+   * a day, and today's otherwise.
+   *
+   * A past day is a day. Its note is the same shape and its settled entries are
+   * the same entries, so nothing about a whisper needs the day to be today —
+   * which is why the command follows the reader rather than the clock. The
+   * filename is what says a note is a day note: `dayKeyFromName` is the same test
+   * the day plane itself uses.
+   */
+  private dayToWhisper(): TFile | null {
+    const active = this.app.workspace.getActiveFile();
+    if (active !== null && dayKeyFromName(active.basename) !== null) return active;
+
+    return resolveDayNote(this.app, this.plugin.settings, new Date()).file;
+  }
+
+  /**
+   * Whispers every settled entry of the day note on screen (today's when no day
+   * note is open) that has none: one pass, one undo.
+   *
+   * Each answer is asked for in document order and read after the names already
+   * collected, so a child sees the branch as this pass is naming it. The writes
+   * are merged into one `rewriteDay`, and every one of them re-checks the key it
+   * was answered under — the same compare-and-swap a single landing uses — so a
+   * hand edit during the pass cannot be overwritten by an answer about the text
+   * it replaced.
+   */
+  async whisperDay(): Promise<void> {
+    const model = this.plugin.whisperModel();
+    if (model.id === NoModel.id) {
+      new Notice(NOTICE_WHISPER_UNREACHABLE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    const file = this.dayToWhisper();
+    if (file === null) {
+      new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    const index = parseEntries(await this.app.vault.cachedRead(file));
+    if (this.refuseLegacy(index, "whispering the day")) return;
+
+    const targets = index.entries.filter(
+      (entry) =>
+        entry.state === "settled" &&
+        entry.whisper.length === 0 &&
+        entry.proseLines.length > 0 &&
+        (index.lines[entry.line] ?? "").slice(entry.markerEnd - entry.from).trim() === ""
+    );
+
+    new Notice(NOTICE_WHISPERING);
+
+    const names = new Map<number, string>();
+    const collected: { n: number; key: string; whisper: WhisperItem[] }[] = [];
+    let rejected = 0;
+    let failure: WhisperFailure | null = null;
+    let consecutive = 0;
+    let stopped = false;
+
+    for (const target of targets) {
+      const input = this.whisperInput(index, target, names);
+      if (input === null) continue;
+
+      const reply = await model.complete(whisperPrompt(input));
+      if (!reply.ok) {
+        failure = reply.failure;
+        consecutive += 1;
+        this.plugin.log("whisper", whisperFailurePhrase(reply.failure));
+        // A pass over a broken address must not spend one request per entry.
+        if (consecutive >= WHISPER_FAILURE_LIMIT) {
+          stopped = true;
+          break;
+        }
+        continue;
+      }
+
+      consecutive = 0;
+
+      const answer = validateWhisper(parseWhisperResponse(reply.text), input);
+      if (!answer.ok) {
+        rejected += 1;
+        this.plugin.log("whisper rejected", answer.reason);
+        continue;
+      }
+
+      collected.push({ n: target.n, key: whisperKey(input), whisper: answer.whisper });
+      const name = answer.whisper[0];
+      if (name?.type === "name") names.set(index.entries.indexOf(target), name.text);
+    }
+
+    // The day-level question, asked once per entry that will carry a reading and has
+    // an earlier entry to point at. One job, one call: a model asked to both read the
+    // entry and place it names the day instead of the entry.
+    const skeleton = this.daySkeleton(index, names);
+    const placements = new Map<number, WhisperItem>();
+
+    for (const target of this.plugin.settings.whisperThreads ? index.entries : []) {
+      if (target.state !== "settled" || target.proseLines.length === 0) continue;
+
+      const willCarry = collected.some((item) => item.n === target.n) || target.whisper.length > 0;
+      if (!willCarry) continue;
+      if (target.whisper.some((row) => row.type === "thread")) continue;
+
+      const own = skeleton.find(
+        (each) => each.marker === formatMarker(target.d, target.b, target.n)
+      );
+      // The first entry of the day has no earlier entry to cite.
+      if (own === undefined || skeleton.indexOf(own) === 0) continue;
+
+      if (stopped) break;
+      const reply = await model.complete(whisperThreadPrompt(skeleton, own));
+      if (!reply.ok) {
+        failure = reply.failure;
+        this.plugin.log("whisper", whisperFailurePhrase(reply.failure));
+        consecutive += 1;
+        if (consecutive >= WHISPER_FAILURE_LIMIT) {
+          stopped = true;
+          break;
+        }
+        continue;
+      }
+
+      consecutive = 0;
+      const answer = validateThread(parseWhisperResponse(reply.text), skeleton, own);
+      if (!answer.ok) {
+        rejected += 1;
+        this.plugin.log("whisper thread rejected", answer.reason);
+        continue;
+      }
+      if (answer.thread !== null) placements.set(target.n, answer.thread);
+    }
+
+    let written = 0;
+    let threads = 0;
+    await rewriteDay(
+      this.app,
+      file,
+      (source) => {
+        const liveIndex = parseEntries(source);
+        const changes: TextChange[] = [];
+
+        for (const item of collected) {
+          const entry = entryBySeq(liveIndex, item.n);
+          if (entry === null || entry.state !== "settled" || entry.whisperLines.length > 0) continue;
+
+          const input = this.whisperInput(liveIndex, entry, names);
+          if (input === null || whisperKey(input) !== item.key) continue;
+
+          // A reading written in this pass carries its placement in the same
+          // insertion, so the whole day is still one undo.
+          const thread = placements.get(item.n);
+          const plan = planWhisper(
+            source,
+            liveIndex,
+            entry,
+            thread === undefined ? item.whisper : [...item.whisper, thread]
+          );
+          if (plan === null) continue;
+          changes.push(...plan.changes);
+          written += 1;
+          if (thread !== undefined) threads += 1;
+        }
+
+        // Readings written earlier get their placement appended, and only that.
+        for (const [n, thread] of placements) {
+          if (collected.some((item) => item.n === n)) continue;
+          const entry = entryBySeq(liveIndex, n);
+          if (entry === null) continue;
+          const plan = planThread(source, liveIndex, entry, thread);
+          if (plan === null) continue;
+          changes.push(...plan.changes);
+          threads += 1;
+        }
+
+        if (changes.length === 0) return null;
+        const plan = { changes, selection: { from: 0, to: 0 } };
+        return { changes, source: applyPlanToSource(source, plan).source, caret: null };
+      },
+      true
+    );
+
+    new Notice(
+      noticeWhispered({ targets: targets.length, written, rejected, failure, threads })
+    );
+  }
+
+  /**
+   * The day as the thread question sees it: one line per settled entry, an address
+   * and the name it carries — a whisper name when it has one, and otherwise the
+   * opening of its own prose cut to six words.
+   *
+   * `names` carries the readings this pass has collected but not yet written, so an
+   * entry placed after one read in the same pass can cite it.
+   */
+  private daySkeleton(index: EntryIndex, names: ReadonlyMap<number, string>): WhisperDayEntry[] {
+    return index.entries
+      .filter((entry) => entry.state === "settled" && entry.proseLines.length > 0)
+      .map((entry) => ({
+        marker: formatMarker(entry.d, entry.b, entry.n),
+        name:
+          names.get(index.entries.indexOf(entry)) ??
+          entry.whisper[0]?.text ??
+          entry.title.split(/\s+/).slice(0, 6).join(" ")
+      }));
+  }
+
+  /**
+   * Lands a whisper that arrived after its entry settled: its own transaction, so
+   * its own undo.
+   *
+   * The key is compared inside the rewrite, against the text being written — the
+   * same compare-and-swap every plan uses — so a landing can never describe prose
+   * that has changed since the model read it, and no invalidation logic exists.
+   *
+   * Rows are about to appear above the prose. Never under the writer's own caret:
+   * a line arriving between two keystrokes moves the text they are reading. The
+   * entry stays unwhispered, and `Whisper the day` is the repair.
+   */
+  landWhisper(path: string, n: number, key: string, whisper: WhisperItem[]): void {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+
+    const view = findEditorViewForFile(file);
+
+    void rewriteDay(
+      this.app,
+      file,
+      planRewrite((source) => {
+        const index = parseEntries(source);
+        const entry = entryBySeq(index, n);
+        if (entry === null || entry.state !== "settled") return null;
+
+        const input = this.whisperInput(index, entry);
+        if (input === null || whisperKey(input) !== key) return null;
+
+        if (view !== null) {
+          const caretLine = view.state.doc.lineAt(view.state.selection.main.head).number - 1;
+          const last = entry.clockLine ?? entry.line;
+          if (caretLine >= entry.line && caretLine <= last) return null;
+        }
+
+        return planWhisper(source, index, entry, whisper);
+      }),
+      true
+    );
   }
 
   /**

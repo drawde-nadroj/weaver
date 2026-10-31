@@ -91,6 +91,18 @@ describe("the entry decorations", () => {
     expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| }");
   });
 
+  it("marks a whisper row without giving it the dimension's colour", () => {
+    const doc = ["{ 2.1.1 }", "~ a pricing decision", "prose here", "10:00:00 + 00:01:00"].join("\n");
+    const whisper = collect(stateAt(doc.indexOf("prose"), doc)).find(
+      (range) => range.spec.class === "weaver-entry-whisper"
+    );
+
+    // No `--weaver-dcolor` and no `data-weaver-n`: the stylesheet's colour rule is
+    // the whole provenance, and the frame finds the marker row only.
+    expect(whisper?.from).toBe(doc.indexOf("~ a pricing decision"));
+    expect(whisper?.spec.attributes).toBeUndefined();
+  });
+
   it("labels the marker row as the top rail's label", () => {
     const label = collect(stateAt()).find((range) => range.spec.class === "weaver-frame-label");
 

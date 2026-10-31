@@ -49,12 +49,22 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   and every entry change is a plan from `src/core/insert.ts`.
 - **`src/core` imports no `obsidian`.** The gate checks it, because the day-note
   split exists for exactly that reason.
+- **One effect per frame.** A box carries one effect class at a time, chosen in
+  `src/editor/frame-effects.ts` by precedence. A new effect is one registry entry and
+  one block of `styles.css`; nothing else learns a new name, and two animations never
+  run over each other.
 - **Nothing reflows.** Decorations and frames paint around text; the duration
-  row's top must stay identical across insertions.
-- **Colour and indent are functions of `D`.** No per-level CSS rules. Layout
-  declared on a `.cm-line` needs four classes: Obsidian sets
-  `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }` at three.
+  row's top must stay identical across insertions. A whisper lands by inserting rows
+  above an entry's prose, so it is the one write that changes a settled entry's
+  height. It never lands while the caret is in that entry.
+- **Colour and indent are functions of `D`** — for prose and markers. No per-level
+  CSS rules. A whisper row takes the neutral text colour, and that exception is the
+  only provenance a note can carry. Layout declared on a `.cm-line` needs four
+  classes: Obsidian sets `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }` at
+  three.
 - **The marker stays plain text.** A prefix, never a widget or a heading.
+- **A whisper is a reading, never a record.** `~` rows are the only machine-authored
+  text in a note, and nothing but the model writes them.
 - **One surface per intent.** The navigator is the only navigation.
 - **The frame:** the marker row is the top-left rail label; the clock row labels the
   bottom edge at both corners — the moment left, the duration right. The rails pass
@@ -62,8 +72,9 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   `data-weaver-n`, not DOM position; the extent is `frameSpan`. No fact is rendered
   twice, and the day is not drawn into an entry: the filename is the day and the
   note's header shows it.
-- **Mobile is not a fork.** One implementation; platform differences are
-  geometry and row height only.
+- **Mobile is not a fork.** One implementation; platform differences are geometry,
+  row height, and — for a whisper — the address: a phone does not call a loopback
+  endpoint it cannot reach.
 - **Vocabulary:** entry, dimension (`1D`…`nD`), marker, duration, branch, stop,
   settle, navigator. "Heading" is Markdown syntax only; no filing words. The v2
   older spellings (`heading*`) survive in `LEGACY_SETTING_KEYS` and nowhere else.

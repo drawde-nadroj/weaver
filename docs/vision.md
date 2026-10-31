@@ -41,6 +41,7 @@ never to write prose.
 | **Navigator** | The card that lists today's entries and the return stack, and starts, descends, jumps or deletes from it. | Search, a second editor, an outline, a dialog to write in. |
 | **Stop** | The place a move left: an entry, a caret and a scroll offset, remembered in the return stack. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
+| **Whisper** | The model's reading of an entry: two or three `~` rows above its prose — a name, a `learn:` line, a `next:` line, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |
 | **Day plane** | Today's day note, `Chronomancer/YYYY.MM.DD.md` — the file the core Daily Notes plugin opens. | The ingest ledger under `Autonomic Ingest/`, which is machine-written. |
 
 **Rule.** Product copy says *entry* for the unit and *dimension* for its depth; the
@@ -60,6 +61,7 @@ appears in copy — depth reads `1D`…`nD`.
 | Return | `⌘[` in the navigator | The caret, back to the last stop. Nothing is written. | Session |
 | Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `= `. | Evidence |
 | Close | *Close the day* | One `✓` line, then the day's own stats. | Evidence |
+| Whisper | the idle pause after typing, then `⏎`; or *Whisper the day* | One to three `~` rows above an entry's prose, written once and never rewritten. | Evidence (the model's, not the writer's) |
 
 The two writes the table names — settle and pause — are `planDuration` with `+`
 and `=`, and nothing else can change a duration half.
@@ -72,15 +74,19 @@ The boundary rule is one test: **if the plugin vanished, the notes must still me
 something.**
 
 Evidence is what a reader of the vault would find and understand without the
-plugin: marker lines, prose, clock rows, `✓` close lines, and the frontmatter
-fields `date`, `travels`, `depth` and `duration`. Evidence is written by a command,
-by `⏎`, or by leaving the note — and by nothing else.
+plugin: marker lines, prose, clock rows, `✓` close lines, whisper rows, and the
+frontmatter fields `date`, `travels`, `depth` and `duration`. Evidence is written
+by a command, by `⏎`, by leaving the note, and — once, after the writing ended — by
+the model. A whisper is the third evidence write of an entry and the only evidence
+the writer did not author.
 
 Session is where this installation is working right now: which entry is being
 written, its baseline, the return stack, the caret. Session state is
 device-local. It is never synced and never counted. It becomes evidence only at the
 moment the engine writes it. That boundary is **publish**: a sigil and an elapsed
-time become the clock row; settle (`+`) and pause (`=`) are its two intents.
+time become the clock row; settle (`+`) and pause (`=`) are its two intents. A
+whisper crosses a different boundary — the model's reading of text that is already
+evidence — and it crosses it once, guarded by a fingerprint of the text it read.
 
 Two consequences follow, and both are implemented as such:
 
@@ -146,5 +152,5 @@ navigation that replaces the outline.
 
 - Product word for the unit: **entry**. For its depth: **dimension**.
 - No hash-plus-number notation in copy: `1D`…`nD` only.
-- New surfaces take note vocabulary — entry, marker, duration, branch, stop, settle, navigator.
+- New surfaces take note vocabulary — entry, marker, duration, branch, stop, settle, navigator, whisper.
 - New surfaces do not take filing vocabulary — inbox, queue, folder, archive.

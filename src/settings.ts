@@ -40,6 +40,22 @@ export interface WeaverSettings {
    */
   frameFollowsIndent: boolean;
 
+  // Whisper
+  /** Ask the model for a whisper on the idle pause, and again at settle. */
+  whisperEnabled: boolean;
+  /** The endpoint a whisper is asked of. A loopback address is this machine only. */
+  whisperEndpoint: string;
+  /** The model's name at that endpoint. A thinking model needs its reasoning turned off in the model's own settings. */
+  whisperModelId: string;
+  /** Sent as a bearer token when it is not empty; kept in plain text in `data.json`. */
+  whisperApiKey: string;
+  /**
+   * Ask the day-level question as well: one extra request per entry, placing it in
+   * its day. Off because a 4B answers it thinly — measured, one usable placement per
+   * day's twenty entries — so it is turned on when the model can carry it.
+   */
+  whisperThreads: boolean;
+
   // Advanced
   debug: boolean;
 }
@@ -67,6 +83,12 @@ export const DEFAULT_SETTINGS: WeaverSettings = {
   entryFrames: true,
   frameFollowsIndent: true,
 
+  whisperEnabled: false,
+  whisperEndpoint: "http://127.0.0.1:8000/v1",
+  whisperModelId: "Qwen3.5-4B-MLX-4bit",
+  whisperApiKey: "",
+  whisperThreads: false,
+
   debug: false
 };
 
@@ -75,6 +97,35 @@ const ENTRY_SIZE_PATTERN = /^\d+(\.\d+)?(em|rem|px)$/;
 /** True for a CSS length Weaver will accept as an entry size. */
 export function isValidEntrySize(value: string): boolean {
   return ENTRY_SIZE_PATTERN.test(value.trim());
+}
+
+const ENDPOINT_PATTERN = /^https?:\/\/[^\s]+$/;
+
+/** True for an absolute http(s) endpoint with no whitespace. */
+export function isValidWhisperEndpoint(value: string): boolean {
+  return ENDPOINT_PATTERN.test(value.trim());
+}
+
+/** Every host that means "the machine the request is made from", never another one. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]", "::1"]);
+
+/**
+ * True when this device can reach a whisper endpoint at all.
+ *
+ * `data.json` syncs, so a loopback endpoint travels with the vault and means *the
+ * reader's own device*. On a phone that is guaranteed to reach nothing, so the
+ * phone does not ask: capture is untouched, rendering is complete, and the
+ * address the writer sets is one both machines can reach.
+ */
+export function whisperReachable(endpoint: string, mobile: boolean): boolean {
+  if (!isValidWhisperEndpoint(endpoint)) return false;
+  if (!mobile) return true;
+
+  try {
+    return !LOOPBACK_HOSTS.has(new URL(endpoint.trim()).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -151,6 +202,12 @@ export function normalizeSettings(data: unknown): WeaverSettings {
     portEmphasisColors: bool(raw.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
     entryFrames: bool(raw.entryFrames, DEFAULT_SETTINGS.entryFrames),
     frameFollowsIndent: bool(raw.frameFollowsIndent, DEFAULT_SETTINGS.frameFollowsIndent),
+
+    whisperEnabled: bool(raw.whisperEnabled, DEFAULT_SETTINGS.whisperEnabled),
+    whisperEndpoint: text(raw.whisperEndpoint, DEFAULT_SETTINGS.whisperEndpoint),
+    whisperModelId: text(raw.whisperModelId, DEFAULT_SETTINGS.whisperModelId),
+    whisperApiKey: text(raw.whisperApiKey, DEFAULT_SETTINGS.whisperApiKey),
+    whisperThreads: bool(raw.whisperThreads, DEFAULT_SETTINGS.whisperThreads),
 
     debug: bool(raw.debug, DEFAULT_SETTINGS.debug)
   };

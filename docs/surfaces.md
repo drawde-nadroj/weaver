@@ -16,6 +16,7 @@ it writes only what `⏎`, `n` and `x` write.
 | Go deeper | `⏎` again, on a settled entry, or *Descend into a child entry* | the settled entry the caret is in |
 | Go deeper, or somewhere else | `⌘⇧P` *Today's entries* | anywhere; the card shows today's note |
 | Make a newline | `⇧⏎` | the caret, in any entry, on a desk |
+| Read the settled entries | *Whisper the day* | the day note on screen, else today's |
 | End the day | *Close the day* | anywhere |
 
 `⏎` is two-way and stateless. In an open entry — `-` being written or `=` paused —
@@ -181,6 +182,14 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - The live entry's border carries a highlight travelling counter-clockwise once
   every three seconds, and stops under `prefers-reduced-motion`. The labels paint
   over it, so the shimmer travels the visible rails only.
+- One effect at a time, chosen by precedence in `src/editor/frame-effects.ts`. While
+  a whisper request for an entry has been pending for 200 ms, that box shows the
+  reading effect *instead of* the travel: one ring leaves the box's centre, dies at
+  its edge and starts again every 1.6 s. It paints behind the text — the whole layer
+  is below the note's words — so the ring crosses a glyph without competing with it.
+  A request that answers inside 200 ms shows nothing, so a fast model does not blink.
+  Under `prefers-reduced-motion` the ring becomes a still dashed rule inside the
+  box: the state still shows, and nothing moves.
 - Frames are Live Preview only. Source mode is the file's own text, which is the
   point of it.
 
@@ -253,8 +262,10 @@ card, with the return stack inside it.
 ## Settings
 
 The groups are **Writing** (the note's own convention), **Day** (where the day note
-lives), **Look** (how the note is drawn, including whether it is framed at all) and
-**Advanced** (logging only). The fields, their defaults and every
+lives), **Look** (how the note is drawn, including whether it is framed at all),
+**Whisper** (whether a settled entry is read, and by which model — a thinking one needs
+its reasoning turned off in the server's own model settings, because the answer budget
+is 160 tokens and reasoning would spend all of it) and **Advanced** (logging only). The fields, their defaults and every
 reader are the generated settings table in `SYSTEM-DESIGN.md`; this page does not
 restate them. There is no navigator mode, no depth cap and no per-level size field:
 colour is a function of `D` alone, and the navigator always opens on today's note
@@ -264,12 +275,13 @@ with the caret's entry selected.
 
 | Surface | Desktop | Phone |
 | --- | --- | --- |
-| Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured | same, with `--weaver-indent-step-mobile` |
+| Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured; a whisper row is neutral at the entry's indent | same, with `--weaver-indent-step-mobile`, and the same neutral whisper |
 | Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
 | Clock row | flex widget, ticks while live, the moment at the bottom-left corner and the duration at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |
-| Toolbar | *Start an entry*, *Descend into a child entry*, *Today's entries*, *Close the day* — every command carries an icon | the same four, added under *Manage toolbar options* |
+| Toolbar | *Start an entry*, *Descend into a child entry*, *Today's entries*, *Whisper the day*, *Close the day* — every command carries an icon | the same five, added under *Manage toolbar options* |
+| Whisper | asked during a pause in typing and again at settle; the answer lands as its own undo | rendered identically; asked only when the endpoint is an address the phone can reach, so a default loopback endpoint generates nothing there |
 
 The phone pinning runs one pure decision — `shouldPinStopwatch` — that requires all
 four of: a phone, the live session, the caret on the entry's last prose line, and a
@@ -280,6 +292,7 @@ nothing.
 
 ```markdown
 { 1.1.1 }
+~ a whisper row: the model's name for what this holds
 the first prose line is the title, the rest is the entry
 16:10:00 + 00:04:12
 ```
@@ -301,3 +314,18 @@ the first prose line is the title, the rest is the entry
 - Frontmatter: `date`, `travels`, `depth`, `duration`. Written only when a value
   changes.
 - Close: `✓ HH:MM:SS`, at most one per day.
+- Whisper: a line beginning `~ `, then a bare name, `learn: <noun phrase>`,
+  `next: <imperative>`, or `ask: <question ending in "?">`. Two or three per entry,
+  at most one of each kind, and the name goes first. A name is at most ten words and
+  the other rows at most twelve (fourteen for `ask:`). A question mark is allowed on
+  `ask:` alone; the antithesis (`X, not Y`, `rather than`, `instead of`) is refused
+  everywhere, while the writer's own negations are ordinary prose. The name may reuse
+  the note's words — it is a selection from them — but never its whole opening line,
+  and never the entry's address. The glyph is the provenance: it is how a reader — and a reload —
+  tells the model's reading from the writer's prose, and a note carries no other
+  metadata to do it with. A single leading `~` is inert in Markdown, and `~~` can
+  never form, because the row needs a space after the glyph and its text may not
+  contain a second one. A `~` line inside a fenced block is text. The row takes the
+  note's own text colour — the one row that does not take the dimension's — and in
+  Reading view it keeps its class rather than becoming `.weaver-entry-prose`. The
+  navigator labels an entry with `whisper[0] ?? title`.

@@ -22,6 +22,7 @@ import type { MarkdownPostProcessor } from "obsidian";
 import { dimensionColorVars } from "../core/color";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseMarkerPrefix } from "../core/entries";
+import { parseWhisperLine } from "../core/whisper";
 import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
 
 /** Containers whose paragraphs must never be rewritten. */
@@ -29,6 +30,7 @@ const SKIP_SELECTOR = "blockquote, .callout, .markdown-embed, li, table, pre, co
 
 const PROCESSED = "data-weaver-entry-processed";
 const HEAD_CLASS = "weaver-entry-head";
+const WHISPER_CLASS = "weaver-entry-whisper";
 const TEXT_NODE = 3;
 
 /**
@@ -141,6 +143,18 @@ export function createEntryProcessor(): MarkdownPostProcessor {
         if (sibling.tagName !== "P") break;
         if (sibling.classList.contains(HEAD_CLASS)) break;
         if (sibling.classList.contains("weaver-frame")) break;
+
+        // A whisper row is the model's reading, not the writer's prose: the class
+        // overrides the colour, and `--weaver-d` stays, because the comment's rule
+        // indents by it.
+        if (parseWhisperLine((sibling.textContent ?? "").trim()) !== null) {
+          sibling.classList.add(WHISPER_CLASS);
+          sibling.setAttribute("style", dimensionColorVars(prefix.d));
+          frame.appendChild(sibling);
+          sibling = next;
+          continue;
+        }
+
         const parsed = parseClockRow((sibling.textContent ?? "").trim());
         if (parsed !== null) {
           frame.appendChild(clockElement(parsed, prefix.d, true));

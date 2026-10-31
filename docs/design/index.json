@@ -2,10 +2,10 @@
   "generatedBy": "scripts/design-index.mjs",
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
-    "modules": 34,
-    "exports": 155,
-    "classes": 41,
-    "testFiles": 25
+    "modules": 38,
+    "exports": 198,
+    "classes": 42,
+    "testFiles": 30
   },
   "modules": [
     {
@@ -257,7 +257,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 11,
+          "refCount": 12,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -408,8 +408,10 @@
           "doc": "`2026.10.27` or `2026-10-27` becomes `2026-10-27`; anything else is null.",
           "hash": "9020197622",
           "bytes": 237,
-          "refs": [],
-          "refCount": 0,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 3,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -650,23 +652,24 @@
     {
       "file": "src/core/entries.ts",
       "layer": "core",
-      "lines": 392,
-      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.B.N }`, prose, then at most one clock row\n`09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`\nis the dimension, `B` the branch id (a depth-1 entry's position among depth-1\nentries, carried unchanged by everything beneath it), `N` the day sequence\n(assigned once, only appended). `N` is identity, `B` is address: `N` never\nmoves, and `B` changes only when a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a title written on it becomes the\nfirst prose line instead of breaking the entry. The clock row is the entry's\nlast line, which is what lets the moment and the duration label the frame's\nbottom rail at its two corners. Markers inside frontmatter or a fenced code\nblock are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nclock row is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.",
+      "lines": 417,
+      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.B.N }`, prose, then at most one clock row\n`09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`\nis the dimension, `B` the branch id (a depth-1 entry's position among depth-1\nentries, carried unchanged by everything beneath it), `N` the day sequence\n(assigned once, only appended). `N` is identity, `B` is address: `N` never\nmoves, and `B` changes only when a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a title written on it becomes the\nfirst prose line instead of breaking the entry. The clock row is the entry's\nlast line, which is what lets the moment and the duration label the frame's\nbottom rail at its two corners. Markers inside frontmatter or a fenced code\nblock are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nclock row is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.\n\nA whisper row — `~ <text>`, or `~ learn:` / `~ next:` — is not prose. It is the\nmodel's reading of the entry, written above the writer's words, and it is\npartitioned out here so that `title`, `proseFrom` and the duration row all\ndescribe what the writer wrote. A `~` line inside a fenced block is text, and\nstays prose.",
       "obsidian": false,
       "imports": [
         "src/core/document",
         "src/core/duration",
-        "src/core/insert"
+        "src/core/insert",
+        "src/core/whisper"
       ],
       "exports": [
         {
           "name": "Entry",
           "kind": "interface",
-          "line": 27,
+          "line": 34,
           "signature": "export interface Entry",
           "doc": "One entry: its marker, prose, clocks, and the offsets every surface reads.",
-          "hash": "63ecd91365",
-          "bytes": 526,
+          "hash": "ef898af1dd",
+          "bytes": 584,
           "refs": [
             "src/core/insert.ts",
             "src/editor/entry-keys.ts",
@@ -674,7 +677,7 @@
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 18,
+          "refCount": 21,
           "testedBy": [
             "tests/settings-tab.test.ts"
           ]
@@ -682,7 +685,7 @@
         {
           "name": "EntryIndex",
           "kind": "interface",
-          "line": 66,
+          "line": 77,
           "signature": "export interface EntryIndex",
           "doc": "One parse of a note: its entries, maxima, and the line facts they were found in.",
           "hash": "8dca27f285",
@@ -694,13 +697,13 @@
             "src/entries/engine.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 15,
+          "refCount": 19,
           "testedBy": []
         },
         {
           "name": "MarkerPrefix",
           "kind": "interface",
-          "line": 94,
+          "line": 105,
           "signature": "export interface MarkerPrefix",
           "doc": "What a marker line carries, and how much of the text it occupies.",
           "hash": "e12d94b8c8",
@@ -712,7 +715,7 @@
         {
           "name": "parseMarkerPrefix",
           "kind": "function",
-          "line": 109,
+          "line": 120,
           "signature": "export function parseMarkerPrefix(text: string): MarkerPrefix | null",
           "doc": "Reads a marker at the start of `text`, or returns null.\n\nThe marker is a prefix, so `{ 1.2.3 } a title` is one entry whose title is\n`a title` — and the same is true of a hand-written line that opens with an\naddress and nothing else.",
           "hash": "5f21a27ede",
@@ -726,11 +729,11 @@
         {
           "name": "parseEntries",
           "kind": "function",
-          "line": 147,
+          "line": 158,
           "signature": "export function parseEntries(source: string): EntryIndex",
           "doc": "Parses a note into entries, ignoring frontmatter and fenced code.",
-          "hash": "a03e1c1153",
-          "bytes": 4774,
+          "hash": "6c04f0fc5c",
+          "bytes": 5233,
           "refs": [
             "src/core/close.ts",
             "src/core/day-stats.ts",
@@ -740,7 +743,7 @@
             "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 20,
+          "refCount": 23,
           "testedBy": [
             "tests/color.test.ts",
             "tests/day-stats.test.ts",
@@ -748,13 +751,15 @@
             "tests/entry-plans.test.ts",
             "tests/record-format.test.ts",
             "tests/start-entry.test.ts",
+            "tests/whisper-act.test.ts",
+            "tests/whisper.test.ts",
             "tests/writer.test.ts"
           ]
         },
         {
           "name": "findEntryAtLine",
           "kind": "function",
-          "line": 310,
+          "line": 335,
           "signature": "export function findEntryAtLine(index: EntryIndex, line: number): Entry | null",
           "doc": "The entry whose block contains this zero-based line, or null.",
           "hash": "a8b5e43b31",
@@ -768,7 +773,7 @@
         {
           "name": "findEntryAtOffset",
           "kind": "function",
-          "line": 319,
+          "line": 344,
           "signature": "export function findEntryAtOffset(index: EntryIndex, offset: number): Entry | null",
           "doc": "The entry whose subtree holds `offset`, or null when it is outside every one.",
           "hash": "c6e5f577ca",
@@ -785,7 +790,7 @@
         {
           "name": "findCurrentEntry",
           "kind": "function",
-          "line": 327,
+          "line": 352,
           "signature": "export function findCurrentEntry(index: EntryIndex, line: number): Entry | null",
           "doc": "The entry on `line`, else the nearest one above it, else null.",
           "hash": "6049d303a4",
@@ -801,7 +806,7 @@
         {
           "name": "entryBySeq",
           "kind": "function",
-          "line": 337,
+          "line": 362,
           "signature": "export function entryBySeq(index: EntryIndex, n: number): Entry | null",
           "doc": "The entry carrying this `N`, or null when a write removed it.",
           "hash": "53b1606b80",
@@ -810,7 +815,7 @@
             "src/entries/engine.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 10,
+          "refCount": 13,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -818,7 +823,7 @@
         {
           "name": "childrenOf",
           "kind": "function",
-          "line": 345,
+          "line": 370,
           "signature": "export function childrenOf(index: EntryIndex, entry: Entry | null): Entry[]",
           "doc": "Direct children of `entry`, in document order; roots when it is null.",
           "hash": "26bdb8834a",
@@ -835,7 +840,7 @@
         {
           "name": "endOfSubtree",
           "kind": "function",
-          "line": 351,
+          "line": 376,
           "signature": "export function endOfSubtree(index: EntryIndex, entry: Entry): number",
           "doc": "The last line of `entry`'s subtree.",
           "hash": "df77e07b37",
@@ -849,7 +854,7 @@
         {
           "name": "nextSeq",
           "kind": "function",
-          "line": 356,
+          "line": 381,
           "signature": "export function nextSeq(index: EntryIndex): number",
           "doc": "The next day sequence: one past the largest, starting at 1.",
           "hash": "4bb89b4dc3",
@@ -865,7 +870,7 @@
         {
           "name": "nextBranch",
           "kind": "function",
-          "line": 361,
+          "line": 386,
           "signature": "export function nextBranch(index: EntryIndex): number",
           "doc": "The next branch id: one past the depth-1 entries.",
           "hash": "8b5cb2e473",
@@ -881,15 +886,16 @@
         {
           "name": "formatMarker",
           "kind": "function",
-          "line": 366,
+          "line": 391,
           "signature": "export function formatMarker(d: number, b: number, n: number): string",
           "doc": "`{ 1.2.3 }`; one space inside each brace, and nothing after it.",
           "hash": "4cd405bc96",
           "bytes": 104,
           "refs": [
-            "src/core/insert.ts"
+            "src/core/insert.ts",
+            "src/entries/engine.ts"
           ],
-          "refCount": 3,
+          "refCount": 7,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -897,7 +903,7 @@
         {
           "name": "repairBranches",
           "kind": "function",
-          "line": 377,
+          "line": 402,
           "signature": "export function repairBranches(index: EntryIndex): TextChange[]",
           "doc": "Changes that put every `B` back onto its branch's id.\n\nA root's `B` is its 1-based position among roots, and a deeper entry's `B` is\nits root's — so deleting a root is the only thing that can unsettle a branch,\nand one pass over the note rewrites exactly the markers that drifted.",
           "hash": "46a374ed51",
@@ -1027,35 +1033,37 @@
     {
       "file": "src/core/insert.ts",
       "layer": "core",
-      "lines": 247,
+      "lines": 319,
       "doc": "The three plans that write entry text, and the arithmetic every plan shares.\n\nA plan is a list of changes plus the selection to leave behind, applied in one\ntransaction so a single undo reverts all of it. `+` is never written twice,\n`B` is the branch id (inherited on insert, repaired only when a root is\ndeleted), and `N` is only ever appended.",
       "obsidian": false,
       "imports": [
         "src/core/clock",
         "src/core/document",
         "src/core/duration",
-        "src/core/entries"
+        "src/core/entries",
+        "src/core/whisper"
       ],
       "exports": [
         {
           "name": "TextChange",
           "kind": "interface",
-          "line": 26,
+          "line": 31,
           "signature": "export interface TextChange",
           "doc": "One replacement in the document, in absolute offsets.",
           "hash": "22373b16f7",
           "bytes": 77,
           "refs": [
             "src/core/entries.ts",
+            "src/entries/engine.ts",
             "src/entries/writer.ts"
           ],
-          "refCount": 6,
+          "refCount": 8,
           "testedBy": []
         },
         {
           "name": "InsertPlan",
           "kind": "interface",
-          "line": 33,
+          "line": 38,
           "signature": "export interface InsertPlan",
           "doc": "Changes plus the selection to leave behind, applied in one transaction.",
           "hash": "d2823a4c51",
@@ -1073,7 +1081,7 @@
         {
           "name": "planAppendLine",
           "kind": "function",
-          "line": 57,
+          "line": 62,
           "signature": "export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan",
           "doc": "Appends `text` as the last line, separated from existing content by exactly\none blank line. Trailing blank lines are normalized away, so a note that ends\nin three newlines does not collect them above the new block.\n\nA file that ended with a newline still ends with one: the write must not turn\na POSIX text file into a \"no newline at end of file\" diff.\n\n`caret` is an offset inside `text`; the plan's selection lands there.",
           "hash": "1d4307c25c",
@@ -1087,7 +1095,7 @@
         {
           "name": "planStartEntry",
           "kind": "function",
-          "line": 87,
+          "line": 92,
           "signature": "export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null",
           "doc": "A new root entry at the tip of the note: `{ 1.k.m }`, a blank prose line, and\nits clock row `HH:MM:SS - 00:00:00`.\n\nThe caret lands on the blank line, which is where the writing happens.",
           "hash": "7ae137f472",
@@ -1104,7 +1112,7 @@
         {
           "name": "planChildEntry",
           "kind": "function",
-          "line": 107,
+          "line": 112,
           "signature": "export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan | null",
           "doc": "A child entry one dimension deeper, directly beneath the parent's own block,\nabove any older siblings: the newest branch is closest to what it descends\nfrom.\n\nThe child inherits its parent's written `B`, so a branch carries one branch id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change. `N` is still `maxN + 1`, so the new child is\nthe day's newest entry even when it is shown above older siblings carrying\nsmaller numbers: `N` is identity, not display order.",
           "hash": "61b30af668",
@@ -1120,7 +1128,7 @@
         {
           "name": "planDeleteEntry",
           "kind": "function",
-          "line": 141,
+          "line": 146,
           "signature": "export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan | null",
           "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose branch id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.",
           "hash": "7d2327a51c",
@@ -1136,7 +1144,7 @@
         {
           "name": "planDuration",
           "kind": "function",
-          "line": 190,
+          "line": 195,
           "signature": "export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan | null",
           "doc": "Writes the duration half of the clock row in place.\n\nA settled entry — a `+` half, or a row that carries no duration at all — is\nfinal: nothing is planned for it, whatever the sigil. An open entry is\nrewritten whenever the bytes would change, which the identical-text guard\ndecides, so a pause that reaches the same second plans nothing. Only the tail\nis rewritten: the moment keeps its own characters, so the row cannot move. The\nselection is reported at the prose, because the caller keeps the live\nselection: rewriting a duration must not move the caret. A note that still\ncarries the old marker is refused whole — its old duration line parses as a\nclock row, so a field-level rewrite would be the one write that slipped\nthrough the migration.",
           "hash": "543224e52c",
@@ -1151,9 +1159,39 @@
           ]
         },
         {
+          "name": "planWhisper",
+          "kind": "function",
+          "line": 237,
+          "signature": "export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan | null",
+          "doc": "Writes a whisper above an entry's first prose line. One insertion, so one\nundo.\n\nA whisper is the model's reading of a settled thought, so this plan refuses\nevery case where it would be a guess: a note it cannot read whole, an answer\nwith no rows or more than three, an entry that already has one — written once,\nnever rewritten — an entry with nothing to read, an entry with no clock row to\nsit above, and an entry the writer named on the marker row himself. It does\nnot look at `entry.state`: settle runs while the entry is still `draft`, so\nthe callers decide who may be whispered.\n\nThe inserted text is newline-terminated and the selection lands past it, so\nthe plan is valid against the text it produces. No caller uses that selection\nto move a caret: the writer is somewhere else, by construction.",
+          "hash": "a9fb1e4a70",
+          "bytes": 802,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/entry-plans.test.ts"
+          ]
+        },
+        {
+          "name": "planThread",
+          "kind": "function",
+          "line": 266,
+          "signature": "export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan | null",
+          "doc": "Appends one row to an entry that already carries a whisper.\n\nThe day pass may add a `thread:` row to a reading written earlier — the day it\nrefers to did not exist when the reading was written. Nothing is rewritten: the\nrow goes directly below the last whisper row, so the reading above it is the same\nbytes it was.",
+          "hash": "a8069bde30",
+          "bytes": 778,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
           "name": "offsetToLineCh",
           "kind": "function",
-          "line": 217,
+          "line": 289,
           "signature": "export function offsetToLineCh(source: string, offset: number):",
           "doc": "Converts an absolute offset into a zero-based line/ch position.",
           "hash": "b2443552a3",
@@ -1167,7 +1205,7 @@
         {
           "name": "cmChanges",
           "kind": "function",
-          "line": 230,
+          "line": 302,
           "signature": "export function cmChanges( changes: readonly TextChange[] ):",
           "doc": "A plan's changes in CodeMirror's own shape.\n\nCodeMirror reads `insert`, not `text`: a `TextChange` handed to a view as-is\nis a change with no text, so nothing is written and nothing throws. Every\ndispatch of a plan goes through here.",
           "hash": "7f311f1a35",
@@ -1184,16 +1222,17 @@
         {
           "name": "applyPlanToSource",
           "kind": "function",
-          "line": 237,
+          "line": 309,
           "signature": "export function applyPlanToSource(source: string, plan: InsertPlan):",
           "doc": "Applies a plan's changes to a source string; used by tests and previews.",
           "hash": "c5b022f97b",
           "bytes": 133,
           "refs": [
+            "src/entries/engine.ts",
             "src/entries/writer.ts",
             "src/main.ts"
           ],
-          "refCount": 4,
+          "refCount": 6,
           "testedBy": [
             "tests/close.test.ts",
             "tests/entry-plans.test.ts"
@@ -1274,6 +1313,299 @@
           "refCount": 2,
           "testedBy": [
             "tests/navigator-stack.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/core/whisper.ts",
+      "layer": "core",
+      "lines": 407,
+      "doc": "The whisper: the model's reading of one entry, written as `~` rows above its\nprose.\n\nA whisper is not part of the record the writer keeps — it is a reading laid on\ntop of it, and the note has to say so with a character, not with metadata: a\nnote carries none, so provenance has to survive a reload in the only place a\nreader can see it. The glyph `~` is that character. A single leading `~` is\ninert in Markdown, and `~~` can never form, because a row needs a space after\nthe glyph and a row's text may not contain a second one.\n\nThree rows exist, and they divide by grammar, not by semantics: the bare name\ninterprets the thought, `learn:` names what it has not settled (a noun\nphrase), `next:` says what it would do (an imperative). The validator below is\nwhere the writer's register lives — short, lowercase, never negating — so the\nrules are enforced on the answer rather than hoped for in the prompt.\n\nPure: no `obsidian`, and no import from `entries.ts`, so the entry parser can\nuse this module without a cycle.",
+      "obsidian": false,
+      "imports": [],
+      "exports": [
+        {
+          "name": "WhisperType",
+          "kind": "type",
+          "line": 23,
+          "signature": "export type WhisperType = \"name\" | \"learn\" | \"next\" | \"ask\" | \"thread\"",
+          "doc": "A whisper row's type: the name is bare, the others carry their word.",
+          "hash": "d067e033be",
+          "bytes": 71,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WhisperItem",
+          "kind": "interface",
+          "line": 26,
+          "signature": "export interface WhisperItem",
+          "doc": "One whisper row, parsed.",
+          "hash": "8c9d5dbcb7",
+          "bytes": 69,
+          "refs": [
+            "src/core/entries.ts",
+            "src/core/insert.ts",
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 17,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperInput",
+          "kind": "interface",
+          "line": 32,
+          "signature": "export interface WhisperInput",
+          "doc": "What a whisper is written about: the entry, and the ancestors it reads after.",
+          "hash": "6cf68a0619",
+          "bytes": 135,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 10,
+          "testedBy": [
+            "tests/whisper-runner.test.ts",
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "WHISPER_GLYPH",
+          "kind": "const",
+          "line": 42,
+          "signature": "export const WHISPER_GLYPH = \"~\"",
+          "doc": "The one glyph, and the one shape a whisper row has.",
+          "hash": "b56b2b7fa4",
+          "bytes": 33,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_LINE",
+          "kind": "const",
+          "line": 53,
+          "signature": "export const WHISPER_LINE = /^[ \\t]*~[ ](?:(learn|next|ask|thread):[ ])?((?!(?:learn|next|ask|thread):)\\S.*)$/",
+          "doc": "Leading air is tolerated so the editor and Reading view agree: the reading\nview classifies on `textContent.trim()`, which has already eaten it. The write\nalways puts the glyph at column 0.\n\nA type word must be followed by a space, and an untyped row may not open with\none: `~ learn:nospace` names nothing, so it stays prose rather than silently\nbecoming a name row reading `learn:nospace`.",
+          "hash": "c7d2f3e359",
+          "bytes": 111,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_MAX_LINES",
+          "kind": "const",
+          "line": 56,
+          "signature": "export const WHISPER_MAX_LINES = 3",
+          "doc": "Three rows is the ceiling: more is an essay about the entry, not a reading.",
+          "hash": "8ae5775a08",
+          "bytes": 35,
+          "refs": [
+            "src/core/insert.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_WORD_LIMITS",
+          "kind": "const",
+          "line": 65,
+          "signature": "export const WHISPER_WORD_LIMITS: Readonly<Record<WhisperType, number>> =",
+          "doc": "How many words each kind of row may hold.\n\nThe name is the anchor — what the navigator shows and what a search would find\n— so it stays short. The other rows carry the synthesis, and a reading that\nstops at eight words is a label, not a reading.",
+          "hash": "8fa26e898c",
+          "bytes": 138,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_MAX_WORDS",
+          "kind": "const",
+          "line": 74,
+          "signature": "export const WHISPER_MAX_WORDS = 14",
+          "doc": "The longest any row may be, so a plan can refuse a paragraph.",
+          "hash": "573db2ba2e",
+          "bytes": 36,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_NEGATION",
+          "kind": "const",
+          "line": 85,
+          "signature": "export const WHISPER_NEGATION = /(,\\s*not\\b|\\bnot just\\b[^.]*\\bbut\\b|\\brather than\\b|\\binstead of\\b)/i",
+          "doc": "The register a whisper never uses: the antithesis, and only the antithesis.\n\n`X, not Y` and `not just X, but Y` are the constructions the writer rejects. A\nbare \"not\", \"no\" or \"never\" is not: dictation says \"i need not fear\" and \"the\ndata doesn't lie\", and a reading that touches those words is describing the\nnote, not styling it. The earlier rule banned the word as well as the shape,\nand rejected a fifth of a real day for saying what the entry said.",
+          "hash": "a1d3b8daf0",
+          "bytes": 105,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WHISPER_PROMPT_VERSION",
+          "kind": "const",
+          "line": 89,
+          "signature": "export const WHISPER_PROMPT_VERSION = 5",
+          "doc": "Bumped whenever the prompt's text changes; part of the cache key.",
+          "hash": "4036d8d9ce",
+          "bytes": 40,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "parseWhisperLine",
+          "kind": "function",
+          "line": 103,
+          "signature": "export function parseWhisperLine(line: string): WhisperItem | null",
+          "doc": "Reads one line as a whisper row, or returns null when it is not one.\n\nThe text is trimmed; an empty text is not a row. Anything else — including a\nline that merely contains a tilde — is prose.",
+          "hash": "a33729e240",
+          "bytes": 290,
+          "refs": [
+            "src/core/entries.ts",
+            "src/reading/entry-processor.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "formatWhisperLine",
+          "kind": "function",
+          "line": 114,
+          "signature": "export function formatWhisperLine(item: WhisperItem): string",
+          "doc": "Writes one row back out: the glyph, the type's word when it has one, the text.",
+          "hash": "8543c2174e",
+          "bytes": 185,
+          "refs": [
+            "src/core/insert.ts"
+          ],
+          "refCount": 3,
+          "testedBy": [
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "whisperKey",
+          "kind": "function",
+          "line": 133,
+          "signature": "export function whisperKey(input: WhisperInput): string",
+          "doc": "The fingerprint of the text a whisper was written against.\n\nFNV-1a over UTF-16 code units, eight lowercase hex digits. It is a\nfingerprint, not a security hash: a collision costs at worst one whisper\nwritten against text it did not read, which is the same cost as a stale cache\nentry.\n\nThe marker, the clock row and every whisper are excluded, so the key answers\nexactly one question — *is the text I read still the text that is there?* — and\na write that adds a sibling's whisper, or the sigil changing `-`→`+`, never\ninvalidates it.",
+          "hash": "dc6298a155",
+          "bytes": 485,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 8,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts",
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "validateWhisper",
+          "kind": "function",
+          "line": 155,
+          "signature": "export function validateWhisper( items: readonly unknown[] | null, input: WhisperInput ):",
+          "doc": "Checks an answer against the writer's register, in the order the rules are\nwritten in `SYSTEM-DESIGN.md`. The reason is a short literal so a test can\nassert on it, and so a failure is one word rather than a sentence.\n\nA validation failure is not a transport failure: the endpoint answered, the\nregister was not met. `null` means \"no answer at all\", which is rejected here\nas an empty one.",
+          "hash": "b521a14c78",
+          "bytes": 130,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperDayEntry",
+          "kind": "interface",
+          "line": 249,
+          "signature": "export interface WhisperDayEntry",
+          "doc": "One entry of the day, as the thread question sees it.",
+          "hash": "17e25550ab",
+          "bytes": 76,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "whisperThreadPrompt",
+          "kind": "function",
+          "line": 286,
+          "signature": "export function whisperThreadPrompt( day: readonly WhisperDayEntry[], own: WhisperDayEntry ):",
+          "doc": "The two messages the day-level question is asked with: the day as a skeleton,\nthen the entry that has to be placed.\n\nThe skeleton is one line per entry — an address and a name — never the prose.\nThe day's full text is four thousand tokens, and a 4B asked to hold both the day\nand the entry names the day instead of the entry; a list of names is context it\ncan actually use.",
+          "hash": "49c9c79490",
+          "bytes": 130,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "validateThread",
+          "kind": "function",
+          "line": 310,
+          "signature": "export function validateThread( items: readonly unknown[] | null, day: readonly WhisperDayEntry[], own: WhisperDayEntry ):",
+          "doc": "Reads the answer to the day-level question.\n\n`null` in the answer is a real answer — the entry stands alone — so the result\ndistinguishes \"nothing to say\" from \"said something this note cannot carry\". A\ncited name must exist in the day and must not be the entry's own: a thread that\npoints at nothing is worse than no thread, because it reads as knowledge.",
+          "hash": "84c1b5e010",
+          "bytes": 169,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "whisperPrompt",
+          "kind": "function",
+          "line": 351,
+          "signature": "export function whisperPrompt(input: WhisperInput):",
+          "doc": "The two messages a completion is asked with.\n\nThe ancestors block is only present when there are ancestors: an empty\n`ancestors, nearest last:` heading would invite the model to fill it.",
+          "hash": "70b1f1282f",
+          "bytes": 84,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/whisper.test.ts"
+          ]
+        },
+        {
+          "name": "parseWhisperResponse",
+          "kind": "function",
+          "line": 379,
+          "signature": "export function parseWhisperResponse(text: string): unknown[] | null",
+          "doc": "Reads the model's answer: the first `{` to its matching `}` — a naive brace\nscan is enough, because the answer is one small object — then `JSON.parse`.\n\nNo repair, no retry, no regex extraction of prose: a failed parse is `null`,\nwhich is silently no whisper. A model that wraps its object in a sentence is a\nmodel whose answer is not wanted.",
+          "hash": "53d04b7bae",
+          "bytes": 745,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/whisper.test.ts"
           ]
         }
       ],
@@ -1441,7 +1773,7 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 199,
+      "lines": 213,
       "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe marker row carries a second piece of markup and nothing else: the day is not\ndrawn into the entry at all. The day *is* the file's name, and a note's own\nheader already shows it, so a per-entry date would print one word on every box.",
       "obsidian": true,
       "imports": [
@@ -1461,8 +1793,8 @@
           "line": 76,
           "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number ): DecorationSet",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "f99ee93631",
-          "bytes": 3238,
+          "hash": "af75d5f5b4",
+          "bytes": 3805,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1472,7 +1804,7 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 178,
+          "line": 192,
           "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string ): Extension",
           "doc": "Publishes the entry decorations as one state field.",
           "hash": "7fba533e17",
@@ -1488,6 +1820,7 @@
         "weaver-duration-raw",
         "weaver-entry-head",
         "weaver-entry-prose",
+        "weaver-entry-whisper",
         "weaver-frame-label"
       ],
       "dataAttrs": [
@@ -1519,7 +1852,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 8,
+          "refCount": 9,
           "testedBy": [
             "tests/entry-field.test.ts"
           ]
@@ -1536,9 +1869,10 @@
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
             "src/entries/writer.ts",
+            "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 15,
+          "refCount": 17,
           "testedBy": []
         },
         {
@@ -1587,7 +1921,7 @@
     {
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
-      "lines": 355,
+      "lines": 368,
       "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its moment at the left corner, its duration at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nThe date labels the top-right corner on every entry, and it is drawn by the\nentry decoration in the marker row — never by this layer, which paints no text\nat all.",
       "obsidian": true,
       "imports": [
@@ -1596,6 +1930,7 @@
         "src/entries/session",
         "src/settings",
         "src/editor/entry-field",
+        "src/editor/frame-effects",
         "@codemirror/state",
         "@codemirror/view",
         "obsidian"
@@ -1604,11 +1939,11 @@
         {
           "name": "FrameHost",
           "kind": "interface",
-          "line": 54,
+          "line": 55,
           "signature": "export interface FrameHost",
-          "doc": "What the layer may ask the plugin: settings, the session, and a fallback path.",
-          "hash": "1b97b2b12b",
-          "bytes": 116,
+          "doc": "What the layer may ask the plugin: settings, the session, the model, and a fallback path.",
+          "hash": "0cbb7c436e",
+          "bytes": 164,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -1616,7 +1951,7 @@
         {
           "name": "entryFrameExtension",
           "kind": "function",
-          "line": 346,
+          "line": 359,
           "signature": "export function entryFrameExtension(host: FrameHost): Extension",
           "doc": "Draws one box per entry in a layer inside the scroller.",
           "hash": "049f956468",
@@ -1799,6 +2134,74 @@
       "dataAttrs": []
     },
     {
+      "file": "src/editor/frame-effects.ts",
+      "layer": "editor",
+      "lines": 62,
+      "doc": "What a drawn frame can be doing, and which single effect shows it.\n\nA box carries at most one effect class at a time, chosen by precedence, so two\nstates never animate over each other. That is the whole rule: adding an effect\nis one entry in `FRAME_EFFECTS` and one block in `styles.css`. Nothing in\n`entry-frame.ts` changes, and no surface learns a new name.\n\nPure and Obsidian-free: the frame layer asks what to show, and the stylesheet\ndecides what showing it looks like.",
+      "obsidian": false,
+      "imports": [],
+      "exports": [
+        {
+          "name": "FrameActivity",
+          "kind": "interface",
+          "line": 14,
+          "signature": "export interface FrameActivity",
+          "doc": "The states the frame layer can observe about one entry.",
+          "hash": "ab5464d64c",
+          "bytes": 77,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "FrameEffect",
+          "kind": "interface",
+          "line": 22,
+          "signature": "export interface FrameEffect",
+          "doc": "One frame effect: the class it paints, when it applies, and what outranks what.",
+          "hash": "098a744005",
+          "bytes": 125,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "FRAME_EFFECTS",
+          "kind": "const",
+          "line": 38,
+          "signature": "export const FRAME_EFFECTS: readonly FrameEffect[] = [",
+          "doc": "Every effect a frame can show.\n\n`is-whispering` outranks `is-live` on purpose: a draft is liveness, and the\nmodel speculating over that draft is a request in flight, so both are true at\nonce — and the transient fact is the one worth the animation. One box, one\nmotion, and it answers \"what is happening now?\".",
+          "hash": "e95f9b0e6d",
+          "bytes": 255,
+          "refs": [
+            "src/editor/entry-frame.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/frame-effects.test.ts"
+          ]
+        },
+        {
+          "name": "frameEffect",
+          "kind": "function",
+          "line": 52,
+          "signature": "export function frameEffect(activity: FrameActivity): FrameEffect | null",
+          "doc": "The one effect a box shows for this activity, or null when nothing is happening.",
+          "hash": "6b669bb17e",
+          "bytes": 307,
+          "refs": [
+            "src/editor/entry-frame.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/frame-effects.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
       "file": "src/editor/stopwatch-widget.ts",
       "layer": "editor",
       "lines": 159,
@@ -1878,6 +2281,7 @@
           "refCount": 0,
           "testedBy": [
             "tests/start-entry.test.ts",
+            "tests/whisper-act.test.ts",
             "tests/writer.test.ts"
           ]
         },
@@ -1893,6 +2297,7 @@
           "refCount": 0,
           "testedBy": [
             "tests/start-entry.test.ts",
+            "tests/whisper-act.test.ts",
             "tests/writer.test.ts"
           ]
         },
@@ -1923,7 +2328,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 7,
+          "refCount": 8,
           "testedBy": []
         },
         {
@@ -1938,7 +2343,7 @@
             "src/entries/engine.ts",
             "src/entries/writer.ts"
           ],
-          "refCount": 5,
+          "refCount": 6,
           "testedBy": []
         },
         {
@@ -1995,7 +2400,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 6,
+          "refCount": 7,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -2023,18 +2428,22 @@
     {
       "file": "src/entries/engine.ts",
       "layer": "entries",
-      "lines": 494,
+      "lines": 821,
       "doc": "The only writer of entry text.\n\nEvery surface that changes an entry goes through here, so the rules live in one\nplace: `+` is final, `N` is only appended, `B` is the branch id, and a write\nnever guesses — the plan is built from the exact text the attempt is about to\nreplace, by `writer.ts`, and skipped when the entry it was aiming at is gone.\n\nA move — start, descend, jump — pushes the place it left onto the plugin's\nreturn stack before it goes, and carries `programmaticWrite`, so no move starts\na clock.",
       "obsidian": true,
       "imports": [
+        "src/core/day",
         "src/core/duration",
         "src/core/entries",
         "src/core/insert",
         "src/core/navigator-stack",
+        "src/core/whisper",
         "src/editor/editor-path",
         "src/editor/entry-field",
         "src/editor/view-registry",
         "src/main",
+        "src/model/whisper-model",
+        "src/model/whisper-runner",
         "src/notices",
         "src/entries/day-note",
         "src/entries/session",
@@ -2047,11 +2456,11 @@
         {
           "name": "EntryEngine",
           "kind": "class",
-          "line": 58,
+          "line": 81,
           "signature": "export class EntryEngine",
           "doc": "The only writer of entry text: every surface changes an entry through one of its methods.",
-          "hash": "5ac8ac7965",
-          "bytes": 11317,
+          "hash": "2dc01bc34b",
+          "bytes": 20330,
           "refs": [
             "src/main.ts"
           ],
@@ -2161,7 +2570,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 6,
+          "refCount": 9,
           "testedBy": [
             "tests/writer.test.ts"
           ]
@@ -2177,7 +2586,7 @@
           "refs": [
             "src/entries/engine.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": [
             "tests/writer.test.ts"
           ]
@@ -2205,7 +2614,7 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 298,
+      "lines": 355,
       "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.B.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
       "obsidian": true,
       "imports": [
@@ -2226,6 +2635,8 @@
         "src/entries/engine",
         "src/entries/session",
         "src/entries/writer",
+        "src/model/whisper-model",
+        "src/model/whisper-runner",
         "src/notices",
         "src/reading/close-processor",
         "src/reading/entry-processor",
@@ -2240,11 +2651,11 @@
         {
           "name": "WeaverPlugin",
           "kind": "class",
-          "line": 56,
+          "line": 58,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the day-stats listener.",
-          "hash": "40a5b2656f",
-          "bytes": 6891,
+          "hash": "18d4e814a2",
+          "bytes": 8538,
           "refs": [
             "src/entries/engine.ts",
             "src/settings-tab.ts",
@@ -2256,7 +2667,8 @@
             "tests/platform-classes.test.ts",
             "tests/plugin.test.ts",
             "tests/settings-tab.test.ts",
-            "tests/start-entry.test.ts"
+            "tests/start-entry.test.ts",
+            "tests/whisper-act.test.ts"
           ]
         }
       ],
@@ -2271,17 +2683,221 @@
       "dataAttrs": []
     },
     {
+      "file": "src/model/whisper-model.ts",
+      "layer": "root",
+      "lines": 186,
+      "doc": "The model a whisper comes from.\n\nOne interface, two implementations: `NoModel` — the default, and what every\ntest runs — and `OmLxModel`, an OpenAI-compatible endpoint.\n\nThe call goes through `obsidian`'s `requestUrl`, not `fetch`: it is not subject\nto the renderer's CORS rules, it needs no `cors_origins` setting on the server,\nand a mobile webview cannot block it. It also means an unreachable endpoint\nresolves as a failed response rather than a thrown network error, which is the\nshape this module already handles.",
+      "obsidian": true,
+      "imports": [
+        "obsidian"
+      ],
+      "exports": [
+        {
+          "name": "WhisperRequest",
+          "kind": "interface",
+          "line": 17,
+          "signature": "export interface WhisperRequest",
+          "doc": "One completion request, already assembled.",
+          "hash": "59aa1902be",
+          "bytes": 69,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperFailure",
+          "kind": "type",
+          "line": 29,
+          "signature": "export type WhisperFailure = |",
+          "doc": "Why a completion produced no text.\n\nThe distinction is not cosmetic: an endpoint that refused this device and an\nendpoint that never answered are the same silence to the idle speculation, and\ncompletely different sentences to a writer who pressed a command.",
+          "hash": "b49c1ecd31",
+          "bytes": 56,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/notices.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperReply",
+          "kind": "type",
+          "line": 35,
+          "signature": "export type WhisperReply = |",
+          "doc": "What a completion produced: the model's text, or the reason there is none.",
+          "hash": "dc6224ca2b",
+          "bytes": 57,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperModel",
+          "kind": "interface",
+          "line": 40,
+          "signature": "export interface WhisperModel",
+          "doc": "The model a whisper comes from. `id` is the name the endpoint is asked for.",
+          "hash": "4990e14d41",
+          "bytes": 116,
+          "refs": [
+            "src/main.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "NoModel",
+          "kind": "const",
+          "line": 53,
+          "signature": "export const NoModel: WhisperModel =",
+          "doc": "Nothing is generated and nothing is written: the default, and what `npm test`\nuses.\n\nIt answers `unreachable` rather than throwing, because every caller already\ntreats \"no whisper\" as ordinary; the runner never asks it anything at all,\nsince it is the id that turns the whole feature off.",
+          "hash": "ac3c63d485",
+          "bytes": 137,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/main.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 11,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "OmLxModel",
+          "kind": "class",
+          "line": 130,
+          "signature": "export class OmLxModel implements WhisperModel",
+          "doc": "oMLX's OpenAI-compatible endpoint, one non-streaming completion per call.\n\n`reasoning_content` is never read: a reply that carries reasoning and no\ncontent is empty content, which is this class's whole handling of thinking\nmodels. `max_tokens: 320` is a decision, not a default — three rows of up to\nfourteen words plus the JSON envelope need roughly 150 tokens, and the cap is\nwhat stops a model from rambling into a minute-long answer.",
+          "hash": "c0040e0370",
+          "bytes": 1927,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/whisper-model.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/model/whisper-runner.ts",
+      "layer": "root",
+      "lines": 227,
+      "doc": "The runner: when a whisper is asked for, and what becomes of the answer.\n\nTwo entry points, because the writer's two paths through an entry are\ndifferent. `arm` is speculation during a pause in typing: it (re)starts a\nshort timer, and an answer that arrives before the writer presses `⏎` is\ncached, so settle can write it inside its own transaction. `request` is settle\nfinding the cache cold: it asks at once and lands the answer through the\nengine, as its own undoable transaction. Nothing waits on a model.\n\nFailures are counted, not reported. Two transport failures in a row and this\ndevice stops asking until it reloads — a laptop that has left the machine\nrunning oMLX behind should not spend a request per keystroke finding that out.\nA *validation* failure does not count: the endpoint answered, the writer's\nregister was not met.",
+      "obsidian": false,
+      "imports": [
+        "src/core/whisper",
+        "src/notices",
+        "src/model/whisper-model"
+      ],
+      "exports": [
+        {
+          "name": "WHISPER_IDLE_MS",
+          "kind": "const",
+          "line": 30,
+          "signature": "export const WHISPER_IDLE_MS = 800",
+          "doc": "The idle window before a speculation: long enough to be a pause, short enough to be warm at settle.",
+          "hash": "f902b8a532",
+          "bytes": 35,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WHISPER_READING_DELAY_MS",
+          "kind": "const",
+          "line": 39,
+          "signature": "export const WHISPER_READING_DELAY_MS = 200",
+          "doc": "How long a request must be pending before this device says so.\n\nA 4B model on a short entry answers inside this window often enough that an\nindicator on every request would blink rather than inform. Past it, the wait is\na wait and the frame shows it.",
+          "hash": "cdab01854f",
+          "bytes": 44,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/whisper-runner.test.ts"
+          ]
+        },
+        {
+          "name": "WHISPER_FAILURE_LIMIT",
+          "kind": "const",
+          "line": 45,
+          "signature": "export const WHISPER_FAILURE_LIMIT = 2",
+          "doc": "Two dead addresses in a row and this device stops asking until it reloads.",
+          "hash": "1024ea88fb",
+          "bytes": 39,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 3,
+          "testedBy": []
+        },
+        {
+          "name": "WhisperRunnerOptions",
+          "kind": "interface",
+          "line": 48,
+          "signature": "export interface WhisperRunnerOptions",
+          "doc": "Where the runner is wired to the rest of the plugin.",
+          "hash": "cc5cdeaa8f",
+          "bytes": 220,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "WhisperRunner",
+          "kind": "class",
+          "line": 59,
+          "signature": "export class WhisperRunner",
+          "doc": "Speculates during a pause, answers a cold settle, and remembers what it read.",
+          "hash": "67a665f8a4",
+          "bytes": 4183,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 3,
+          "testedBy": [
+            "tests/whisper-act.test.ts",
+            "tests/whisper-runner.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
       "file": "src/notices.ts",
       "layer": "root",
-      "lines": 48,
+      "lines": 133,
       "doc": "Every user-facing string Weaver shows, so wording stays consistent.",
       "obsidian": false,
-      "imports": [],
+      "imports": [
+        "src/model/whisper-model"
+      ],
       "exports": [
         {
           "name": "NOTICE_REFUSAL_MS",
           "kind": "const",
-          "line": 7,
+          "line": 9,
           "signature": "export const NOTICE_REFUSAL_MS = 6000",
           "doc": "How long a notice stays up, by what it is telling you: a refusal you must act\non, a plain no-op, or a warning that something was only half done.",
           "hash": "f4fa73fde2",
@@ -2290,13 +2906,13 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 14,
+          "refCount": 16,
           "testedBy": []
         },
         {
           "name": "NOTICE_NOOP_MS",
           "kind": "const",
-          "line": 9,
+          "line": 11,
           "signature": "export const NOTICE_NOOP_MS = 3000",
           "doc": "How long a plain confirmation stays up.",
           "hash": "6fca97ac54",
@@ -2310,7 +2926,7 @@
         {
           "name": "NOTICE_PARTIAL_MS",
           "kind": "const",
-          "line": 11,
+          "line": 13,
           "signature": "export const NOTICE_PARTIAL_MS = 8000",
           "doc": "How long a warning that something was only half done stays up.",
           "hash": "8d507ab080",
@@ -2322,7 +2938,7 @@
         {
           "name": "NOTICE_NOTHING_WRITTEN",
           "kind": "const",
-          "line": 14,
+          "line": 16,
           "signature": "export const NOTICE_NOTHING_WRITTEN = \"Nothing was written.\"",
           "doc": "The sentence every refusal ends with: nothing reached the vault.",
           "hash": "858cbd27f1",
@@ -2334,7 +2950,7 @@
         {
           "name": "NOTICE_NEEDS_EDITING",
           "kind": "const",
-          "line": 17,
+          "line": 19,
           "signature": "export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. $",
           "doc": "The refusal for a command that needs an editable note and has none.",
           "hash": "8a49e3a364",
@@ -2350,7 +2966,7 @@
         {
           "name": "NOTICE_NEEDS_ENTRY",
           "kind": "const",
-          "line": 19,
+          "line": 21,
           "signature": "export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. $",
           "doc": "The refusal when a command needs the caret inside an entry and it is not.",
           "hash": "c87cf7c5f5",
@@ -2366,7 +2982,7 @@
         {
           "name": "NOTICE_DAY_CLOSED",
           "kind": "const",
-          "line": 21,
+          "line": 23,
           "signature": "export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $",
           "doc": "The confirmation a close earns.",
           "hash": "96c11f0b41",
@@ -2380,7 +2996,7 @@
         {
           "name": "NOTICE_DAY_ALREADY_CLOSED",
           "kind": "const",
-          "line": 23,
+          "line": 25,
           "signature": "export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $",
           "doc": "The refusal a second close earns.",
           "hash": "0636590c0d",
@@ -2394,7 +3010,7 @@
         {
           "name": "NOTICE_NO_DAY_NOTE",
           "kind": "const",
-          "line": 25,
+          "line": 27,
           "signature": "export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $",
           "doc": "The refusal when today's note cannot be found, created or opened.",
           "hash": "f247389f09",
@@ -2403,13 +3019,88 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 6,
+          "refCount": 7,
           "testedBy": []
+        },
+        {
+          "name": "NOTICE_WHISPERING",
+          "kind": "const",
+          "line": 30,
+          "signature": "export const NOTICE_WHISPERING = \"Whispering the day…\"",
+          "doc": "The moment a whole-day whisper pass begins.",
+          "hash": "2553b5b8b9",
+          "bytes": 55,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/whisper-act.test.ts"
+          ]
+        },
+        {
+          "name": "NOTICE_WHISPER_UNREACHABLE",
+          "kind": "const",
+          "line": 33,
+          "signature": "export const NOTICE_WHISPER_UNREACHABLE = \"No whisper endpoint is reachable from this device.\"",
+          "doc": "The refusal when this device cannot reach a whisper endpoint at all.",
+          "hash": "5232f08006",
+          "bytes": 95,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/whisper-act.test.ts"
+          ]
+        },
+        {
+          "name": "WhisperPass",
+          "kind": "interface",
+          "line": 36,
+          "signature": "export interface WhisperPass",
+          "doc": "What a whole-day whisper pass had to work with, and what became of it.",
+          "hash": "fcc70a4701",
+          "bytes": 158,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "whisperFailurePhrase",
+          "kind": "function",
+          "line": 59,
+          "signature": "export function whisperFailurePhrase(failure: WhisperFailure): string",
+          "doc": "A failure as one clause, so the log and the notice cannot disagree.",
+          "hash": "103b410380",
+          "bytes": 1039,
+          "refs": [
+            "src/entries/engine.ts",
+            "src/model/whisper-runner.ts"
+          ],
+          "refCount": 5,
+          "testedBy": []
+        },
+        {
+          "name": "noticeWhispered",
+          "kind": "function",
+          "line": 90,
+          "signature": "export function noticeWhispered(pass: WhisperPass): string",
+          "doc": "What a whole-day pass earned.\n\nThe count alone was not enough: \"nothing to whisper\" is a claim about the note,\nand a pass whose every request was refused was saying it about 21 unwhispered\nentries. A pass now names what it wrote, out of what it tried, and why the rest\ndid not land.",
+          "hash": "5db347c708",
+          "bytes": 811,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/whisper-act.test.ts"
+          ]
         },
         {
           "name": "NAVIGATOR_HINT_KEYS",
           "kind": "const",
-          "line": 28,
+          "line": 113,
           "signature": "export const NAVIGATOR_HINT_KEYS = \"↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close\"",
           "doc": "The navigator's footer on a desk: the whole key map, where it is pressed.",
           "hash": "6f69584a30",
@@ -2423,7 +3114,7 @@
         {
           "name": "NAVIGATOR_HINT_TOUCH",
           "kind": "const",
-          "line": 32,
+          "line": 117,
           "signature": "export const NAVIGATOR_HINT_TOUCH = \"tap to jump · tap the caret row to descend · ✕ twice deletes\"",
           "doc": "The navigator's footer on a phone: the same three gestures, as taps.",
           "hash": "3b46c0c908",
@@ -2437,7 +3128,7 @@
         {
           "name": "noticeCloseFrontmatter",
           "kind": "function",
-          "line": 35,
+          "line": 120,
           "signature": "export function noticeCloseFrontmatter(action: string): string",
           "doc": "The refusal for a write aimed at a note with an unclosed frontmatter block.",
           "hash": "08906f3861",
@@ -2451,7 +3142,7 @@
         {
           "name": "noticeCloseCodeBlock",
           "kind": "function",
-          "line": 40,
+          "line": 125,
           "signature": "export function noticeCloseCodeBlock(action: string): string",
           "doc": "The same refusal for an unclosed code block.",
           "hash": "616981c27f",
@@ -2465,7 +3156,7 @@
         {
           "name": "noticeLegacyFormat",
           "kind": "function",
-          "line": 45,
+          "line": 130,
           "signature": "export function noticeLegacyFormat(action: string): string",
           "doc": "The refusal for a note that still carries the old marker's clock.",
           "hash": "25537adedd",
@@ -2521,13 +3212,14 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 159,
+      "lines": 173,
       "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its moment at the left corner and its duration at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. The day is\nnot drawn into the entry: the day is the file's name, and the note's own header\nshows it. The clock row's two halves are digit and punctuation runs, exactly as\nin the editor.",
       "obsidian": true,
       "imports": [
         "src/core/color",
         "src/core/duration",
         "src/core/entries",
+        "src/core/whisper",
         "src/ui/dcn",
         "obsidian"
       ],
@@ -2535,11 +3227,11 @@
         {
           "name": "createEntryProcessor",
           "kind": "function",
-          "line": 77,
+          "line": 79,
           "signature": "export function createEntryProcessor(): MarkdownPostProcessor",
           "doc": "Builds the post processor that frames entries in Reading view. It reads the\nparagraph text and nothing else — no settings, no vault access — so it takes no\narguments.",
-          "hash": "5016308fa6",
-          "bytes": 3458,
+          "hash": "0d93620970",
+          "bytes": 3943,
           "refs": [
             "src/main.ts"
           ],
@@ -2556,6 +3248,7 @@
         "weaver-duration-sigil",
         "weaver-entry-head",
         "weaver-entry-prose",
+        "weaver-entry-whisper",
         "weaver-frame",
         "weaver-frame-label"
       ],
@@ -2567,8 +3260,8 @@
     {
       "file": "src/settings-tab.ts",
       "layer": "root",
-      "lines": 208,
-      "doc": "The settings surface: four groups, every control applied live.\n\nThe tab owns no rules of its own — it writes the settings model and calls\n`commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.",
+      "lines": 279,
+      "doc": "The settings surface: five groups, every control applied live.\n\nThe tab owns no rules of its own — it writes the settings model and calls\n`commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.",
       "obsidian": true,
       "imports": [
         "src/main",
@@ -2581,9 +3274,9 @@
           "kind": "class",
           "line": 22,
           "signature": "export class WeaverSettingTab extends PluginSettingTab",
-          "doc": "Settings UI, in four groups: what is written, where the day note is, how an\nentry looks, and the rest.\n\nEvery control writes through `commit()` so changes apply live.",
-          "hash": "b987869061",
-          "bytes": 6200,
+          "doc": "Settings UI, in five groups: what is written, where the day note is, how an\nentry looks, what reads it, and the rest.\n\nEvery control writes through `commit()` so changes apply live.",
+          "hash": "8b1960aa72",
+          "bytes": 8846,
           "refs": [
             "src/main.ts"
           ],
@@ -2601,7 +3294,7 @@
     {
       "file": "src/settings.ts",
       "layer": "root",
-      "lines": 188,
+      "lines": 245,
       "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
       "obsidian": false,
       "imports": [],
@@ -2612,8 +3305,8 @@
           "line": 15,
           "signature": "export interface WeaverSettings",
           "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
-          "hash": "b8e40f3148",
-          "bytes": 410,
+          "hash": "8b0d4f9823",
+          "bytes": 571,
           "refs": [
             "src/editor/entry-frame.ts",
             "src/entries/day-note.ts",
@@ -2626,7 +3319,7 @@
         {
           "name": "WeaverData",
           "kind": "interface",
-          "line": 48,
+          "line": 64,
           "signature": "export interface WeaverData",
           "doc": "What is on disk: a version and one settings object.",
           "hash": "b361c9aab0",
@@ -2640,15 +3333,15 @@
         {
           "name": "DEFAULT_SETTINGS",
           "kind": "const",
-          "line": 54,
+          "line": 70,
           "signature": "export const DEFAULT_SETTINGS: WeaverSettings =",
           "doc": "Every field's value before a vault says otherwise.",
-          "hash": "5ef4d6038f",
-          "bytes": 348,
+          "hash": "6c4ca50d1c",
+          "bytes": 508,
           "refs": [
             "src/settings-tab.ts"
           ],
-          "refCount": 5,
+          "refCount": 7,
           "testedBy": [
             "tests/day-note.test.ts",
             "tests/settings.test.ts",
@@ -2658,7 +3351,7 @@
         {
           "name": "isValidEntrySize",
           "kind": "function",
-          "line": 76,
+          "line": 98,
           "signature": "export function isValidEntrySize(value: string): boolean",
           "doc": "True for a CSS length Weaver will accept as an entry size.",
           "hash": "97ce16a28a",
@@ -2671,13 +3364,43 @@
           "testedBy": []
         },
         {
+          "name": "isValidWhisperEndpoint",
+          "kind": "function",
+          "line": 105,
+          "signature": "export function isValidWhisperEndpoint(value: string): boolean",
+          "doc": "True for an absolute http(s) endpoint with no whitespace.",
+          "hash": "d607fb756d",
+          "bytes": 112,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/settings.test.ts"
+          ]
+        },
+        {
+          "name": "whisperReachable",
+          "kind": "function",
+          "line": 120,
+          "signature": "export function whisperReachable(endpoint: string, mobile: boolean): boolean",
+          "doc": "True when this device can reach a whisper endpoint at all.\n\n`data.json` syncs, so a loopback endpoint travels with the vault and means *the\nreader's own device*. On a phone that is guaranteed to reach nothing, so the\nphone does not ask: capture is untouched, rendering is complete, and the\naddress the writer sets is one both machines can reach.",
+          "hash": "a1844eb0f0",
+          "bytes": 273,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/settings.test.ts"
+          ]
+        },
+        {
           "name": "normalizeSettings",
           "kind": "function",
-          "line": 134,
+          "line": 185,
           "signature": "export function normalizeSettings(data: unknown): WeaverSettings",
           "doc": "Normalizes any persisted payload into a complete, clamped settings object.\nUnknown fields are dropped; invalid values fall back to the defaults; a v2\nfield name keeps its value under the v3 name.",
-          "hash": "fb3b51b396",
-          "bytes": 1248,
+          "hash": "9b768882e2",
+          "bytes": 1644,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -2687,7 +3410,7 @@
         {
           "name": "normalizeData",
           "kind": "function",
-          "line": 173,
+          "line": 230,
           "signature": "export function normalizeData(data: unknown): WeaverData",
           "doc": "Normalizes persisted plugin data. A bare settings object written by an earlier\nbuild is wrapped instead of being discarded, and every payload is reported as\nthe current version — the migration is the normalization.",
           "hash": "33f8ccdc56",
@@ -2707,7 +3430,7 @@
     {
       "file": "src/ui/css.ts",
       "layer": "ui",
-      "lines": 71,
+      "lines": 72,
       "doc": "The generated stylesheet: the five numbers a note is drawn with, and the two\nemphasis colours. Nothing is generated per level — depth rides on the\n`--weaver-d` custom property a line carries, so a deeper entry costs nothing.",
       "obsidian": false,
       "imports": [
@@ -2733,8 +3456,8 @@
           "line": 14,
           "signature": "export function buildCss(settings: WeaverSettings): string",
           "doc": "The whole generated stylesheet for these settings.",
-          "hash": "cc404ff204",
-          "bytes": 1368,
+          "hash": "f25017d500",
+          "bytes": 1420,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -2742,7 +3465,7 @@
         {
           "name": "applyCss",
           "kind": "function",
-          "line": 55,
+          "line": 56,
           "signature": "export function applyCss(settings: WeaverSettings): void",
           "doc": "Writes the stylesheet into a single `<style>` element in `<head>`. Reusing one\nelement keeps the DOM stable across settings changes.",
           "hash": "12a6a86fff",
@@ -2756,7 +3479,7 @@
         {
           "name": "removeCss",
           "kind": "function",
-          "line": 68,
+          "line": 69,
           "signature": "export function removeCss(): void",
           "doc": "Removes the injected stylesheet on unload.",
           "hash": "4bc00b673a",
@@ -2771,6 +3494,7 @@
       "classes": [
         "weaver-entry-head",
         "weaver-entry-prose",
+        "weaver-entry-whisper",
         "weaver-no-emphasis",
         "weaver-style",
         "weaver-unequal"
@@ -2881,7 +3605,7 @@
     {
       "file": "src/ui/navigator.ts",
       "layer": "ui",
-      "lines": 451,
+      "lines": 454,
       "doc": "The navigator: today's entries, the return stack, and the three gestures.\n\nOne component serves both platforms. Desktop gets a card over the note and the\nkey map in its footer; a phone gets the same card as a full-screen sheet, where\na row is a tap target and the footer names the taps. Nothing else navigates:\nthere is no second list, no query, and no rectangle drawn on the note.\n\nIt is a self-mounted overlay rather than a `Modal` for one reason: it must\nnever take a `Scope`. A scope is what swallowed `⌘,` and stopped Obsidian's own\nsettings from opening. Keys are handled on the card in the capture phase, and\nevery chord this card does not claim reaches Obsidian untouched.\n\nNothing here caches offsets across a write: every action re-reads the document,\nbecause a write moves every line under it.",
       "obsidian": false,
       "imports": [
@@ -2901,8 +3625,8 @@
           "line": 42,
           "signature": "export class Navigator",
           "doc": "The card: today's entries, the return stack, and the three gestures.",
-          "hash": "5d6dd9801d",
-          "bytes": 11747,
+          "hash": "a91a40c961",
+          "bytes": 11921,
           "refs": [
             "src/main.ts"
           ],
@@ -2971,7 +3695,7 @@
           "refs": [
             "src/main.ts"
           ],
-          "refCount": 2,
+          "refCount": 3,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -3099,6 +3823,46 @@
       ]
     },
     {
+      "field": "whisperEnabled",
+      "value": "false",
+      "readers": [
+        "src/main.ts",
+        "src/settings-tab.ts"
+      ]
+    },
+    {
+      "field": "whisperEndpoint",
+      "value": "\"http://127.0.0.1:8000/v1\"",
+      "readers": [
+        "src/main.ts",
+        "src/settings-tab.ts"
+      ]
+    },
+    {
+      "field": "whisperModelId",
+      "value": "\"Qwen3.5-4B-MLX-4bit\"",
+      "readers": [
+        "src/main.ts",
+        "src/settings-tab.ts"
+      ]
+    },
+    {
+      "field": "whisperApiKey",
+      "value": "\"\"",
+      "readers": [
+        "src/main.ts",
+        "src/settings-tab.ts"
+      ]
+    },
+    {
+      "field": "whisperThreads",
+      "value": "false",
+      "readers": [
+        "src/entries/engine.ts",
+        "src/settings-tab.ts"
+      ]
+    },
+    {
       "field": "debug",
       "value": "false",
       "readers": [
@@ -3127,6 +3891,12 @@
       "hotkey": "Mod,Shift+P"
     },
     {
+      "id": "whisper-day",
+      "name": "Whisper the day",
+      "icon": "sparkles",
+      "hotkey": null
+    },
+    {
       "id": "close-day",
       "name": "Close the day",
       "icon": "check-circle",
@@ -3148,6 +3918,7 @@
       "weaver-duration-sigil",
       "weaver-entry-head",
       "weaver-entry-prose",
+      "weaver-entry-whisper",
       "weaver-frame",
       "weaver-frame-fixed",
       "weaver-frame-label",
@@ -3173,6 +3944,7 @@
     "definedByScript": [
       "weaver-entry-head",
       "weaver-entry-prose",
+      "weaver-entry-whisper",
       "weaver-no-emphasis",
       "weaver-unequal"
     ],

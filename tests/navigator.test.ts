@@ -152,6 +152,27 @@ describe("opening", () => {
     expect(first?.textContent).toBe("＋ start an entry");
   });
 
+  it("labels a row with its whisper before its own first words", () => {
+    open(
+      [
+        "{ 1.1.1 }",
+        "~ a pricing decision, taken slowly",
+        "the first root as it was written",
+        "10:00:00 + 00:01:00",
+        "",
+        "{ 1.2.2 }",
+        "the second root as it was written",
+        "10:05:00 + 00:02:00"
+      ].join("\n")
+    );
+
+    const titles = rows(".weaver-navigator-title").map((title) => title.textContent);
+    expect(titles).toEqual([
+      "a pricing decision, taken slowly",
+      "the second root as it was written"
+    ]);
+  });
+
   it("renders the return stack above today's entries", () => {
     open(DOC, { stops: [{ n: 1, caret: 4, scroll: 0 }] });
 

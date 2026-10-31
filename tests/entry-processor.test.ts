@@ -70,6 +70,22 @@ describe("the entry processor", () => {
     expect(root.querySelectorAll("p").length).toBe(0);
   });
 
+  it("keeps a whisper row as text, in the note's own colour", () => {
+    const root = container();
+    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "~ learn: durable execution");
+
+    createEntryProcessor()(root as never, context(PATH));
+
+    const whisper = root.querySelector(".weaver-entry-whisper");
+    expect(whisper).not.toBeNull();
+    // Inside the frame, still the file's own characters, and never a prose row:
+    // `.weaver-entry-prose` is what would paint it in the dimension's colour.
+    expect(whisper?.parentElement?.hasClass("weaver-frame")).toBe(true);
+    expect(whisper?.hasClass("weaver-entry-prose")).toBe(false);
+    expect(whisper?.textContent).toBe("~ learn: durable execution");
+  });
+
   it("draws a moment-only row without inventing a duration", () => {
     const root = container();
     paragraph(root, "{ 1.2.3 }");

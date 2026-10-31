@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 
 describe("the command surface", () => {
-  it("registers exactly the four commands, with their chords", async () => {
+  it("registers exactly the five commands, with their chords", async () => {
     const plugin = await start();
     const commands = registeredCommands(plugin);
 
@@ -30,6 +30,7 @@ describe("the command surface", () => {
       "start-entry",
       "descend",
       "navigate",
+      "whisper-day",
       "close-day"
     ]);
 
@@ -42,12 +43,14 @@ describe("the command surface", () => {
     expect(chords[1]).toEqual([]);
     expect(chords[2]).toEqual(["Mod+Shift+P"]);
     expect(chords[3]).toEqual([]);
+    expect(chords[4]).toEqual([]);
 
     // Every command carries an icon, so the phone's toolbar can draw it.
     expect(commands.map((command) => command.icon)).toEqual([
       "plus",
       "arrow-down-right",
       "list",
+      "sparkles",
       "check-circle"
     ]);
 
