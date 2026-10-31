@@ -1,12 +1,12 @@
 /**
  * The entry: the unit a day note is made of.
  *
- * An entry is a marker line `{ D.C.N }`, prose, then at most one clock row
+ * An entry is a marker line `{ D.B.N }`, prose, then at most one clock row
  * `09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`
- * is the dimension, `C` the thread (a branch's id, carried unchanged from its
- * depth-1 ancestor down), `N` the day sequence (assigned once, only appended).
- * `N` is identity, `C` is address — and both halves of an address change only
- * when a root is deleted, never on insert.
+ * is the dimension, `B` the branch id (a depth-1 entry's position among depth-1
+ * entries, carried unchanged by everything beneath it), `N` the day sequence
+ * (assigned once, only appended). `N` is identity, `B` is address: `N` never
+ * moves, and `B` changes only when a root is deleted, never on insert.
  *
  * The marker is matched as a **prefix**, so a title written on it becomes the
  * first prose line instead of breaking the entry. The clock row is the entry's
@@ -32,11 +32,11 @@ export interface Entry {
   /** Absolute offset of the marker line's end, excluding its newline. */
   to: number;
   d: number;
-  c: number;
+  b: number;
   n: number;
   /** 1-based position of the depth-1 ancestor among depth-1 entries; equals
-   * `c` in a healthy note, and is what a deletion repairs. */
-  thread: number;
+   * `b` in a healthy note, and is what a deletion repairs. */
+  branch: number;
   /** The moment, normalised `HH:MM:SS`; null when the entry has no clock row. */
   time: string | null;
   /** Absolute offset just past the marker, where a title or the day link sits. */
@@ -93,7 +93,7 @@ const LEGACY_MARKER =
 /** What a marker line carries, and how much of the text it occupies. */
 export interface MarkerPrefix {
   d: number;
-  c: number;
+  b: number;
   n: number;
   /** Length of the marker text, in characters. */
   length: number;
@@ -112,7 +112,7 @@ export function parseMarkerPrefix(text: string): MarkerPrefix | null {
 
   return {
     d: Number.parseInt(match[1] ?? "1", 10),
-    c: Number.parseInt(match[2] ?? "1", 10),
+    b: Number.parseInt(match[2] ?? "1", 10),
     n: Number.parseInt(match[3] ?? "1", 10),
     length: match[0].length
   };
@@ -135,7 +135,7 @@ function findClockRow(
 interface MarkerHit {
   line: number;
   d: number;
-  c: number;
+  b: number;
   n: number;
   markerEnd: number;
   /** Where the prose starts when it is on the marker line: past the spaces. */
@@ -184,7 +184,7 @@ export function parseEntries(source: string): EntryIndex {
     hits.push({
       line,
       d: prefix.d,
-      c: prefix.c,
+      b: prefix.b,
       n: prefix.n,
       markerEnd: start + prefix.length,
       proseStart: start + prefix.length + (inline ? remainder.length - remainder.trimStart().length : 0),
@@ -193,7 +193,7 @@ export function parseEntries(source: string): EntryIndex {
   }
 
   const stack: number[] = [];
-  // Depth-1 entries seen so far: a root's thread is its own 1-based position.
+  // Depth-1 entries seen so far: a root's branch is its own 1-based position.
   let roots = 0;
 
   for (let position = 0; position < hits.length; position += 1) {
@@ -245,19 +245,19 @@ export function parseEntries(source: string): EntryIndex {
 
     // The stack is popped before this, so its top is the nearest shallower
     // entry: every ancestor is already in `entries`, which is what makes a
-    // child's thread a lookup rather than a walk.
+    // child's branch a lookup rather than a walk.
     const parentIndex = stack.length > 0 ? (stack[stack.length - 1] as number) : null;
-    const thread =
-      parentIndex === null ? ++roots : (index.entries[parentIndex] as Entry).thread;
+    const branch =
+      parentIndex === null ? ++roots : (index.entries[parentIndex] as Entry).branch;
 
     const entry: Entry = {
       line: hit.line,
       from: start,
       to: start + raw.length,
       d: hit.d,
-      c: hit.c,
+      b: hit.b,
       n: hit.n,
-      thread,
+      branch,
       time: clock?.time ?? null,
       markerEnd: hit.markerEnd,
       // `+` alone is settled: `-` is being written and `=` is paused, and both
@@ -357,34 +357,34 @@ export function nextSeq(index: EntryIndex): number {
   return index.maxN + 1;
 }
 
-/** The next thread id: one past the depth-1 entries. */
-export function nextThread(index: EntryIndex): number {
+/** The next branch id: one past the depth-1 entries. */
+export function nextBranch(index: EntryIndex): number {
   return childrenOf(index, null).length + 1;
 }
 
 /** `{ 1.2.3 }`; one space inside each brace, and nothing after it. */
-export function formatMarker(d: number, c: number, n: number): string {
-  return `{ ${d}.${c}.${n} }`;
+export function formatMarker(d: number, b: number, n: number): string {
+  return `{ ${d}.${b}.${n} }`;
 }
 
 /**
- * Changes that put every `C` back onto its branch's thread.
+ * Changes that put every `B` back onto its branch's id.
  *
- * A root's `C` is its 1-based position among roots, and a deeper entry's `C` is
+ * A root's `B` is its 1-based position among roots, and a deeper entry's `B` is
  * its root's — so deleting a root is the only thing that can unsettle a branch,
  * and one pass over the note rewrites exactly the markers that drifted.
  */
-export function repairThreads(index: EntryIndex): TextChange[] {
+export function repairBranches(index: EntryIndex): TextChange[] {
   const changes: TextChange[] = [];
 
   for (const entry of index.entries) {
-    if (entry.c === entry.thread) continue;
+    if (entry.b === entry.branch) continue;
 
     const span = MARKER.exec(index.lines[entry.line] ?? "")?.indices?.[2];
     if (span === undefined) continue;
 
     const start = index.lineStarts[entry.line] ?? 0;
-    changes.push({ from: start + span[0], to: start + span[1], text: String(entry.thread) });
+    changes.push({ from: start + span[0], to: start + span[1], text: String(entry.branch) });
   }
 
   return changes;

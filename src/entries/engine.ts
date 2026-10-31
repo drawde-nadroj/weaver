@@ -2,12 +2,11 @@
  * The only writer of entry text.
  *
  * Every surface that changes an entry goes through here, so the rules live in one
- * place: `+` is final, `N` is only appended, `C` is a branch's thread id, and a
- * write never guesses — the plan is built from the exact text the attempt is
- * about to replace, by `writer.ts`, and skipped when the entry it was aiming at
- * is gone.
+ * place: `+` is final, `N` is only appended, `B` is the branch id, and a write
+ * never guesses — the plan is built from the exact text the attempt is about to
+ * replace, by `writer.ts`, and skipped when the entry it was aiming at is gone.
  *
- * A move — append, descend, jump — pushes the place it left onto the plugin's
+ * A move — start, descend, jump — pushes the place it left onto the plugin's
  * return stack before it goes, and carries `programmaticWrite`, so no move starts
  * a clock.
  */
@@ -36,8 +35,14 @@ import {
 import { pushStop, type Stop } from "../core/navigator-stack";
 import { editorPathOf } from "../editor/editor-path";
 import { entryIndexField, programmaticWrite, refreshEntriesEffect } from "../editor/entry-field";
-import { findEditorViewForFile, registeredEditorViews } from "../editor/view-registry";
 import {
+  findActiveEditorView,
+  findEditorViewForFile,
+  registeredEditorViews
+} from "../editor/view-registry";
+import {
+  NOTICE_NEEDS_EDITING,
+  NOTICE_NEEDS_ENTRY,
   NOTICE_NO_DAY_NOTE,
   NOTICE_REFUSAL_MS,
   noticeCloseCodeBlock,
@@ -61,8 +66,8 @@ export class EntryEngine {
     return this.plugin.app;
   }
 
-  /** Appends an entry at the tip of today's note, opening it when needed. */
-  async appendEntry(now: Date): Promise<void> {
+  /** Starts an entry at the tip of today's note, opening it when needed. */
+  async startEntry(now: Date): Promise<void> {
     const resolved = resolveDayNote(this.app, this.plugin.settings, now);
 
     let file = resolved.file;
@@ -92,7 +97,7 @@ export class EntryEngine {
     );
 
     if (result === null) {
-      this.notifyRefusal(parseEntries(await this.app.vault.cachedRead(file)), "appending an entry");
+      this.notifyRefusal(parseEntries(await this.app.vault.cachedRead(file)), "starting an entry");
       return;
     }
 
@@ -100,9 +105,10 @@ export class EntryEngine {
   }
 
   /**
-   * The navigator's `⇧⏎`: settle the entry if it is open, then open a child under
-   * it. Two transactions, each undoable — the same two writes `Enter` in the note
-   * makes when it lands on an open entry and is pressed again.
+   * Settle the entry if it is open, then open a child under it: the navigator's
+   * `⇧⏎` and the palette/toolbar descent. Two transactions, each undoable — the
+   * same two writes `Enter` in the note makes when it lands on an open entry and
+   * is pressed again.
    */
   settleAndDescend(view: EditorView, entry: Entry): void {
     // Checked once, before either half: `settle` and `descend` each refuse a
@@ -117,6 +123,28 @@ export class EntryEngine {
     const settled = entryBySeq(parseEntries(view.state.doc.toString()), entry.n);
     if (settled === null) return;
     this.descend(view, settled);
+  }
+
+  /**
+   * The palette/toolbar descent: settle the caret's entry if it is open, then
+   * open a child under it. The same two writes as `⇧⏎` in the navigator, and the
+   * same state rule as `⏎`: the entry decides whether it settles first.
+   */
+  descendAtCaret(): void {
+    const view = findActiveEditorView(this.app);
+    if (view === null) {
+      new Notice(NOTICE_NEEDS_EDITING, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    const index = this.indexOf(view, view.state.doc.toString());
+    const entry = findEntryAtOffset(index, view.state.selection.main.head);
+    if (entry === null) {
+      new Notice(NOTICE_NEEDS_ENTRY, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    this.settleAndDescend(view, entry);
   }
 
   /**
@@ -209,7 +237,7 @@ export class EntryEngine {
 
     const ms = this.session.elapsed(now.getTime());
     this.session.clear();
-    this.writeDuration(active.path, active.seq, "=", ms, false);
+    this.publish(active.path, active.seq, "=", ms, false);
   }
 
   /**
@@ -234,8 +262,8 @@ export class EntryEngine {
     const active = this.session.active();
     const moved =
       active !== null && (entryBySeq(index, active.seq) === null || active.seq !== at?.n);
-    // Pausing writes `=` into the entry it aimed at, and `writeDuration` skips
-    // the write when that entry is gone, so a deletion leaves the file alone.
+    // Pausing writes `=` into the entry it aimed at, and `publish` skips the
+    // write when that entry is gone, so a deletion leaves the file alone.
     if (moved) this.pause(new Date());
 
     if (typed && at !== null && at.state === "draft" && !this.session.activeFor(path, at.n)) {
@@ -282,8 +310,13 @@ export class EntryEngine {
     editor.focus();
   }
 
-  /** Writes a duration through the one writer. */
-  writeDuration(path: string, n: number, sigil: DurationSigil, ms: number, undoable: boolean): void {
+  /**
+   * Publishes a session's elapsed time through the one writer: device-local
+   * session time becomes the entry's clock row. `pause` publishes `=`, and
+   * `settle` publishes `+` into the open editor through the same `planDuration`.
+   * A settled entry plans nothing, so this is a no-op there.
+   */
+  publish(path: string, n: number, sigil: DurationSigil, ms: number, undoable: boolean): void {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return;
 

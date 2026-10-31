@@ -8,9 +8,9 @@ import {
   findEntryAtOffset,
   formatMarker,
   nextSeq,
-  nextThread,
+  nextBranch,
   parseEntries,
-  repairThreads
+  repairBranches
 } from "../src/core/entries";
 
 const SINGLE = ["{ 1.2.3 }", "the title line", "13:27:43 + 00:04:12"].join("\n");
@@ -21,7 +21,7 @@ describe("parseEntries", () => {
     const entry = index.entries[0];
 
     expect(entry?.d).toBe(1);
-    expect(entry?.c).toBe(2);
+    expect(entry?.b).toBe(2);
     expect(entry?.n).toBe(3);
     expect(entry?.time).toBe("13:27:43");
     expect(entry?.state).toBe("settled");
@@ -120,13 +120,13 @@ describe("parseEntries", () => {
     expect(entryBySeq(index, 2)?.title).toBe("second");
   });
 
-  it("counts children and the next thread", () => {
+  it("counts children and the next branch", () => {
     const source = ["{ 1.1.1 }", "{ 2.1.2 }", "{ 2.2.3 }"].join("\n");
     const index = parseEntries(source);
     const root = index.entries[0] ?? null;
 
     expect(childrenOf(index, root).length).toBe(2);
-    expect(nextThread(index)).toBe(2);
+    expect(nextBranch(index)).toBe(2);
     expect(nextSeq(index)).toBe(4);
   });
 
@@ -134,8 +134,8 @@ describe("parseEntries", () => {
     expect(formatMarker(1, 2, 3)).toBe("{ 1.2.3 }");
   });
 
-  it("gives every entry in a branch its thread's id", () => {
-    // Crooked on purpose: the markers agree on nothing, and the thread is read
+  it("gives every entry in a branch its branch id", () => {
+    // Crooked on purpose: the markers agree on nothing, and the branch is read
     // from the tree, never from the digits.
     const source = [
       "{ 2.5.1 }",
@@ -156,12 +156,12 @@ describe("parseEntries", () => {
     ].join("\n");
 
     const index = parseEntries(source);
-    expect(index.entries.map((entry) => entry.thread)).toEqual([1, 1, 1, 1, 2]);
-    // The file's own `C` values are reported as they are, not repaired.
-    expect(index.entries.map((entry) => entry.c)).toEqual([5, 9, 7, 2, 9]);
+    expect(index.entries.map((entry) => entry.branch)).toEqual([1, 1, 1, 1, 2]);
+    // The file's own `B` values are reported as they are, not repaired.
+    expect(index.entries.map((entry) => entry.b)).toEqual([5, 9, 7, 2, 9]);
 
-    // Repairing rewrites every drifted `C` onto its branch's thread.
-    const changes = repairThreads(index);
+    // Repairing rewrites every drifted `B` onto its branch's id.
+    const changes = repairBranches(index);
     expect(changes.map((change) => change.text)).toEqual(["1", "1", "1", "1", "2"]);
 
     const next = changes.reduce(
@@ -175,7 +175,7 @@ describe("parseEntries", () => {
     expect(next.split("\n")[12]).toBe("{ 1.2.5 }");
   });
 
-  it("rewrites nothing when every branch already carries its thread", () => {
+  it("rewrites nothing when every branch already carries its branch id", () => {
     const source = [
       "{ 1.1.1 }",
       "first",
@@ -185,7 +185,7 @@ describe("parseEntries", () => {
       "second"
     ].join("\n");
 
-    expect(repairThreads(parseEntries(source))).toEqual([]);
+    expect(repairBranches(parseEntries(source))).toEqual([]);
   });
 
   it("reports an unclosed frontmatter instead of guessing", () => {

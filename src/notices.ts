@@ -15,6 +15,8 @@ export const NOTICE_NOTHING_WRITTEN = "Nothing was written.";
 
 /** The refusal for a command that needs an editable note and has none. */
 export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. ${NOTICE_NOTHING_WRITTEN}`;
+/** The refusal when a command needs the caret inside an entry and it is not. */
+export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. ${NOTICE_NOTHING_WRITTEN}`;
 /** The confirmation a close earns. */
 export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at ${time}.`;
 /** The refusal a second close earns. */
@@ -24,7 +26,7 @@ export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. 
 
 /** The navigator's footer on a desk: the whole key map, where it is pressed. */
 export const NAVIGATOR_HINT_KEYS =
-  "↑↓ move · ⏎ jump · ⇧⏎ descend · n append · x delete · ⌘[ back · esc close";
+  "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close";
 
 /** The navigator's footer on a phone: the same three gestures, as taps. */
 export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes";

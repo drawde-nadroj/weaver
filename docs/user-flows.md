@@ -3,17 +3,18 @@
 Each flow states what it writes, what one undo reverses, and what happens when
 there is nothing to do.
 
-## Flow: append an entry
+## Flow: start an entry
 
-1. `⌘⇧E`. Today's note is created if it does not exist; otherwise it is opened.
-2. An empty root entry is appended at the tip: `{ 1.k.m }`, one blank prose line,
+1. `⌘⇧E`, or *Start an entry* from the palette or the toolbar. Today's note is
+   created if it does not exist; otherwise it is opened.
+2. An empty root entry is started at the tip: `{ 1.k.m }`, one blank prose line,
    then its clock row `HH:MM:SS - 00:00:00`, and the caret on the blank line. `k` is
    one past the day's depth-1 entries; `m` is one past its largest sequence.
 
 Writes: the marker and the clock row, plus the frontmatter block when the note is
 created. Undo: one step, the whole entry. The write goes through the editor when the
 note is open in one and through `Vault.process` otherwise — one writer per file,
-never both — and the plan is built from the exact text being written, so an append
+never both — and the plan is built from the exact text being written, so the start
 lands at the note's real end however much it grew since it was read. The file is
 revealed in a tab of its own, never replacing the tab you are in.
 
@@ -52,9 +53,9 @@ Refused, silently, when the entry has been deleted or settled in the meantime.
 2. The duration half becomes `+ HH:MM:SS`, the session ends, and nothing else moves:
    no child, no caret.
 3. `⏎` again, on that settled entry: a child opens one dimension deeper, directly
-   beneath it, with the caret in its prose. It inherits the parent's `C` — a branch
-   carries one thread id — and takes the next `N`. The place the caret left is the
-   first row of the return stack.
+   beneath it, above any older siblings, with the caret in its prose. It inherits
+   the parent's `B` — a branch carries one branch id — and takes the next `N`. The
+   place the caret left is the first row of the return stack.
 
 Writes: the duration (one transaction), then the child's marker and clock row (a
 second, single change: an insert renumbers nothing). Each is undoable on its own.
@@ -66,13 +67,18 @@ Refused (nothing written, `⏎` not handled) only when the caret is not in an en
 The rule is stateless, so `⏎` in yesterday's `+` entry descends too, and a stray
 `⏎` while reading leaves an empty child that `x` or one undo removes.
 
+The same descent is the command *Descend into a child entry*, for the palette and
+the toolbar. On an open entry it settles first — the same two transactions — then
+opens the child above older siblings. With the caret outside an entry it refuses:
+`put the caret in an entry. Nothing was written.`
+
 ## Flow: delete an entry
 
 1. `⌘⇧P`, select a row, `x` — or tap that row's `✕` twice.
 2. The entry and everything under it goes, in one transaction, and every surviving
-   branch whose thread id shifted is rewritten in the same transaction.
+   branch whose branch id shifted is rewritten in the same transaction.
 
-Writes: the block, the blank separator below it, and the repaired `C` values. Undo:
+Writes: the block, the blank separator below it, and the repaired `B` values. Undo:
 one step, the whole subtree and the old numbering. The row's `+N` child count is the
 whole blast radius, and the list stays open on what is left.
 
@@ -82,23 +88,23 @@ whole blast radius, and the list stays open on what is left.
    if it is not on screen, and the card lists the return stack and then every entry
    in document order, the caret's entry selected and marked.
 2. `↑`/`↓` move the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles
-   it and opens a child under it; `n` appends a root at the tip; `x` deletes the
+   it and opens a child under it; `n` starts a root at the tip; `x` deletes the
    selection's whole subtree; `⌘[` walks back one stop; `Esc` closes and puts the
    caret back where the card opened.
 3. On a phone the same list is a full-height sheet: a row taps to jump, the caret's
    own row taps to descend, and `✕` arms on the first tap.
 
 Writes: one transaction per action — the child, the root, the deletion with its
-thread repair. A jump writes nothing at all. Undo: one step each.
+branch repair. A jump writes nothing at all. Undo: one step each.
 
 Opening pauses the stopwatch, which may write a `= ` duration — that is the only
 write, and it is the pause you would get by leaving the note anyway. `⌘,` and every
 other Obsidian chord still reach the app while the card is open: it never takes a
 `Scope`.
 
-Empty: `no entries yet — ＋ appends the first`, and nothing on screen. The list is
-today's note, the same target *Append an entry* writes to; reaching another day
-means opening that note.
+Empty: `no entries yet — ＋ starts the first`, and nothing on screen. The first row
+is `＋ start an entry`. The list is today's note, the same target *Start an entry*
+writes to; reaching another day means opening that note.
 
 ## Flow: close the day
 
@@ -124,16 +130,18 @@ settled, and `[[day]]` after the moment on any note that is not today's.
 
 ## Flow: phone capture
 
-1. The toolbar's `+` runs *Append an entry*. The note opens with the caret in the
+1. The toolbar's `+` runs *Start an entry*. The note opens with the caret in the
    new entry.
 2. Type: after every keystroke the clock row is pinned to the bottom of the writing
    band above the soft keyboard, with the caret line directly above it.
 3. Scroll up without typing: the view stays where you put it, and the scroll itself
    pauses the clock. Tap back into the last prose line and type again: the clock
    resumes from that second and the stopwatch comes back to the bottom.
-4. `⏎` settles the entry and opens nothing; the newline is `weaver:line-break` in the
-   toolbar, since a soft keyboard has no `⇧⏎`.
-5. `⌘⇧P`, or the toolbar's list icon, opens the navigator as a full-height sheet:
+4. `⏎` settles the entry and opens nothing. A phone has no newline gesture: its
+   prose is one paragraph.
+5. The toolbar's *Descend into a child entry* opens a child under the caret's
+   entry, settling it first when it is open.
+6. `⌘⇧P`, or the toolbar's list icon, opens the navigator as a full-height sheet:
    rows are at least 44 px, the footer names the taps, and no keyboard covers the
    selection because the sheet has no input.
 

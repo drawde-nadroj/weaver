@@ -57,7 +57,7 @@ describe("planChildEntry", () => {
     "10:02:00 - 00:00:00"
   ].join("\n");
 
-  it("goes one dimension deeper on the same thread, next in the sequence", () => {
+  it("goes one dimension deeper on the same branch, next in the sequence", () => {
     const index = parseEntries(SOURCE);
     const parent = index.entries[0];
     if (parent === undefined) throw new Error("expected a parent");
@@ -71,9 +71,30 @@ describe("planChildEntry", () => {
     expect(next.split("\n").length).toBe(SOURCE.split("\n").length + 4);
     // One change, one undo: an insert renumbers nothing.
     expect(plan.changes.length).toBe(1);
+
+    // Directly under the parent's own block, above the older siblings: the
+    // newest branch is the closest one to what it descends from.
+    const lines = next.split("\n");
+    const parentClock = lines.indexOf("10:00:00 + 00:01:00");
+    expect(lines[parentClock + 2]).toBe("{ 2.1.4 }");
+    expect(lines.indexOf("{ 2.1.4 }")).toBeLessThan(lines.indexOf("{ 2.1.2 }"));
   });
 
-  it("keeps a crooked branch's C when inserting under it", () => {
+  it("inserts after the parent's own clock row when it has no children yet", () => {
+    const childless = ["{ 1.1.1 }", "root", "10:00:00 + 00:01:00"].join("\n");
+    const index = parseEntries(childless);
+    const parent = index.entries[0];
+    if (parent === undefined) throw new Error("expected a parent");
+
+    const plan = planChildEntry(childless, index, parent, AT_1337);
+    if (plan === null) throw new Error("expected a plan");
+
+    const lines = applied(childless, plan).split("\n");
+    const parentClock = lines.indexOf("10:00:00 + 00:01:00");
+    expect(lines[parentClock + 2]).toBe("{ 2.1.2 }");
+  });
+
+  it("keeps a crooked branch's B when inserting under it", () => {
     const crooked = [
       "{ 1.1.1 }",
       "root",
@@ -91,7 +112,7 @@ describe("planChildEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(crooked, plan);
-    // The child inherits the parent's written `C`: the branch stays uniform.
+    // The child inherits the parent's written `B`: the branch stays uniform.
     expect(next).toContain("{ 2.1.3 }");
     // The existing child is left exactly as the writer typed it.
     expect(next).toContain("{ 2.5.2 }");

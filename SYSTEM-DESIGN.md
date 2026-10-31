@@ -34,28 +34,28 @@ the same grammar the marker is drawn in.
 
 | Field | Written by | Read by | Shape |
 | --- | --- | --- | --- |
-| Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.C.N }`, matched as a prefix |
+| Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.B.N }`, matched as a prefix |
 | Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row, trimmed at both ends |
 | Moment | the entry's first write | `parseClockRow` | `HH:MM:SS` at the head of the clock row |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS`; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats` | `scanFrontmatter`, `recountDay` | `date`, `travels`, `depth`, `duration` |
 
-<!-- claim: src/core/entries.ts#formatMarker @26f8d1081a -->
-<!-- claim: src/core/entries.ts#parseEntries @d348ea9601 -->
+<!-- claim: src/core/entries.ts#formatMarker @4cd405bc96 -->
+<!-- claim: src/core/entries.ts#parseEntries @a03e1c1153 -->
 <!-- claim: src/core/duration.ts#parseClockRow @a1ee9d6751 -->
 <!-- claim: src/core/close.ts#parseClose @1690b1d5c0 -->
 <!-- claim: src/core/day-stats.ts#recountDay @89a9e7f928 -->
 
-`D` is depth, `C` is the branch's thread id, `N` is the day sequence. `N` is
-identity and only ever appended (`src/core/entries.ts#nextSeq`); `C` is address,
-inherited by an insert (`planChildEntry` copies the parent's `C`) and repaired
-only when a root is deleted (`planDeleteEntry` → `repairThreads`). `D` is
-structural: a child is its parent's `D` plus one, and a depth-1 entry starts a
-new thread (`nextThread`).
+`D` is depth, `B` is the branch id, `N` is the day sequence. `N` is identity and
+only ever appended (`src/core/entries.ts#nextSeq`); `B` is address, inherited by
+an insert (`planChildEntry` copies the parent's `B`) and repaired only when a root
+is deleted (`planDeleteEntry` → `repairBranches`). `D` is structural: a child is
+its parent's `D` plus one, and a depth-1 entry starts a new branch
+(`nextBranch`).
 
-<!-- claim: src/core/entries.ts#nextThread @c576a5b869 -->
-<!-- claim: src/core/entries.ts#repairThreads @7919580f20 -->
+<!-- claim: src/core/entries.ts#nextBranch @8b5cb2e473 -->
+<!-- claim: src/core/entries.ts#repairBranches @46a374ed51 -->
 
 The parser is a prefix match, so `{ 1.2.3 } a title` is one entry whose first
 prose line is `a title`; the marker inside frontmatter or a fenced block is text
@@ -84,16 +84,20 @@ A day note has exactly one writer at a time, and one module owns it.
 <!-- claim: src/entries/writer.ts#planRewrite @b52e9a19bf -->
 <!-- claim: src/editor/entry-field.ts#programmaticWrite @e59e28301b -->
 
-Callers, exhaustively — `src/entries/engine.ts#writeDuration` (pause and settle),
-`src/entries/engine.ts#appendEntry`, `src/main.ts#closeDay`,
-`src/main.ts#refreshDayStats`. Nothing else writes a day note. The gate fails if
+Callers of `rewriteDay`, exhaustively —
+`src/entries/engine.ts#publish` (the ambient pause),
+`src/entries/engine.ts#startEntry`, `src/main.ts#closeDay`,
+`src/main.ts#refreshDayStats`. The editor path is
+`src/entries/engine.ts#EntryEngine` itself: settle, descend and deleteEntry
+dispatch a plan from `core/insert.ts` there, and §3 lists those plans. Nothing
+else writes a day note. The gate fails if
 `vault.process`, `vault.modify` or `vault.append` appears outside
 `src/entries/writer.ts`; if `vault.create` or `vault.createFolder` appears
 outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-<!-- claim: src/entries/engine.ts#EntryEngine @cc6654df91 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @5ac8ac7965 -->
 
 ## 3. The plans
 
@@ -102,23 +106,23 @@ transaction, so one undo reverses all of it.
 
 | Plan | Intent | Changes | Renumbers |
 | --- | --- | --- | --- |
-| `planStartEntry` | append a root at the tip | marker, blank line, `HH:MM:SS - 00:00:00` | no — new `N`, next thread |
-| `planChildEntry` | open a child under a settled entry | marker, blank line, `HH:MM:SS - 00:00:00` | no — inherits `C` |
-| `planDeleteEntry` | remove a subtree | the block and the blank separator below it | yes — surviving `C` values |
+| `planStartEntry` | append a root at the tip | marker, blank line, `HH:MM:SS - 00:00:00` | no — new `N`, next branch |
+| `planChildEntry` | open a child under a settled entry, above older siblings | marker, blank line, `HH:MM:SS - 00:00:00` | no — inherits `B` |
+| `planDeleteEntry` | remove a subtree | the block and the blank separator below it | yes — surviving `B` values |
 | `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
-<!-- claim: src/core/insert.ts#planStartEntry @43f3c82770 -->
-<!-- claim: src/core/insert.ts#planChildEntry @8d4231c9b9 -->
-<!-- claim: src/core/insert.ts#planDeleteEntry @86569127e3 -->
+<!-- claim: src/core/insert.ts#planStartEntry @7ae137f472 -->
+<!-- claim: src/core/insert.ts#planChildEntry @61b30af668 -->
+<!-- claim: src/core/insert.ts#planDeleteEntry @7d2327a51c -->
 <!-- claim: src/core/insert.ts#planDuration @543224e52c -->
 <!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
 
 Two invariants hold across every plan, and both are tested against
 `applyPlanToSource`, the pure oracle: **a settled `+` half is never rewritten**
 (`planDuration` returns null for a settled entry), and **an insert never
-renumbers anything** (`planChildEntry` carries the parent's `C`). `cmChanges`
+renumbers anything** (`planChildEntry` carries the parent's `B`). `cmChanges`
 converts a plan to CodeMirror's shape; the editor gets two dispatches, the change
 and then the caret, because Obsidian maps a spec's selection through its own
 changes and a caret past the old end cannot be expressed in one.
@@ -131,6 +135,15 @@ changes and a caret past the old end cannot be expressed in one.
 The note is the record. Session state is what this installation is doing right
 now, and it is device-local: it is never synced, never written, and becomes
 evidence only when the engine writes it.
+
+**Publish** is the session-to-evidence boundary: a sigil and an elapsed time
+become the entry's clock row, or nothing when the entry is gone or settled. Its
+two intents are settle (`+`, the editor path in
+`src/entries/engine.ts#EntryEngine`) and pause (`=`,
+`src/entries/engine.ts#publish`). Settle writes into the open editor; publish
+re-reads the file and writes through the one writer. Neither has its own
+command: `⏎` settles, leaving the note pauses, and *Descend into a child entry*
+settles only as its first half.
 
 `EntrySession` holds at most one `src/entries/session.ts#ActiveEntry` — the file
 path, the entry's `N`, the baseline milliseconds already in its clock row, and
@@ -148,7 +161,7 @@ The transitions, and where each lives:
 | Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable |
 | Drop | the entry being written is deleted | `src/entries/engine.ts#deleteEntry` | none |
 
-<!-- claim: src/entries/engine.ts#EntryEngine @cc6654df91 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @5ac8ac7965 -->
 
 `afterEdit` is the only place a clock starts, and it starts on `typed` only —
 the annotation CodeMirror puts on real input. A vault reload, a decoration
@@ -216,14 +229,14 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
 | Start command | `src/main.ts#WeaverPlugin` | the root entry | the plan | `today's day note could not be found. Nothing was written.` |
-| Navigator | `src/ui/navigator.ts#Navigator` | the child, the root, the deletion, the pause | the plan | `no entries yet — ＋ appends the first` |
+| Navigator | `src/ui/navigator.ts#Navigator` | the child, the root, the deletion, the pause | the plan | `no entries yet — ＋ starts the first` |
 | Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Close day | `src/main.ts#WeaverPlugin` | `✓` plus the counters | the plan | `this day is already closed. Nothing was written.` |
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
-<!-- claim: src/ui/navigator.ts#Navigator @ef46c8c66b -->
+<!-- claim: src/ui/navigator.ts#Navigator @5d6dd9801d -->
 <!-- claim: src/reading/entry-processor.ts#createEntryProcessor @5016308fa6 -->
 
 The navigator is the only navigation: it never takes a `Scope`, never writes
@@ -316,7 +329,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-34 files, 154 exported symbols, 25 test files.
+34 files, 155 exported symbols, 25 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -329,7 +342,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/duration.ts` | core | 110 | 6 | no |
 | `src/core/entries.ts` | core | 392 | 15 | no |
 | `src/core/frame.ts` | core | 96 | 7 | no |
-| `src/core/insert.ts` | core | 241 | 10 | no |
+| `src/core/insert.ts` | core | 247 | 10 | no |
 | `src/core/navigator-stack.ts` | core | 40 | 4 | no |
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 55 | 5 | no |
@@ -337,15 +350,15 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/entry-decorations.ts` | editor | 199 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 40 | 4 | no |
 | `src/editor/entry-frame.ts` | editor | 355 | 2 | yes |
-| `src/editor/entry-keys.ts` | editor | 222 | 10 | no |
+| `src/editor/entry-keys.ts` | editor | 223 | 10 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 159 | 2 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
 | `src/entries/day-note.ts` | entries | 96 | 3 | yes |
-| `src/entries/engine.ts` | entries | 461 | 1 | yes |
+| `src/entries/engine.ts` | entries | 494 | 1 | yes |
 | `src/entries/session.ts` | entries | 47 | 2 | no |
 | `src/entries/writer.ts` | entries | 100 | 5 | yes |
-| `src/main.ts` | root | 303 | 1 | yes |
-| `src/notices.ts` | root | 46 | 13 | no |
+| `src/main.ts` | root | 298 | 1 | yes |
+| `src/notices.ts` | root | 48 | 14 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
 | `src/reading/entry-processor.ts` | reading | 159 | 1 | yes |
 | `src/settings-tab.ts` | root | 208 | 1 | yes |
@@ -359,9 +372,9 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 | id | name | icon | hotkey |
 | --- | --- | --- | --- |
-| `weaver:append-entry` | Append an entry | `plus` | `Mod,Shift+E` |
+| `weaver:start-entry` | Start an entry | `plus` | `Mod,Shift+E` |
+| `weaver:descend` | Descend into a child entry | `arrow-down-right` | — |
 | `weaver:navigate` | Today's entries | `list` | `Mod,Shift+P` |
-| `weaver:line-break` | Insert a line break | `corner-down-left` | — |
 | `weaver:close-day` | Close the day | `check-circle` | — |
 
 ### Settings
@@ -541,7 +554,7 @@ The day's name, and nothing else.
 | --- | --- | --- | --- | --- | --- |
 | `DayNoteOptions` | interface | 16 | `export interface DayNoteOptions` | `entries/day-note.ts` | — |
 | `dayKey` | function | 22 | `export function dayKey(now: Date): string` | `entries/day-note.ts`<br>`main.ts` | `tests/day-note.test.ts` |
-| `dayNotePath` | function | 27 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | `entries/day-note.ts` | `tests/append-entry.test.ts`<br>`tests/day-note.test.ts` |
+| `dayNotePath` | function | 27 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | `entries/day-note.ts` | `tests/day-note.test.ts`<br>`tests/start-entry.test.ts` |
 | `dayKeyFromName` | function | 40 | `export function dayKeyFromName(basename: string): string \| null` | — | `tests/day-note.test.ts` |
 | `dayFrontmatter` | function | 47 | `export function dayFrontmatter(day: string): string` | `entries/day-note.ts` | `tests/day-note.test.ts` |
 
@@ -581,17 +594,17 @@ The entry: the unit a day note is made of.
 | `EntryIndex` | interface | 66 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
 | `MarkerPrefix` | interface | 94 | `export interface MarkerPrefix` | — | — |
 | `parseMarkerPrefix` | function | 109 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
-| `parseEntries` | function | 147 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/writer.test.ts` |
+| `parseEntries` | function | 147 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
 | `findEntryAtLine` | function | 310 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
 | `findEntryAtOffset` | function | 319 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
 | `findCurrentEntry` | function | 327 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
 | `entryBySeq` | function | 337 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
-| `childrenOf` | function | 345 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `ui/navigator.ts` | `tests/entries.test.ts` |
+| `childrenOf` | function | 345 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `core/insert.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
 | `endOfSubtree` | function | 351 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
 | `nextSeq` | function | 356 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `nextThread` | function | 361 | `export function nextThread(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `formatMarker` | function | 366 | `export function formatMarker(d: number, c: number, n: number): string` | `core/insert.ts` | `tests/entries.test.ts` |
-| `repairThreads` | function | 377 | `export function repairThreads(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
+| `nextBranch` | function | 361 | `export function nextBranch(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
+| `formatMarker` | function | 366 | `export function formatMarker(d: number, b: number, n: number): string` | `core/insert.ts` | `tests/entries.test.ts` |
+| `repairBranches` | function | 377 | `export function repairBranches(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
 
 #### `src/core/frame.ts`
 
@@ -613,16 +626,16 @@ The three plans that write entry text, and the arithmetic every plan shares.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `TextChange` | interface | 25 | `export interface TextChange` | `core/entries.ts`<br>`entries/writer.ts` | — |
-| `InsertPlan` | interface | 32 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `planAppendLine` | function | 56 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
-| `planStartEntry` | function | 86 | `export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planChildEntry` | function | 102 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDeleteEntry` | function | 135 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDuration` | function | 184 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `offsetToLineCh` | function | 211 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
-| `cmChanges` | function | 224 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `applyPlanToSource` | function | 231 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
+| `TextChange` | interface | 26 | `export interface TextChange` | `core/entries.ts`<br>`entries/writer.ts` | — |
+| `InsertPlan` | interface | 33 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `planAppendLine` | function | 57 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
+| `planStartEntry` | function | 87 | `export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planChildEntry` | function | 107 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDeleteEntry` | function | 141 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDuration` | function | 190 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `offsetToLineCh` | function | 217 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
+| `cmChanges` | function | 230 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `applyPlanToSource` | function | 237 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/navigator-stack.ts`
 
@@ -681,7 +694,7 @@ The entry index as editor state: one parse per document change, shared by the
 | --- | --- | --- | --- | --- | --- |
 | `refreshEntriesEffect` | const | 11 | `export const refreshEntriesEffect = StateEffect.define<void>()` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/entry-field.test.ts` |
 | `programmaticWrite` | const | 22 | `export const programmaticWrite = Annotation.define<boolean>()` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`entries/writer.ts`<br>`ui/navigator.ts` | — |
-| `entryIndexField` | const | 25 | `export const entryIndexField = StateField.define<EntryIndex>(` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/append-entry.test.ts`<br>`tests/close-decorations.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-field.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/plugin.test.ts` |
+| `entryIndexField` | const | 25 | `export const entryIndexField = StateField.define<EntryIndex>(` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/close-decorations.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-field.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/plugin.test.ts`<br>`tests/start-entry.test.ts` |
 | `entryIndexExtension` | function | 37 | `export function entryIndexExtension(): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-frame.ts`
@@ -699,16 +712,16 @@ The two keys an entry owns, and the two edit events that keep the stopwatch
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `ENTRY_KEYS` | const | 37 | `export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const` | `main.ts` | `tests/entry-keys.test.ts` |
-| `EntryKeyHost` | interface | 40 | `export interface EntryKeyHost` | — | `tests/entry-keys.test.ts` |
-| `EntryEditHost` | interface | 52 | `export interface EntryEditHost extends EntryKeyHost` | — | — |
-| `enterableEntry` | function | 66 | `export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry \| null` | — | `tests/entry-keys.test.ts` |
-| `handleEnterKey` | function | 74 | `export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
-| `handleStartKey` | function | 89 | `export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
-| `shouldPinStopwatch` | function | 99 | `export function shouldPinStopwatch(input:` | — | `tests/entry-keys.test.ts` |
-| `maybePinStopwatch` | function | 109 | `export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean` | — | — |
-| `entryKeysExtension` | function | 143 | `export function entryKeysExtension(host: EntryKeyHost): Extension` | `main.ts` | — |
-| `entryEditExtension` | function | 155 | `export function entryEditExtension(host: EntryEditHost): Extension` | `main.ts` | — |
+| `ENTRY_KEYS` | const | 38 | `export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const` | `main.ts` | `tests/entry-keys.test.ts` |
+| `EntryKeyHost` | interface | 41 | `export interface EntryKeyHost` | — | `tests/entry-keys.test.ts` |
+| `EntryEditHost` | interface | 53 | `export interface EntryEditHost extends EntryKeyHost` | — | — |
+| `enterableEntry` | function | 67 | `export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry \| null` | — | `tests/entry-keys.test.ts` |
+| `handleEnterKey` | function | 75 | `export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
+| `handleStartKey` | function | 90 | `export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
+| `shouldPinStopwatch` | function | 100 | `export function shouldPinStopwatch(input:` | — | `tests/entry-keys.test.ts` |
+| `maybePinStopwatch` | function | 110 | `export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean` | — | — |
+| `entryKeysExtension` | function | 144 | `export function entryKeysExtension(host: EntryKeyHost): Extension` | `main.ts` | — |
+| `entryEditExtension` | function | 156 | `export function entryEditExtension(host: EntryEditHost): Extension` | `main.ts` | — |
 
 #### `src/editor/stopwatch-widget.ts`
 
@@ -725,12 +738,12 @@ The live editor views, in one place.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/append-entry.test.ts`<br>`tests/writer.test.ts` |
-| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/append-entry.test.ts`<br>`tests/writer.test.ts` |
+| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
+| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/start-entry.test.ts`<br>`tests/writer.test.ts` |
 | `viewRegistryExtension` | const | 25 | `export const viewRegistryExtension = ViewPlugin.fromClass( class` | `main.ts` | — |
 | `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
 | `findEditorViewForFile` | function | 43 | `export function findEditorViewForFile(file: TFile): EditorView \| null` | `entries/engine.ts`<br>`entries/writer.ts` | — |
-| `findActiveEditorView` | function | 57 | `export function findActiveEditorView(app: App): EditorView \| null` | — | — |
+| `findActiveEditorView` | function | 57 | `export function findActiveEditorView(app: App): EditorView \| null` | `entries/engine.ts` | — |
 
 #### `src/entries/day-note.ts`
 
@@ -748,7 +761,7 @@ The only writer of entry text.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `EntryEngine` | class | 53 | `export class EntryEngine` | `main.ts` | — |
+| `EntryEngine` | class | 58 | `export class EntryEngine` | `main.ts` | — |
 
 #### `src/entries/session.ts`
 
@@ -777,7 +790,7 @@ Weaver: a day note is a linear list of entries.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/append-entry.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts` |
+| `WeaverPlugin` | class | 56 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts` |
 
 #### `src/notices.ts`
 
@@ -789,15 +802,16 @@ Every user-facing string Weaver shows, so wording stays consistent.
 | `NOTICE_NOOP_MS` | const | 9 | `export const NOTICE_NOOP_MS = 3000` | `main.ts` | — |
 | `NOTICE_PARTIAL_MS` | const | 11 | `export const NOTICE_PARTIAL_MS = 8000` | — | — |
 | `NOTICE_NOTHING_WRITTEN` | const | 14 | `export const NOTICE_NOTHING_WRITTEN = "Nothing was written."` | — | — |
-| `NOTICE_NEEDS_EDITING` | const | 17 | `export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. $` | — | — |
-| `NOTICE_DAY_CLOSED` | const | 19 | `export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $` | `main.ts` | — |
-| `NOTICE_DAY_ALREADY_CLOSED` | const | 21 | `export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $` | `main.ts` | — |
-| `NOTICE_NO_DAY_NOTE` | const | 23 | `export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $` | `entries/engine.ts`<br>`main.ts` | — |
-| `NAVIGATOR_HINT_KEYS` | const | 26 | `export const NAVIGATOR_HINT_KEYS = "↑↓ move · ⏎ jump · ⇧⏎ descend · n append · x delete · ⌘[ back · esc close"` | `ui/navigator.ts` | — |
-| `NAVIGATOR_HINT_TOUCH` | const | 30 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
-| `noticeCloseFrontmatter` | function | 33 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
-| `noticeCloseCodeBlock` | function | 38 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
-| `noticeLegacyFormat` | function | 43 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/append-entry.test.ts` |
+| `NOTICE_NEEDS_EDITING` | const | 17 | `export const NOTICE_NEEDS_EDITING = `Weaver: this needs an editable note. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_NEEDS_ENTRY` | const | 19 | `export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. $` | `entries/engine.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_DAY_CLOSED` | const | 21 | `export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $` | `main.ts` | — |
+| `NOTICE_DAY_ALREADY_CLOSED` | const | 23 | `export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $` | `main.ts` | — |
+| `NOTICE_NO_DAY_NOTE` | const | 25 | `export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $` | `entries/engine.ts`<br>`main.ts` | — |
+| `NAVIGATOR_HINT_KEYS` | const | 28 | `export const NAVIGATOR_HINT_KEYS = "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close"` | `ui/navigator.ts` | — |
+| `NAVIGATOR_HINT_TOUCH` | const | 32 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
+| `noticeCloseFrontmatter` | function | 35 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
+| `noticeCloseCodeBlock` | function | 40 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
+| `noticeLegacyFormat` | function | 45 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/start-entry.test.ts` |
 
 #### `src/reading/close-processor.ts`
 
@@ -831,7 +845,7 @@ Weaver settings model.
 | --- | --- | --- | --- | --- | --- |
 | `WeaverSettings` | interface | 15 | `export interface WeaverSettings` | `editor/entry-frame.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | — |
 | `WeaverData` | interface | 48 | `export interface WeaverData` | `main.ts` | — |
-| `DEFAULT_SETTINGS` | const | 54 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/append-entry.test.ts`<br>`tests/day-note.test.ts`<br>`tests/settings.test.ts` |
+| `DEFAULT_SETTINGS` | const | 54 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/day-note.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts` |
 | `isValidEntrySize` | function | 76 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
 | `normalizeSettings` | function | 134 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
 | `normalizeData` | function | 173 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
@@ -849,7 +863,7 @@ The generated stylesheet: the five numbers a note is drawn with, and the two
 
 #### `src/ui/dcn.ts`
 
-The digit-and-ink grammar: `D.C.N`, the clock row and the date label all split
+The digit-and-ink grammar: `D.B.N`, the clock row and the date label all split
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |

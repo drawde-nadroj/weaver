@@ -3,7 +3,7 @@
  *
  * A plan is a list of changes plus the selection to leave behind, applied in one
  * transaction so a single undo reverts all of it. `+` is never written twice,
- * `C` is a branch's thread id (inherited on insert, repaired only when a root is
+ * `B` is the branch id (inherited on insert, repaired only when a root is
  * deleted), and `N` is only ever appended.
  */
 
@@ -11,12 +11,13 @@ import { formatClock } from "./clock";
 import { lineStartsOf } from "./document";
 import { formatClockRow, formatDurationLine, parseClockRow, type DurationSigil } from "./duration";
 import {
+  childrenOf,
   endOfSubtree,
   formatMarker,
+  nextBranch,
   nextSeq,
-  nextThread,
   parseEntries,
-  repairThreads,
+  repairBranches,
   type Entry,
   type EntryIndex
 } from "./entries";
@@ -86,18 +87,22 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(1, nextThread(index), nextSeq(index));
+  const marker = formatMarker(1, nextBranch(index), nextSeq(index));
   const clock = formatClockRow(formatClock(now), "-", 0);
   const text = `${marker}${NEWLINE}${NEWLINE}${clock}`;
   return planAppendLine(source, text, marker.length + 1);
 }
 
 /**
- * A child entry one dimension deeper, directly under the parent's subtree.
+ * A child entry one dimension deeper, directly beneath the parent's own block,
+ * above any older siblings: the newest branch is closest to what it descends
+ * from.
  *
- * The child inherits its parent's written `C`, so a branch carries one thread id
+ * The child inherits its parent's written `B`, so a branch carries one branch id
  * from its root all the way down — and an insert never renumbers anything, which
- * is what makes it a single change.
+ * is what makes it a single change. `N` is still `maxN + 1`, so the new child is
+ * the day's newest entry even when it is shown above older siblings carrying
+ * smaller numbers: `N` is identity, not display order.
  */
 export function planChildEntry(
   _source: string,
@@ -107,13 +112,14 @@ export function planChildEntry(
 ): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(parent.d + 1, parent.c, nextSeq(index));
+  const marker = formatMarker(parent.d + 1, parent.b, nextSeq(index));
   const clock = formatClockRow(formatClock(now), "-", 0);
-  const blockEnd = endOfSubtree(index, parent);
 
-  // Blank lines at the end of the subtree are spacing; the child goes under the
-  // last line the writer actually typed.
-  let anchor = blockEnd;
+  // The parent's own block ends at its last non-blank line, before its first
+  // child. Inserting there puts the newest branch directly under the parent and
+  // above older siblings, and leaves the parent's subtree contiguous.
+  const firstChild = childrenOf(index, parent)[0];
+  let anchor = firstChild === undefined ? endOfSubtree(index, parent) : firstChild.line - 1;
   while (anchor > parent.line && (index.lines[anchor] ?? "").trim() === "") anchor -= 1;
 
   const at = (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
@@ -128,7 +134,7 @@ export function planChildEntry(
  * `planChildEntry` writes.
  *
  * The block runs from the marker to the end of its subtree, the blank separator
- * lines below it go with it, and every surviving branch whose thread id shifted
+ * lines below it go with it, and every surviving branch whose branch id shifted
  * is rewritten in the same plan, so one undo restores the whole subtree and the
  * addressing. The caret lands where the block was.
  */
@@ -155,11 +161,11 @@ export function planDeleteEntry(
   }
 
   const changes: TextChange[] = [{ from, to, text: "" }];
-  // The survivors' threads are computed on the deleted text — where every marker
-  // below the block sits — and shifted back into the document as it is.
+  // The survivors' branch ids are computed on the deleted text — where every
+  // marker below the block sits — and shifted back into the document as it is.
   const shift = to - from;
   const remaining = parseEntries(source.slice(0, from) + source.slice(to));
-  for (const change of repairThreads(remaining)) {
+  for (const change of repairBranches(remaining)) {
     changes.push({ from: change.from + shift, to: change.to + shift, text: change.text });
   }
 

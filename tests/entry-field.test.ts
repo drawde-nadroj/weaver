@@ -11,7 +11,7 @@ describe("the entry field", () => {
     const index = state.field(entryIndexField);
 
     expect(index.entries.length).toBe(1);
-    expect(index.entries[0]?.c).toBe(1);
+    expect(index.entries[0]?.b).toBe(1);
   });
 
   it("re-parses on every document change", () => {

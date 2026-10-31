@@ -64,7 +64,7 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   note's header shows it.
 - **Mobile is not a fork.** One implementation; platform differences are
   geometry and row height only.
-- **Vocabulary:** entry, dimension (`1D`…`nD`), marker, duration, thread, stop,
+- **Vocabulary:** entry, dimension (`1D`…`nD`), marker, duration, branch, stop,
   settle, navigator. "Heading" is Markdown syntax only; no filing words. The v2
   older spellings (`heading*`) survive in `LEGACY_SETTING_KEYS` and nowhere else.
 

@@ -54,7 +54,7 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
   const host: EntryKeyHost = {
     session,
     entries: {
-      appendEntry: () => {
+      startEntry: () => {
         starts += 1;
         return Promise.resolve();
       },

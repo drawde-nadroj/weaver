@@ -1,7 +1,7 @@
 # Weaver
 
 Weaver is an Obsidian plugin where a day note is a linear list of **entries**. An
-entry is a marker line `{ D.C.N }`, its prose, and one clock row
+entry is a marker line `{ D.B.N }`, its prose, and one clock row
 `HH:MM:SS [+-=] HH:MM:SS`:
 
 ```markdown
@@ -15,9 +15,9 @@ the thought this one opened, one dimension deeper
 16:12:00 = 00:01:30
 ```
 
-`D` is the dimension, `C` the thread — a depth-1 entry's position among depth-1
-entries, carried unchanged all the way down its branch — and `N` the day sequence
-(assigned once, only appended). `N` is identity, `C` is address, and the duration
+`D` is the dimension, `B` the branch id — a depth-1 entry's position among depth-1
+entries, carried unchanged all the way down — and `N` the day sequence (assigned
+once, only appended). `N` is identity, `B` is address, and the duration
 half is the only mutable field. Colour is a pure function of `D`, so nothing is
 recalculated when a deeper entry appears: depth 7 looks the same before and after.
 
@@ -40,7 +40,7 @@ pixel. The manual checks they need are at the end of this file.
 
 ## The loop
 
-1. **Append** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
+1. **Start** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
    added at the tip of today's note with an empty prose line and a clock row of
    `HH:MM:SS - 00:00:00`.
 2. **Write.** The first keystroke starts the stopwatch; the rendered duration ticks
@@ -51,7 +51,7 @@ pixel. The manual checks they need are at the end of this file.
    nothing else moves. `⏎` again on that settled entry opens a child one dimension
    deeper with the caret in its prose.
 5. **Navigate** with `⌘⇧P`: today's entries in one card, where `⏎` jumps, `⇧⏎`
-   settles and descends, `n` appends at the tip, `x` deletes the selection's
+   settles and descends, `n` starts a root, `x` deletes the selection's
    subtree, and `⌘[` walks back a stop.
 6. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
@@ -67,10 +67,14 @@ starts no clock: an entry nobody has touched has no time in it.
 
 | Command ID | Name | Default hotkey | Icon |
 | --- | --- | --- | --- |
-| `weaver:append-entry` | Append an entry | `Mod+Shift+E` | `plus` |
+| `weaver:start-entry` | Start an entry | `Mod+Shift+E` | `plus` |
+| `weaver:descend` | Descend into a child entry | — | `arrow-down-right` |
 | `weaver:navigate` | Today's entries | `Mod+Shift+P` | `list` |
-| `weaver:line-break` | Insert a line break | — | `corner-down-left` |
 | `weaver:close-day` | Close the day | — | `check-circle` |
+
+Every command carries an icon. Obsidian has no API that places a command on the
+mobile toolbar; add *Start an entry* and *Descend into a child entry* under
+*Manage toolbar options*.
 
 `⌘⇧E`, not `⌘⏎`: Obsidian's core *Open link under cursor in new tab* owns
 `⌘⏎`, and its scope runs in the document's capture phase, so no plugin keymap —
@@ -87,15 +91,16 @@ under it. Nothing is stored to remember which entry was just settled, so `⏎` o
 yesterday's `+` entry opens a child under it too, and a stray `⏎` while reading
 leaves an empty child that `x` or one undo removes.
 
-`⇧⏎` stays the newline; so does `weaver:line-break`, which is the one a phone's
-toolbar can host — a soft keyboard has no `⇧⏎`, and `⏎` now settles everywhere. In
+`⇧⏎` is the newline, on a desk. A phone's soft keyboard has no `⇧⏎`, and `⏎`
+settles everywhere, so a phone has no newline gesture: an entry's prose is one
+paragraph there, and multi-line prose is written on a desk or pasted. In
 Vim normal mode `⏎` is Vim's, as is every other key Vim owns: the entry keys live
 in the editor keymap, and Vim's own normal-mode map runs before it.
 
 ## The navigator
 
 `⌘⇧P` shows today's note, put into source mode, with one card over it. On a phone
-the same card is a full-height sheet. It is the only navigation: append, descend and
+the same card is a full-height sheet. It is the only navigation: start, descend and
 jump, with the return stack inside it.
 
 | Key | Effect |
@@ -103,7 +108,7 @@ jump, with the return stack inside it.
 | `↑` `↓` | move the selection (clamped, no wrap) |
 | `⏎` | put the caret in the selected entry |
 | `⇧⏎` | settle the selection if it is open, then open a child under it |
-| `n` | append a root at the tip of the day |
+| `n` | start a root at the tip of the day |
 | `x` | delete the selection's whole subtree |
 | `⌘[` | walk back one stop |
 | `Esc` | close, and put the caret back where the card opened |
@@ -112,24 +117,26 @@ On touch: a row taps to jump, the caret's own row taps to descend, and `✕` arm
 the first tap and deletes on the second. The footer names the gestures the platform
 can make.
 
-The first row is `＋ end of day`, then a `return` block — one row per place a move
-left — then `today`: every entry in document order, `D.C.N`, clock, title, `+N`
+The first row is `＋ start an entry`, then a `return` block — one row per place a move
+left — then `today`: every entry in document order, `D.B.N`, clock, title, `+N`
 children (that count is the blast radius of `x`), with the caret's own entry marked.
 `x` asks for no confirmation: the whole subtree goes in one undoable transaction,
-the surviving branches' `C` values are repaired in that same transaction, and one
+the surviving branches' `B` values are repaired in that same transaction, and one
 undo brings both back.
 
 The card never takes a `Scope`, so `⌘,` and every other Obsidian chord reach the app
 while it is open. Every action re-reads the document; the card never caches a line
-number across a write. The list is today's note — the same target *Append an entry*
+number across a write. The list is today's note — the same target *Start an entry*
 writes to — so reaching another day means opening that note.
 
 ## Record formats
 
-**Marker line** — `{ D.C.N }`, matched as a prefix, so a title typed after it
+**Marker line** — `{ D.B.N }`, matched as a prefix, so a title typed after it
 becomes the first prose line. Whitespace inside the braces is optional:
 `{1.2.3}` reads the same. A marker inside frontmatter or a fenced code block is
-text. On a framed surface the marker's characters are the box's top rail label:
+text. `B` is the branch id: a depth-1 entry's position among depth-1 entries,
+carried unchanged all the way down its subtree, and repaired only when a root is
+deleted. On a framed surface the marker's characters are the box's top rail label:
 the rail runs through the middle of the row and is cut behind it, so the file's
 own text is what names the box.
 
@@ -243,7 +250,7 @@ fails loudly rather than skipping: a law left open prints `SOME PROOFS FAIL`.
 Nothing else is in Bend, and that is a rule rather than a preference: a part
 belongs there when it is pure and total, closed-form or structurally inductive so
 `{==}` discharges it without lemmas Base does not carry, and off the per-keystroke
-path. `parseEntries` and `repairThreads` fail the last test; `dimensionColor`
+path. `parseEntries` and `repairBranches` fail the last test; `dimensionColor`
 fails the second; everything that touches CodeMirror or Obsidian fails the first.
 
 ## Migrating a day note
@@ -259,26 +266,27 @@ node scripts/migrate-dcn.mjs --verify <file…>           # self-consistency
 node scripts/migrate-dcn.mjs --verify --from <original> <file…>   # plus line survival
 ```
 
-`D` is the hash count, `C` the thread (a root's position among roots, carried down
-its branch), `N` the rank by clock across the file (ties by document order). Every
-non-heading line survives byte for byte; a file whose lines already start with a
-marker is left untouched.
+`D` is the hash count, `B` the branch id (a root's position among roots, carried
+down its branch), `N` the rank by clock across the file (ties by document order).
+Every non-heading line survives byte for byte; a file whose lines already start
+with a marker is left untouched.
 
-Notes already in marker form from an earlier build carry the old per-parent `C`.
-One pass threads them, and it rewrites nothing but those `C` fields:
+Notes already in marker form from an earlier build carry the old per-parent `B`.
+One pass rewrites them onto their branch ids, and it rewrites nothing but those `B`
+fields:
 
 ```sh
-node scripts/migrate-dcn.mjs --threads --dry-run <file…>   # print, write nothing
-node scripts/migrate-dcn.mjs --threads <file…>             # thread in place
-node scripts/migrate-dcn.mjs --threads --verify --from <copy> <file…>
+node scripts/migrate-dcn.mjs --branches --dry-run <file…>   # print, write nothing
+node scripts/migrate-dcn.mjs --branches <file…>             # branch in place
+node scripts/migrate-dcn.mjs --branches --verify --from <copy> <file…>
 ```
 
-Roots already hold their own `C`, so the only bytes that differ are the `C` fields of
+Roots already hold their own `B`, so the only bytes that differ are the `B` fields of
 depth-2 and deeper markers. `--verify` checks that the marker count, every `D`, every
-`N`, every root's `C` and every non-marker byte survived, and that every deeper `C`
-equals its root's. Run it once; a threaded file reports `already threaded`. The
+`N`, every root's `B` and every non-marker byte survived, and that every deeper `B`
+equals its root's. Run it once; a branched file reports `already branched`. The
 plugin never rewrites a note's numbering on load: an unmigrated note reads as the
-file says, and the next deletion repairs every drifted `C` in the same undoable
+file says, and the next deletion repairs every drifted `B` in the same undoable
 transaction.
 
 `0.5.0` changed what a duration line means, so notes written before it need one
@@ -330,21 +338,29 @@ These need a live Obsidian and are not covered by `npm test`:
 - Prose renders in the dimension's colour, the stopwatch's two colons render in
   that colour while its digits keep the note's own text colour, and the clock row
   keeps its height while the digits change.
-- `⇧⏎` inside an open entry adds a line; `weaver:line-break` does the same from the
-  toolbar.
+- `⇧⏎` inside an open entry adds a line, on a desk.
+- The palette lists exactly *Start an entry*, *Descend into a child entry*,
+  *Today's entries* and *Close the day*; there is no line-break command, and every
+  row shows its icon.
+- *Descend into a child entry* with the caret in a settled entry puts the child
+  immediately under the parent, above any older siblings.
+- *Descend into a child entry* on an open entry settles it first, then opens the
+  child.
+- *Descend into a child entry* with the caret outside every entry writes nothing and
+  says `put the caret in an entry`.
 - Deleting the live entry then pressing `⌘⇧E`: the new entry's stopwatch reads
   `- 00:00:00` and stays there until the first keystroke.
 - Type into a settled entry: its duration half never changes, and a `+` entry is
   never rewritten.
 - `⌘⇧P`: the card lists today's entries with the caret's entry selected; `↓` moves
 the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles it and opens a
-child; `n` appends a root at the tip; `x` removes the selected subtree in one undo;
+child; `n` starts a root at the tip; `x` removes the selected subtree in one undo;
 `⌘[` walks back a stop and the list reopens where it landed; `Esc` closes and puts
 the caret back where the card opened. `⌘,` still opens Obsidian settings with the
 card open.
 - Phone: `⏎` settles the open entry and never opens a child, from any line of it.
-  `weaver:line-break` in the toolbar is the newline. Rows ≥ 44 px, the sheet fills
-  the screen, and *Append an entry* lands the caret in the new entry's prose even
+  There is no newline gesture inside an entry. Rows ≥ 44 px, the sheet fills
+  the screen, and *Start an entry* lands the caret in the new entry's prose even
   from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
 - Frames, the start column: with *Frame follows the indent* off, every box starts in
@@ -392,6 +408,8 @@ card open.
   its own bottom-right corner without rendering the row twice.
 - Durations are whole seconds: a session under half a second reads `00:00:00`, and
   a hundredth of a second is not recoverable.
+- A phone has no newline gesture inside an entry: its prose is one paragraph.
+  Multi-line prose is written on a desk or pasted.
 - Setext (`===` underlined) headings are not parsed, and a marker inside frontmatter
   or a fenced code block is text.
 - With *Write day counters* off, the frontmatter keeps whatever it already says.

@@ -33,7 +33,7 @@ interface Run {
   view: EditorView;
   jumps: Array<{ n: number | null; restore: Stop | undefined }>;
   descends: number[];
-  appends: number;
+  starts: number;
   deletes: number[];
   pauses: number;
   dispatched: Array<Record<string, unknown>>;
@@ -61,8 +61,8 @@ function open(doc = DOC, options: Options = {}): Run {
       pause: () => {
         run.pauses = (run.pauses ?? 0) + 1;
       },
-      appendEntry: () => {
-        run.appends = (run.appends ?? 0) + 1;
+      startEntry: () => {
+        run.starts = (run.starts ?? 0) + 1;
         session.clear();
         return Promise.resolve();
       },
@@ -144,12 +144,12 @@ describe("opening", () => {
     expect(current?.hasClass("is-selected")).toBe(true);
   });
 
-  it("puts end of day first", () => {
+  it("puts start an entry first", () => {
     open();
 
     const first = rows(".weaver-navigator-row")[0];
     expect(first?.hasClass("weaver-navigator-append")).toBe(true);
-    expect(first?.textContent).toBe("＋ end of day");
+    expect(first?.textContent).toBe("＋ start an entry");
   });
 
   it("renders the return stack above today's entries", () => {
@@ -167,7 +167,7 @@ describe("opening", () => {
     open("");
 
     const labels = rows(".weaver-navigator-label").map((label) => label.textContent);
-    expect(labels).toEqual(["no entries yet — ＋ appends the first"]);
+    expect(labels).toEqual(["no entries yet — ＋ starts the first"]);
     expect(rows(".weaver-navigator-entry").length).toBe(0);
   });
 });
@@ -192,11 +192,11 @@ describe("keys", () => {
     expect(bodyQuery(".weaver-navigator")).toBeNull();
   });
 
-  it("appends end of day, and starts no clock", () => {
+  it("starts an entry, and starts no clock", () => {
     const run = open();
     key("n");
 
-    expect(run.appends).toBe(1);
+    expect(run.starts).toBe(1);
     expect(run.session.active()).toBeNull();
     expect(bodyQuery(".weaver-navigator")).toBeNull();
   });
@@ -278,11 +278,11 @@ describe("touch", () => {
     expect(run.jumps).toEqual([]);
   });
 
-  it("appends from the end-of-day row", () => {
+  it("starts from the start-an-entry row", () => {
     const run = open();
     rows(".weaver-navigator-append")[0]?.click();
 
-    expect(run.appends).toBe(1);
+    expect(run.starts).toBe(1);
   });
 
   it("deletes only on the second tap of ✕", () => {

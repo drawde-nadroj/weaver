@@ -3,7 +3,7 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 34,
-    "exports": 154,
+    "exports": 155,
     "classes": 41,
     "testFiles": 25
   },
@@ -396,8 +396,8 @@
           ],
           "refCount": 2,
           "testedBy": [
-            "tests/append-entry.test.ts",
-            "tests/day-note.test.ts"
+            "tests/day-note.test.ts",
+            "tests/start-entry.test.ts"
           ]
         },
         {
@@ -651,7 +651,7 @@
       "file": "src/core/entries.ts",
       "layer": "core",
       "lines": 392,
-      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.C.N }`, prose, then at most one clock row\n`09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`\nis the dimension, `C` the thread (a branch's id, carried unchanged from its\ndepth-1 ancestor down), `N` the day sequence (assigned once, only appended).\n`N` is identity, `C` is address — and both halves of an address change only\nwhen a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a title written on it becomes the\nfirst prose line instead of breaking the entry. The clock row is the entry's\nlast line, which is what lets the moment and the duration label the frame's\nbottom rail at its two corners. Markers inside frontmatter or a fenced code\nblock are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nclock row is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.",
+      "doc": "The entry: the unit a day note is made of.\n\nAn entry is a marker line `{ D.B.N }`, prose, then at most one clock row\n`09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`\nis the dimension, `B` the branch id (a depth-1 entry's position among depth-1\nentries, carried unchanged by everything beneath it), `N` the day sequence\n(assigned once, only appended). `N` is identity, `B` is address: `N` never\nmoves, and `B` changes only when a root is deleted, never on insert.\n\nThe marker is matched as a **prefix**, so a title written on it becomes the\nfirst prose line instead of breaking the entry. The clock row is the entry's\nlast line, which is what lets the moment and the duration label the frame's\nbottom rail at its two corners. Markers inside frontmatter or a fenced code\nblock are text.\n\n`proseLines` is trimmed at both ends: a blank line between the prose and the\nclock row is spacing, not content, so the caret and the \"last prose line\" both\nrefer to a line the writer actually typed on.",
       "obsidian": false,
       "imports": [
         "src/core/document",
@@ -665,7 +665,7 @@
           "line": 27,
           "signature": "export interface Entry",
           "doc": "One entry: its marker, prose, clocks, and the offsets every surface reads.",
-          "hash": "a06d26a3c7",
+          "hash": "63ecd91365",
           "bytes": 526,
           "refs": [
             "src/core/insert.ts",
@@ -703,7 +703,7 @@
           "line": 94,
           "signature": "export interface MarkerPrefix",
           "doc": "What a marker line carries, and how much of the text it occupies.",
-          "hash": "ff25bc0936",
+          "hash": "e12d94b8c8",
           "bytes": 93,
           "refs": [],
           "refCount": 0,
@@ -715,7 +715,7 @@
           "line": 109,
           "signature": "export function parseMarkerPrefix(text: string): MarkerPrefix | null",
           "doc": "Reads a marker at the start of `text`, or returns null.\n\nThe marker is a prefix, so `{ 1.2.3 } a title` is one entry whose title is\n`a title` — and the same is true of a hand-written line that opens with an\naddress and nothing else.",
-          "hash": "a3575a0382",
+          "hash": "5f21a27ede",
           "bytes": 322,
           "refs": [
             "src/reading/entry-processor.ts"
@@ -729,7 +729,7 @@
           "line": 147,
           "signature": "export function parseEntries(source: string): EntryIndex",
           "doc": "Parses a note into entries, ignoring frontmatter and fenced code.",
-          "hash": "d348ea9601",
+          "hash": "a03e1c1153",
           "bytes": 4774,
           "refs": [
             "src/core/close.ts",
@@ -742,12 +742,12 @@
           ],
           "refCount": 20,
           "testedBy": [
-            "tests/append-entry.test.ts",
             "tests/color.test.ts",
             "tests/day-stats.test.ts",
             "tests/entries.test.ts",
             "tests/entry-plans.test.ts",
             "tests/record-format.test.ts",
+            "tests/start-entry.test.ts",
             "tests/writer.test.ts"
           ]
         },
@@ -777,7 +777,7 @@
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts"
           ],
-          "refCount": 6,
+          "refCount": 7,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -824,9 +824,10 @@
           "hash": "26bdb8834a",
           "bytes": 225,
           "refs": [
+            "src/core/insert.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 2,
+          "refCount": 4,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -862,12 +863,12 @@
           ]
         },
         {
-          "name": "nextThread",
+          "name": "nextBranch",
           "kind": "function",
           "line": 361,
-          "signature": "export function nextThread(index: EntryIndex): number",
-          "doc": "The next thread id: one past the depth-1 entries.",
-          "hash": "c576a5b869",
+          "signature": "export function nextBranch(index: EntryIndex): number",
+          "doc": "The next branch id: one past the depth-1 entries.",
+          "hash": "8b5cb2e473",
           "bytes": 102,
           "refs": [
             "src/core/insert.ts"
@@ -881,9 +882,9 @@
           "name": "formatMarker",
           "kind": "function",
           "line": 366,
-          "signature": "export function formatMarker(d: number, c: number, n: number): string",
+          "signature": "export function formatMarker(d: number, b: number, n: number): string",
           "doc": "`{ 1.2.3 }`; one space inside each brace, and nothing after it.",
-          "hash": "26f8d1081a",
+          "hash": "4cd405bc96",
           "bytes": 104,
           "refs": [
             "src/core/insert.ts"
@@ -894,13 +895,13 @@
           ]
         },
         {
-          "name": "repairThreads",
+          "name": "repairBranches",
           "kind": "function",
           "line": 377,
-          "signature": "export function repairThreads(index: EntryIndex): TextChange[]",
-          "doc": "Changes that put every `C` back onto its branch's thread.\n\nA root's `C` is its 1-based position among roots, and a deeper entry's `C` is\nits root's — so deleting a root is the only thing that can unsettle a branch,\nand one pass over the note rewrites exactly the markers that drifted.",
-          "hash": "7919580f20",
-          "bytes": 471,
+          "signature": "export function repairBranches(index: EntryIndex): TextChange[]",
+          "doc": "Changes that put every `B` back onto its branch's id.\n\nA root's `B` is its 1-based position among roots, and a deeper entry's `B` is\nits root's — so deleting a root is the only thing that can unsettle a branch,\nand one pass over the note rewrites exactly the markers that drifted.",
+          "hash": "46a374ed51",
+          "bytes": 472,
           "refs": [
             "src/core/insert.ts"
           ],
@@ -1026,8 +1027,8 @@
     {
       "file": "src/core/insert.ts",
       "layer": "core",
-      "lines": 241,
-      "doc": "The three plans that write entry text, and the arithmetic every plan shares.\n\nA plan is a list of changes plus the selection to leave behind, applied in one\ntransaction so a single undo reverts all of it. `+` is never written twice,\n`C` is a branch's thread id (inherited on insert, repaired only when a root is\ndeleted), and `N` is only ever appended.",
+      "lines": 247,
+      "doc": "The three plans that write entry text, and the arithmetic every plan shares.\n\nA plan is a list of changes plus the selection to leave behind, applied in one\ntransaction so a single undo reverts all of it. `+` is never written twice,\n`B` is the branch id (inherited on insert, repaired only when a root is\ndeleted), and `N` is only ever appended.",
       "obsidian": false,
       "imports": [
         "src/core/clock",
@@ -1039,7 +1040,7 @@
         {
           "name": "TextChange",
           "kind": "interface",
-          "line": 25,
+          "line": 26,
           "signature": "export interface TextChange",
           "doc": "One replacement in the document, in absolute offsets.",
           "hash": "22373b16f7",
@@ -1054,7 +1055,7 @@
         {
           "name": "InsertPlan",
           "kind": "interface",
-          "line": 32,
+          "line": 33,
           "signature": "export interface InsertPlan",
           "doc": "Changes plus the selection to leave behind, applied in one transaction.",
           "hash": "d2823a4c51",
@@ -1072,7 +1073,7 @@
         {
           "name": "planAppendLine",
           "kind": "function",
-          "line": 56,
+          "line": 57,
           "signature": "export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan",
           "doc": "Appends `text` as the last line, separated from existing content by exactly\none blank line. Trailing blank lines are normalized away, so a note that ends\nin three newlines does not collect them above the new block.\n\nA file that ended with a newline still ends with one: the write must not turn\na POSIX text file into a \"no newline at end of file\" diff.\n\n`caret` is an offset inside `text`; the plan's selection lands there.",
           "hash": "1d4307c25c",
@@ -1086,10 +1087,10 @@
         {
           "name": "planStartEntry",
           "kind": "function",
-          "line": 86,
+          "line": 87,
           "signature": "export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null",
           "doc": "A new root entry at the tip of the note: `{ 1.k.m }`, a blank prose line, and\nits clock row `HH:MM:SS - 00:00:00`.\n\nThe caret lands on the blank line, which is where the writing happens.",
-          "hash": "43f3c82770",
+          "hash": "7ae137f472",
           "bytes": 432,
           "refs": [
             "src/entries/engine.ts"
@@ -1103,11 +1104,11 @@
         {
           "name": "planChildEntry",
           "kind": "function",
-          "line": 102,
+          "line": 107,
           "signature": "export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan | null",
-          "doc": "A child entry one dimension deeper, directly under the parent's subtree.\n\nThe child inherits its parent's written `C`, so a branch carries one thread id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change.",
-          "hash": "8d4231c9b9",
-          "bytes": 945,
+          "doc": "A child entry one dimension deeper, directly beneath the parent's own block,\nabove any older siblings: the newest branch is closest to what it descends\nfrom.\n\nThe child inherits its parent's written `B`, so a branch carries one branch id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change. `N` is still `maxN + 1`, so the new child is\nthe day's newest entry even when it is shown above older siblings carrying\nsmaller numbers: `N` is identity, not display order.",
+          "hash": "61b30af668",
+          "bytes": 1123,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1119,11 +1120,11 @@
         {
           "name": "planDeleteEntry",
           "kind": "function",
-          "line": 135,
+          "line": 141,
           "signature": "export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan | null",
-          "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose thread id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.",
-          "hash": "86569127e3",
-          "bytes": 1489,
+          "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose branch id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.",
+          "hash": "7d2327a51c",
+          "bytes": 1493,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1135,7 +1136,7 @@
         {
           "name": "planDuration",
           "kind": "function",
-          "line": 184,
+          "line": 190,
           "signature": "export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan | null",
           "doc": "Writes the duration half of the clock row in place.\n\nA settled entry — a `+` half, or a row that carries no duration at all — is\nfinal: nothing is planned for it, whatever the sigil. An open entry is\nrewritten whenever the bytes would change, which the identical-text guard\ndecides, so a pause that reaches the same second plans nothing. Only the tail\nis rewritten: the moment keeps its own characters, so the row cannot move. The\nselection is reported at the prose, because the caller keeps the live\nselection: rewriting a duration must not move the caret. A note that still\ncarries the old marker is refused whole — its old duration line parses as a\nclock row, so a field-level rewrite would be the one write that slipped\nthrough the migration.",
           "hash": "543224e52c",
@@ -1143,7 +1144,7 @@
           "refs": [
             "src/entries/engine.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": [
             "tests/entry-plans.test.ts",
             "tests/writer.test.ts"
@@ -1152,7 +1153,7 @@
         {
           "name": "offsetToLineCh",
           "kind": "function",
-          "line": 211,
+          "line": 217,
           "signature": "export function offsetToLineCh(source: string, offset: number):",
           "doc": "Converts an absolute offset into a zero-based line/ch position.",
           "hash": "b2443552a3",
@@ -1166,7 +1167,7 @@
         {
           "name": "cmChanges",
           "kind": "function",
-          "line": 224,
+          "line": 230,
           "signature": "export function cmChanges( changes: readonly TextChange[] ):",
           "doc": "A plan's changes in CodeMirror's own shape.\n\nCodeMirror reads `insert`, not `text`: a `TextChange` handed to a view as-is\nis a change with no text, so nothing is written and nothing throws. Every\ndispatch of a plan goes through here.",
           "hash": "7f311f1a35",
@@ -1183,7 +1184,7 @@
         {
           "name": "applyPlanToSource",
           "kind": "function",
-          "line": 231,
+          "line": 237,
           "signature": "export function applyPlanToSource(source: string, plan: InsertPlan):",
           "doc": "Applies a plan's changes to a source string; used by tests and previews.",
           "hash": "c5b022f97b",
@@ -1557,12 +1558,12 @@
           ],
           "refCount": 11,
           "testedBy": [
-            "tests/append-entry.test.ts",
             "tests/close-decorations.test.ts",
             "tests/entry-decorations.test.ts",
             "tests/entry-field.test.ts",
             "tests/entry-keys.test.ts",
-            "tests/plugin.test.ts"
+            "tests/plugin.test.ts",
+            "tests/start-entry.test.ts"
           ]
         },
         {
@@ -1641,8 +1642,8 @@
     {
       "file": "src/editor/entry-keys.ts",
       "layer": "editor",
-      "lines": 222,
-      "doc": "The two keys an entry owns, and the two edit events that keep the stopwatch\nhonest.\n\n`Mod-Shift-E` starts an entry from inside any editor as well as from the app.\nIt is not `Mod-Enter`: Obsidian's core \"Open link under cursor in new tab\"\nowns that chord, and its scope runs before every plugin keymap.\n\n`Enter` is two-way and stateless: on an open entry — `-` being written or `=`\npaused — it settles the duration to `+` and stops the clock; on a settled\nentry it opens a child one dimension deeper under it. `Shift-Enter` is the\nnewline, on every platform, which is why a phone's `Enter` settles too.\n\nOn a phone the clock row is pinned to the bottom of the writing band after\nevery keystroke, so the stopwatch stays visible above the soft keyboard\nwithout the writer ever scrolling to find it.",
+      "lines": 223,
+      "doc": "The two keys an entry owns, and the two edit events that keep the stopwatch\nhonest.\n\n`Mod-Shift-E` starts an entry from inside any editor as well as from the app.\nIt is not `Mod-Enter`: Obsidian's core \"Open link under cursor in new tab\"\nowns that chord, and its scope runs before every plugin keymap.\n\n`Enter` is two-way and stateless: on an open entry — `-` being written or `=`\npaused — it settles the duration to `+` and stops the clock; on a settled\nentry it opens a child one dimension deeper under it. `Shift-Enter` is the\nnewline, on a desk; `Enter` settles everywhere, so a phone's soft keyboard has\nno newline gesture and an entry's prose is one paragraph there.\n\nOn a phone the clock row is pinned to the bottom of the writing band after\nevery keystroke, so the stopwatch stays visible above the soft keyboard\nwithout the writer ever scrolling to find it.",
       "obsidian": false,
       "imports": [
         "src/core/entries",
@@ -1658,7 +1659,7 @@
         {
           "name": "ENTRY_KEYS",
           "kind": "const",
-          "line": 37,
+          "line": 38,
           "signature": "export const ENTRY_KEYS = [\"Mod-Shift-E\", \"Enter\"] as const",
           "doc": "Every chord an entry claims, for review; `entryKeysExtension` binds each one.\n\n`Mod-Shift-E`, not `Mod-Enter`: Obsidian's core \"Open link under cursor in new\ntab\" owns `Mod+Enter` and its scope runs in the document's capture phase, so\nneither a `Prec.highest` editor binding nor a command hotkey ever sees that\nchord. `Mod+Shift+E` belongs to no other command, so it reaches us.",
           "hash": "07f4cc042f",
@@ -1674,11 +1675,11 @@
         {
           "name": "EntryKeyHost",
           "kind": "interface",
-          "line": 40,
+          "line": 41,
           "signature": "export interface EntryKeyHost",
           "doc": "What a key handler may ask for: the session and the five entry edits.",
-          "hash": "5af79c7376",
-          "bytes": 303,
+          "hash": "402e1f199f",
+          "bytes": 302,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1688,7 +1689,7 @@
         {
           "name": "EntryEditHost",
           "kind": "interface",
-          "line": 52,
+          "line": 53,
           "signature": "export interface EntryEditHost extends EntryKeyHost",
           "doc": "The same host plus `afterEdit`, for the listeners that start and pause a clock.",
           "hash": "985aa1b9c4",
@@ -1700,7 +1701,7 @@
         {
           "name": "enterableEntry",
           "kind": "function",
-          "line": 66,
+          "line": 67,
           "signature": "export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry | null",
           "doc": "The entry the caret is in.\n\nOne rule on every platform: the caret is inside an entry and the view can\nwrite to it. What `Enter` then does depends on the entry's own state, not on\nwhere the caret sits inside it — `Enter` settles an open entry and descends\nfrom a settled one, and `Shift-Enter` remains the newline.",
           "hash": "62fd70c4e5",
@@ -1714,7 +1715,7 @@
         {
           "name": "handleEnterKey",
           "kind": "function",
-          "line": 74,
+          "line": 75,
           "signature": "export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean",
           "doc": "`true` when the key was handled, which stops Obsidian's own binding.",
           "hash": "05f01a81d6",
@@ -1728,11 +1729,11 @@
         {
           "name": "handleStartKey",
           "kind": "function",
-          "line": 89,
+          "line": 90,
           "signature": "export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean",
           "doc": "Starts an entry at the tip of today's note, from inside the editor too.\n\nAlways handled: the chord is `Mod-Shift-E`, which no other command claims, so\nclaiming it here cannot take anything away from the writer.",
-          "hash": "8ee8db72b2",
-          "bytes": 142,
+          "hash": "db6335a145",
+          "bytes": 141,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1742,7 +1743,7 @@
         {
           "name": "shouldPinStopwatch",
           "kind": "function",
-          "line": 99,
+          "line": 100,
           "signature": "export function shouldPinStopwatch(input:",
           "doc": "All four must hold: a phone, the live session, the caret on the entry's last\nprose line, and a clock row to pin. Each one alone is not enough, which is\nwhat keeps the view still while reading the middle of a long entry.",
           "hash": "eefa36e514",
@@ -1756,7 +1757,7 @@
         {
           "name": "maybePinStopwatch",
           "kind": "function",
-          "line": 109,
+          "line": 110,
           "signature": "export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean",
           "doc": "Pins the stopwatch under the caret on a phone; returns true when it did.",
           "hash": "8c4691af26",
@@ -1768,7 +1769,7 @@
         {
           "name": "entryKeysExtension",
           "kind": "function",
-          "line": 143,
+          "line": 144,
           "signature": "export function entryKeysExtension(host: EntryKeyHost): Extension",
           "doc": "Binds `Mod-Shift-E` and `Enter` at the highest precedence.",
           "hash": "c3bcb35918",
@@ -1782,7 +1783,7 @@
         {
           "name": "entryEditExtension",
           "kind": "function",
-          "line": 155,
+          "line": 156,
           "signature": "export function entryEditExtension(host: EntryEditHost): Extension",
           "doc": "Turns edits and interruptions into session starts and pauses.",
           "hash": "4e53d8fc45",
@@ -1876,7 +1877,7 @@
           "refs": [],
           "refCount": 0,
           "testedBy": [
-            "tests/append-entry.test.ts",
+            "tests/start-entry.test.ts",
             "tests/writer.test.ts"
           ]
         },
@@ -1891,7 +1892,7 @@
           "refs": [],
           "refCount": 0,
           "testedBy": [
-            "tests/append-entry.test.ts",
+            "tests/start-entry.test.ts",
             "tests/writer.test.ts"
           ]
         },
@@ -1948,8 +1949,10 @@
           "doc": "The focused editor, else the editor of the active file.",
           "hash": "3ed3612d26",
           "bytes": 247,
-          "refs": [],
-          "refCount": 0,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
           "testedBy": []
         }
       ],
@@ -2020,8 +2023,8 @@
     {
       "file": "src/entries/engine.ts",
       "layer": "entries",
-      "lines": 461,
-      "doc": "The only writer of entry text.\n\nEvery surface that changes an entry goes through here, so the rules live in one\nplace: `+` is final, `N` is only appended, `C` is a branch's thread id, and a\nwrite never guesses — the plan is built from the exact text the attempt is\nabout to replace, by `writer.ts`, and skipped when the entry it was aiming at\nis gone.\n\nA move — append, descend, jump — pushes the place it left onto the plugin's\nreturn stack before it goes, and carries `programmaticWrite`, so no move starts\na clock.",
+      "lines": 494,
+      "doc": "The only writer of entry text.\n\nEvery surface that changes an entry goes through here, so the rules live in one\nplace: `+` is final, `N` is only appended, `B` is the branch id, and a write\nnever guesses — the plan is built from the exact text the attempt is about to\nreplace, by `writer.ts`, and skipped when the entry it was aiming at is gone.\n\nA move — start, descend, jump — pushes the place it left onto the plugin's\nreturn stack before it goes, and carries `programmaticWrite`, so no move starts\na clock.",
       "obsidian": true,
       "imports": [
         "src/core/duration",
@@ -2044,11 +2047,11 @@
         {
           "name": "EntryEngine",
           "kind": "class",
-          "line": 53,
+          "line": 58,
           "signature": "export class EntryEngine",
           "doc": "The only writer of entry text: every surface changes an entry through one of its methods.",
-          "hash": "cc6654df91",
-          "bytes": 10863,
+          "hash": "5ac8ac7965",
+          "bytes": 11317,
           "refs": [
             "src/main.ts"
           ],
@@ -2202,8 +2205,8 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 303,
-      "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.C.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
+      "lines": 298,
+      "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ D.B.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
       "obsidian": true,
       "imports": [
         "src/core/clock",
@@ -2240,8 +2243,8 @@
           "line": 56,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the day-stats listener.",
-          "hash": "fd8891a26d",
-          "bytes": 7140,
+          "hash": "40a5b2656f",
+          "bytes": 6891,
           "refs": [
             "src/entries/engine.ts",
             "src/settings-tab.ts",
@@ -2249,11 +2252,11 @@
           ],
           "refCount": 6,
           "testedBy": [
-            "tests/append-entry.test.ts",
             "tests/navigator.test.ts",
             "tests/platform-classes.test.ts",
             "tests/plugin.test.ts",
-            "tests/settings-tab.test.ts"
+            "tests/settings-tab.test.ts",
+            "tests/start-entry.test.ts"
           ]
         }
       ],
@@ -2270,7 +2273,7 @@
     {
       "file": "src/notices.ts",
       "layer": "root",
-      "lines": 46,
+      "lines": 48,
       "doc": "Every user-facing string Weaver shows, so wording stays consistent.",
       "obsidian": false,
       "imports": [],
@@ -2287,7 +2290,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 12,
+          "refCount": 14,
           "testedBy": []
         },
         {
@@ -2336,14 +2339,34 @@
           "doc": "The refusal for a command that needs an editable note and has none.",
           "hash": "8a49e3a364",
           "bytes": 101,
-          "refs": [],
-          "refCount": 0,
-          "testedBy": []
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/start-entry.test.ts"
+          ]
+        },
+        {
+          "name": "NOTICE_NEEDS_ENTRY",
+          "kind": "const",
+          "line": 19,
+          "signature": "export const NOTICE_NEEDS_ENTRY = `Weaver: put the caret in an entry. $",
+          "doc": "The refusal when a command needs the caret inside an entry and it is not.",
+          "hash": "c87cf7c5f5",
+          "bytes": 97,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/start-entry.test.ts"
+          ]
         },
         {
           "name": "NOTICE_DAY_CLOSED",
           "kind": "const",
-          "line": 19,
+          "line": 21,
           "signature": "export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $",
           "doc": "The confirmation a close earns.",
           "hash": "96c11f0b41",
@@ -2357,7 +2380,7 @@
         {
           "name": "NOTICE_DAY_ALREADY_CLOSED",
           "kind": "const",
-          "line": 21,
+          "line": 23,
           "signature": "export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $",
           "doc": "The refusal a second close earns.",
           "hash": "0636590c0d",
@@ -2371,7 +2394,7 @@
         {
           "name": "NOTICE_NO_DAY_NOTE",
           "kind": "const",
-          "line": 23,
+          "line": 25,
           "signature": "export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $",
           "doc": "The refusal when today's note cannot be found, created or opened.",
           "hash": "f247389f09",
@@ -2386,11 +2409,11 @@
         {
           "name": "NAVIGATOR_HINT_KEYS",
           "kind": "const",
-          "line": 26,
-          "signature": "export const NAVIGATOR_HINT_KEYS = \"↑↓ move · ⏎ jump · ⇧⏎ descend · n append · x delete · ⌘[ back · esc close\"",
+          "line": 28,
+          "signature": "export const NAVIGATOR_HINT_KEYS = \"↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close\"",
           "doc": "The navigator's footer on a desk: the whole key map, where it is pressed.",
-          "hash": "ffbb8631fd",
-          "bytes": 113,
+          "hash": "6f69584a30",
+          "bytes": 112,
           "refs": [
             "src/ui/navigator.ts"
           ],
@@ -2400,7 +2423,7 @@
         {
           "name": "NAVIGATOR_HINT_TOUCH",
           "kind": "const",
-          "line": 30,
+          "line": 32,
           "signature": "export const NAVIGATOR_HINT_TOUCH = \"tap to jump · tap the caret row to descend · ✕ twice deletes\"",
           "doc": "The navigator's footer on a phone: the same three gestures, as taps.",
           "hash": "3b46c0c908",
@@ -2414,7 +2437,7 @@
         {
           "name": "noticeCloseFrontmatter",
           "kind": "function",
-          "line": 33,
+          "line": 35,
           "signature": "export function noticeCloseFrontmatter(action: string): string",
           "doc": "The refusal for a write aimed at a note with an unclosed frontmatter block.",
           "hash": "08906f3861",
@@ -2428,7 +2451,7 @@
         {
           "name": "noticeCloseCodeBlock",
           "kind": "function",
-          "line": 38,
+          "line": 40,
           "signature": "export function noticeCloseCodeBlock(action: string): string",
           "doc": "The same refusal for an unclosed code block.",
           "hash": "616981c27f",
@@ -2442,7 +2465,7 @@
         {
           "name": "noticeLegacyFormat",
           "kind": "function",
-          "line": 43,
+          "line": 45,
           "signature": "export function noticeLegacyFormat(action: string): string",
           "doc": "The refusal for a note that still carries the old marker's clock.",
           "hash": "25537adedd",
@@ -2453,7 +2476,7 @@
           ],
           "refCount": 5,
           "testedBy": [
-            "tests/append-entry.test.ts"
+            "tests/start-entry.test.ts"
           ]
         }
       ],
@@ -2627,9 +2650,9 @@
           ],
           "refCount": 5,
           "testedBy": [
-            "tests/append-entry.test.ts",
             "tests/day-note.test.ts",
-            "tests/settings.test.ts"
+            "tests/settings.test.ts",
+            "tests/start-entry.test.ts"
           ]
         },
         {
@@ -2758,7 +2781,7 @@
       "file": "src/ui/dcn.ts",
       "layer": "ui",
       "lines": 74,
-      "doc": "The digit-and-ink grammar: `D.C.N`, the clock row and the date label all split\nthe same way — digits in the note's own text colour, punctuation in the\ndimension's.\n\nShared by the navigator, the Live Preview frames and the Reading-view frame —\none grammar, every surface. The marker's hyphen is punctuation like every other\nseparator, because on a framed surface the whole marker is the top rail's label\nand its background cuts the rail; there is no character that belongs to the box\ninstead of the text.",
+      "doc": "The digit-and-ink grammar: `D.B.N`, the clock row and the date label all split\nthe same way — digits in the note's own text colour, punctuation in the\ndimension's.\n\nShared by the navigator, the Live Preview frames and the Reading-view frame —\none grammar, every surface. The marker's hyphen is punctuation like every other\nseparator, because on a framed surface the whole marker is the top rail's label\nand its background cuts the rail; there is no character that belongs to the box\ninstead of the text.",
       "obsidian": false,
       "imports": [],
       "exports": [
@@ -2795,7 +2818,7 @@
           "kind": "interface",
           "line": 21,
           "signature": "export interface Slice",
-          "doc": "A piece of `D.C.N`: its text, and the class it carries.",
+          "doc": "A piece of `D.B.N`: its text, and the class it carries.",
           "hash": "5f3e6b3c9f",
           "bytes": 57,
           "refs": [],
@@ -2821,7 +2844,7 @@
           "kind": "function",
           "line": 39,
           "signature": "export function appendDigitRuns(parent: HTMLElement, text: string): void",
-          "doc": "Splits `D.C.N` into digit runs and separators inside `parent`.",
+          "doc": "Splits `D.B.N` into digit runs and separators inside `parent`.",
           "hash": "6c7063ef26",
           "bytes": 270,
           "refs": [
@@ -2878,8 +2901,8 @@
           "line": 42,
           "signature": "export class Navigator",
           "doc": "The card: today's entries, the return stack, and the three gestures.",
-          "hash": "ef46c8c66b",
-          "bytes": 11751,
+          "hash": "5d6dd9801d",
+          "bytes": 11747,
           "refs": [
             "src/main.ts"
           ],
@@ -3086,22 +3109,22 @@
   ],
   "commands": [
     {
-      "id": "append-entry",
-      "name": "Append an entry",
+      "id": "start-entry",
+      "name": "Start an entry",
       "icon": "plus",
       "hotkey": "Mod,Shift+E"
+    },
+    {
+      "id": "descend",
+      "name": "Descend into a child entry",
+      "icon": "arrow-down-right",
+      "hotkey": null
     },
     {
       "id": "navigate",
       "name": "Today's entries",
       "icon": "list",
       "hotkey": "Mod,Shift+P"
-    },
-    {
-      "id": "line-break",
-      "name": "Insert a line break",
-      "icon": "corner-down-left",
-      "hotkey": null
     },
     {
       "id": "close-day",

@@ -8,7 +8,7 @@ import { parseEntries } from "../src/core/entries";
 import { dayNotePath } from "../src/core/day";
 import { entryIndexField } from "../src/editor/entry-field";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
-import { noticeLegacyFormat } from "../src/notices";
+import { NOTICE_NEEDS_EDITING, NOTICE_NEEDS_ENTRY, noticeLegacyFormat } from "../src/notices";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { FakeEditor } from "../test-support/editor";
 import {
@@ -59,11 +59,11 @@ beforeEach(() => {
   clearNotices();
 });
 
-describe("appending an entry", () => {
+describe("starting an entry", () => {
   it("creates today's note and writes the first entry at its tip", async () => {
     const { plugin, app } = await start([]);
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
@@ -72,11 +72,11 @@ describe("appending an entry", () => {
     plugin.onunload();
   });
 
-  it("appends to the note that already holds one", async () => {
+  it("starts in the note that already holds one", async () => {
     const existing = createFile(DAY, ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n"));
     const { plugin, app } = await start([existing]);
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     const text = reading(app, DAY);
     expect(text).toContain("{ 1.2.2 }");
@@ -88,7 +88,7 @@ describe("appending an entry", () => {
   it("leaves the clock stopped on the entry it just wrote", async () => {
     const { plugin, app } = await start([]);
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     // No clock before the first keystroke: a write is not typing.
     expect(plugin.session.active()).toBeNull();
@@ -99,7 +99,7 @@ describe("appending an entry", () => {
 
   it("lands at the file's real end when the note grew under a stale read", async () => {
     // A sync, a terminal, another device: the file holds two more entries than
-    // the note the appender was looking at. The plan is built from the text
+    // the note the starter was looking at. The plan is built from the text
     // being written, so `N` counts the file's entries, not the stale ones.
     const stale = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
     const grown = [stale, "", "", "{ 1.2.2 }", "second", "09:30:00 + 00:02:00", ""].join("\n");
@@ -108,7 +108,7 @@ describe("appending an entry", () => {
 
     (file as unknown as { content: string }).content = grown;
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     const text = reading(app, DAY);
     expect(text).toContain("{ 1.3.3 }");
@@ -124,7 +124,7 @@ describe("appending an entry", () => {
     const view = createView(app, file, new FakeEditor(""), "preview");
     (app.workspace as unknown as { activeView: unknown }).activeView = view;
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     expect(reading(app, DAY)).toContain("{ 1.1.1 }");
 
@@ -145,7 +145,7 @@ describe("deleting the entry being written", () => {
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toBe("");
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     expect(reading(app, DAY)).toContain("{ 1.1.1 }");
     // No clock before the first keystroke in the new entry.
@@ -202,7 +202,7 @@ describe("writing a duration", () => {
     const file = createFile(DAY, ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
-    plugin.entries.writeDuration(DAY, 1, "+", 342_000, true);
+    plugin.entries.publish(DAY, 1, "+", 342_000, true);
 
     expect(reading(app, DAY)).toContain("+ 00:05:42");
 
@@ -214,7 +214,7 @@ describe("writing a duration", () => {
     const file = createFile(DAY, source);
     const { plugin, app } = await start([file]);
 
-    plugin.entries.writeDuration(DAY, 9, "+", 1000, true);
+    plugin.entries.publish(DAY, 9, "+", 1000, true);
 
     expect(reading(app, DAY)).toBe(source);
 
@@ -242,7 +242,7 @@ describe("writing a duration", () => {
       dayNoteFormat: "YYYY-MM-DD"
     };
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     expect(plugin.app.vault.getAbstractFileByPath("Journal/2026-10-27.md")).not.toBeNull();
 
@@ -271,14 +271,14 @@ describe("a note in the old format", () => {
     });
   });
 
-  it("refuses an append and says why", async () => {
+  it("refuses a start and says why", async () => {
     const file = createFile(DAY, LEGACY);
     const { plugin, app } = await start([file]);
 
-    await plugin.entries.appendEntry(AT_1337);
+    await plugin.entries.startEntry(AT_1337);
 
     expect(reading(app, DAY)).toBe(LEGACY);
-    expect(noticeMessages()).toEqual([noticeLegacyFormat("appending an entry")]);
+    expect(noticeMessages()).toEqual([noticeLegacyFormat("starting an entry")]);
 
     plugin.onunload();
   });
@@ -325,7 +325,7 @@ describe("moving the caret", () => {
     }
   });
 
-  it("descends without starting a clock, on the parent's thread", () => {
+  it("descends without starting a clock, on the parent's branch", () => {
     const source = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
     const file = createFile(DAY, source);
     return start([file]).then(({ plugin }) => {
@@ -341,5 +341,78 @@ describe("moving the caret", () => {
 
       plugin.onunload();
     });
+  });
+});
+
+describe("the descent command", () => {
+  const SETTLED = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
+  const OPEN = ["{ 1.1.1 }", "first", "10:00:00 - 00:00:00"].join("\n");
+
+  it("opens a child under the caret's settled entry, and starts no clock", async () => {
+    const file = createFile(DAY, SETTLED);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, SETTLED, SETTLED.indexOf("first"));
+    registerEditorView(view);
+
+    try {
+      plugin.entries.descendAtCaret();
+
+      expect(view.state.doc.toString()).toContain("{ 2.1.2 }");
+      expect(plugin.session.active()).toBeNull();
+    } finally {
+      unregisterEditorView(view);
+      plugin.onunload();
+    }
+  });
+
+  it("settles an open entry first, then opens the child under it", async () => {
+    const file = createFile(DAY, OPEN);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, OPEN, OPEN.indexOf("first"));
+    registerEditorView(view);
+
+    try {
+      plugin.entries.descendAtCaret();
+
+      const text = view.state.doc.toString();
+      // The parent's own row settled; the child's row is a fresh draft.
+      expect(text.split("\n")[2]).toBe("10:00:00 + 00:00:00");
+      expect(text).toContain("{ 2.1.2 }");
+      expect(plugin.session.active()).toBeNull();
+    } finally {
+      unregisterEditorView(view);
+      plugin.onunload();
+    }
+  });
+
+  it("refuses outside every entry, and writes nothing", async () => {
+    // The caret sits on the blank line above the note's first marker, so no
+    // entry's subtree holds it.
+    const source = ["", "{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
+    const file = createFile(DAY, source);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, source, 0);
+    registerEditorView(view);
+
+    try {
+      plugin.entries.descendAtCaret();
+
+      expect(view.state.doc.toString()).toBe(source);
+      expect(noticeMessages()).toEqual([NOTICE_NEEDS_ENTRY]);
+    } finally {
+      unregisterEditorView(view);
+      plugin.onunload();
+    }
+  });
+
+  it("refuses with no editor open, and writes nothing", async () => {
+    const { plugin, app } = await start([createFile(DAY, SETTLED)]);
+
+    plugin.entries.descendAtCaret();
+
+    expect(reading(app, DAY)).toBe(SETTLED);
+    expect(noticeMessages()).toEqual([NOTICE_NEEDS_EDITING]);
+
+    plugin.onunload();
   });
 });

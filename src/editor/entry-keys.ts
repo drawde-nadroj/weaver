@@ -9,7 +9,8 @@
  * `Enter` is two-way and stateless: on an open entry — `-` being written or `=`
  * paused — it settles the duration to `+` and stops the clock; on a settled
  * entry it opens a child one dimension deeper under it. `Shift-Enter` is the
- * newline, on every platform, which is why a phone's `Enter` settles too.
+ * newline, on a desk; `Enter` settles everywhere, so a phone's soft keyboard has
+ * no newline gesture and an entry's prose is one paragraph there.
  *
  * On a phone the clock row is pinned to the bottom of the writing band after
  * every keystroke, so the stopwatch stays visible above the soft keyboard
@@ -40,7 +41,7 @@ export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const;
 export interface EntryKeyHost {
   session: EntrySession;
   entries: {
-    appendEntry(now: Date): Promise<void>;
+    startEntry(now: Date): Promise<void>;
     settle(view: EditorView, entry: Entry): void;
     descend(view: EditorView, entry: Entry): void;
     deleteEntry(view: EditorView, entry: Entry): void;
@@ -87,7 +88,7 @@ export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean {
  * claiming it here cannot take anything away from the writer.
  */
 export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean {
-  void host.entries.appendEntry(new Date());
+  void host.entries.startEntry(new Date());
   return true;
 }
 

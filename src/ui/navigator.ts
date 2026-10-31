@@ -34,7 +34,7 @@ import { appendDigitRuns } from "./dcn";
 
 /** One row of the list, in the order the list shows them. */
 type Item =
-  | { kind: "append" }
+  | { kind: "start" }
   | { kind: "stop"; stop: Stop; entry: Entry | null }
   | { kind: "entry"; entry: Entry };
 
@@ -166,7 +166,7 @@ export class Navigator {
         return shift ? () => this.descendSelected() : () => this.activate();
       case "n":
       case "N":
-        return () => this.appendNew();
+        return () => this.startNew();
       case "x":
       case "X":
         return () => this.removeSelected();
@@ -195,7 +195,7 @@ export class Navigator {
     );
 
     this.items = [
-      { kind: "append" },
+      { kind: "start" },
       ...stops,
       ...index.entries.map((entry): Item => ({ kind: "entry", entry }))
     ];
@@ -240,8 +240,8 @@ export class Navigator {
     const item = this.items[this.selected];
     if (item === undefined) return;
 
-    if (item.kind === "append") {
-      this.appendNew();
+    if (item.kind === "start") {
+      this.startNew();
       return;
     }
 
@@ -264,8 +264,8 @@ export class Navigator {
     this.close();
   }
 
-  private appendNew(): void {
-    void this.plugin.entries.appendEntry(new Date());
+  private startNew(): void {
+    void this.plugin.entries.startEntry(new Date());
     this.close();
   }
 
@@ -339,10 +339,10 @@ export class Navigator {
         rows.set(-1, label);
       }
 
-      if (item.kind === "append") {
+      if (item.kind === "start") {
         const button = document.createElement("button");
         button.className = "weaver-navigator-row weaver-navigator-append";
-        button.textContent = "＋ end of day";
+        button.textContent = "＋ start an entry";
         if (at === this.selected) button.classList.add("is-selected");
         button.addEventListener("click", onRow(at));
         add(at, button);
@@ -354,7 +354,7 @@ export class Navigator {
         button.className = "weaver-navigator-row weaver-navigator-stop";
         const entry = item.entry;
         button.textContent =
-          entry === null ? "↩ return point" : `↩ ${entry.d}.${entry.c}.${entry.n}`;
+          entry === null ? "↩ return point" : `↩ ${entry.d}.${entry.b}.${entry.n}`;
         if (at === this.selected) button.classList.add("is-selected");
         if (entry !== null) button.setAttribute("style", dimensionColorVars(entry.d));
         button.addEventListener("click", onRow(at));
@@ -376,7 +376,7 @@ export class Navigator {
 
       const dcn = document.createElement("span");
       dcn.className = "weaver-navigator-dcn";
-      appendDigitRuns(dcn, `${item.entry.d}.${item.entry.c}.${item.entry.n}`);
+      appendDigitRuns(dcn, `${item.entry.d}.${item.entry.b}.${item.entry.n}`);
       open.appendChild(dcn);
 
       const time = document.createElement("span");
@@ -409,7 +409,7 @@ export class Navigator {
     if (index.entries.length === 0) {
       const label = document.createElement("div");
       label.className = "weaver-navigator-label";
-      label.textContent = "no entries yet — ＋ appends the first";
+      label.textContent = "no entries yet — ＋ starts the first";
       this.list.appendChild(label);
     } else {
       const label = document.createElement("div");

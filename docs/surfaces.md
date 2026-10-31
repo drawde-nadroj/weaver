@@ -11,11 +11,11 @@ it writes only what `⏎`, `n` and `x` write.
 
 | Intent | Verb | Where |
 | --- | --- | --- |
-| Begin | `⌘⇧E` *Append an entry* | anywhere, including inside an editor, Reading view, and no note at all |
+| Begin | `⌘⇧E` *Start an entry* | anywhere, including inside an editor, Reading view, and no note at all |
 | Finish this entry | `⏎` | the open entry the caret is in, on every platform |
-| Go deeper | `⏎` again, on a settled entry | the settled entry the caret is in |
+| Go deeper | `⏎` again, on a settled entry, or *Descend into a child entry* | the settled entry the caret is in |
 | Go deeper, or somewhere else | `⌘⇧P` *Today's entries* | anywhere; the card shows today's note |
-| Make a newline | `⇧⏎` or `weaver:line-break` | the caret, in any entry |
+| Make a newline | `⇧⏎` | the caret, in any entry, on a desk |
 | End the day | *Close the day* | anywhere |
 
 `⏎` is two-way and stateless. In an open entry — `-` being written or `=` paused —
@@ -23,14 +23,20 @@ it settles the duration to `+` and stops the clock, and nothing else moves. In a
 settled entry it opens a child one dimension deeper with the caret in that child's
 prose. Nothing is remembered between presses, so `⏎` on yesterday's `+` entry
 descends too. Every non-entry line is Obsidian's, as is every key Vim's normal mode
-owns; Obsidian's own newline inside an entry is `⇧⏎`, and on a phone — where a soft
-keyboard has no `⇧⏎` — `weaver:line-break` is the newline the toolbar can host.
+owns; Obsidian's own newline inside an entry is `⇧⏎`, on a desk. A phone's soft
+keyboard has no `⇧⏎` and `⏎` settles everywhere, so a phone has no newline gesture
+inside an entry: its prose is one paragraph, and multi-line prose is written on a
+desk or pasted.
 
 `⌘⇧E` is bound twice on purpose. The command covers the caret that is not in an
 editor; inside an editor CodeMirror's own keymap takes the same chord at
 `Prec.highest`. It is `⌘⇧E` and not `⌘⏎` because Obsidian's core *Open link under
 cursor in new tab* owns `⌘⏎` and its scope runs in the document's capture phase,
 so no plugin keymap — at any precedence — ever sees that chord.
+
+Every command carries an icon, and the mobile toolbar is the writer's to configure:
+Obsidian has no API that places a command on it, so *Start an entry* and *Descend
+into a child entry* are added under *Manage toolbar options*.
 
 ## The audit
 
@@ -40,9 +46,9 @@ Every surface must answer three questions; one that cannot is not a surface.
    says so, and a surface that writes something says what.
 2. **What happens if it is wrong?** One undo reverses any single action: a plan is
    one transaction, including the branch renumbering that a deletion causes. An
-   insert never renumbers anything — a child inherits its parent's `C`.
+   insert never renumbers anything — a child inherits its parent's `B`.
 3. **What does it show when there is nothing?** The navigator says
-   `no entries yet — ＋ appends the first` and writes nothing. *Append an entry*
+   `no entries yet — ＋ starts the first` and writes nothing. *Start an entry*
    whose day note cannot be created says `today's day note could not be found.
    Nothing was written.`
 
@@ -161,7 +167,7 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   closer than 8 px to its bottom rail. There is no trimming — a rail is a label's
   centre or it is nothing — so a box is never drawn at a height that cuts its own
   clock. When the rails touch or cross, there is no interior and no box.
-- A marker row that also carries prose (the inline-title case, `{ D.C.N } a title`)
+- A marker row that also carries prose (the inline-title case, `{ D.B.N } a title`)
   keeps its rail *above* the row, by 12 px, or the rail would cut the entry's own
   first line.
 - An entry without a clock row has no bottom label, so its box closes 8 px below its
@@ -212,19 +218,20 @@ emphasis, stays in the DOM exactly as Obsidian made it.
 
 ### The navigator
 
-One component, one list, on both platforms: append, descend and jump in the same
+One component, one list, on both platforms: start, descend and jump in the same
 card, with the return stack inside it.
 
 - Self-mounted overlay, not a `Modal`: it must never take a `Scope`. A scope is what
   swallowed `⌘,` and stopped Obsidian's own settings from opening. Keys are handled
   on the card in the capture phase, and every chord it does not claim reaches
   Obsidian untouched.
-- The first row is `＋ end of day`. Below it, when there are stops, a `return` block:
-  one row per place a move left — `↩ D.C.N` while that entry exists. Below that,
-  `today`: every entry in document order — `D.C.N`, clock, title, `+N` children — with
-  the caret's own entry marked `is-current` and the selection marked `is-selected`.
+- The first row is `＋ start an entry`. Below it, when there are stops, a `return`
+  block: one row per place a move left — `↩ D.B.N` while that entry exists. Below
+  that, `today`: every entry in document order — `D.B.N`, clock, title, `+N`
+  children — with the caret's own entry marked `is-current` and the selection marked
+  `is-selected`.
 - Keys: `↑`/`↓` move, `⏎` jump, `⇧⏎` settle and descend under the selection, `n`
-  append, `x` delete the selection's whole subtree, `⌘[` walk back one stop, `Esc`
+  start, `x` delete the selection's whole subtree, `⌘[` walk back one stop, `Esc`
   close and put the caret back where the card opened. Every handled key is
   prevented and stopped; `⌘[` is the only chord claimed.
 - Touch: a row taps to jump, the caret's own row taps to descend, and `✕` arms on
@@ -232,7 +239,7 @@ card, with the return stack inside it.
   platform can make.
 - Opening pauses the stopwatch, like leaving the note. Every action re-reads the
   document: the card never caches a line number across a write.
-- The list is today's note, the same target *Append an entry* writes to. Reaching
+- The list is today's note, the same target *Start an entry* writes to. Reaching
   another day means opening that note.
 - The stack lives in `src/core/navigator-stack.ts`: `STACK_LIMIT` bounds it, and it
   refuses a duplicate top — the same entry and the same caret — so `⌘[` cannot
@@ -262,6 +269,7 @@ with the caret's entry selected.
 | Clock row | flex widget, ticks while live, the moment at the bottom-left corner and the duration at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |
+| Toolbar | *Start an entry*, *Descend into a child entry*, *Today's entries*, *Close the day* — every command carries an icon | the same four, added under *Manage toolbar options* |
 
 The phone pinning runs one pure decision — `shouldPinStopwatch` — that requires all
 four of: a phone, the live session, the caret on the entry's last prose line, and a
@@ -276,11 +284,11 @@ the first prose line is the title, the rest is the entry
 16:10:00 + 00:04:12
 ```
 
-- Marker: `{ D.C.N }`, matched as a prefix. `{1.2.3}` reads the same. A marker in
+- Marker: `{ D.B.N }`, matched as a prefix. `{1.2.3}` reads the same. A marker in
   frontmatter or a fenced block is text. In a frame it is the box's top rail label.
-- `C` is the thread: a depth-1 entry's `C` is its position among depth-1 entries, and
-  everything under it carries that same `C` all the way down. An insert inherits it;
-  deleting a root renumbers the survivors, in the same undoable transaction.
+- `B` is the branch id: a depth-1 entry's `B` is its position among depth-1 entries,
+  and everything under it carries that same `B` all the way down. An insert inherits
+  it; deleting a root renumbers the survivors, in the same undoable transaction.
 - Prose: everything after the marker up to the next marker or clock row, trimmed of
   blank lines at both ends.
 - Clock row: the entry's last line, an optional moment `HH:MM:SS` then an optional

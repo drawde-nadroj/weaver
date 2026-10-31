@@ -107,7 +107,7 @@ function oldEntries(body, skip) {
       current = {
         line: index,
         d: legacy[1],
-        c: legacy[2],
+        b: legacy[2],
         n: legacy[3],
         time: normalizeClock(legacy[4] ?? "0:00"),
         title: (legacy[5] ?? "").trim(),
@@ -163,7 +163,7 @@ function migrate(source) {
       body.splice(after + 1, 0, clockRow);
     }
 
-    const replacement = [`{ ${entry.d}.${entry.c}.${entry.n} }`];
+    const replacement = [`{ ${entry.d}.${entry.b}.${entry.n} }`];
     if (entry.title !== "") replacement.push(entry.title);
     body.splice(entry.line, 1, ...replacement);
   }

@@ -14,10 +14,10 @@ import { parseEntries } from "../src/core/entries";
 const SOURCE = readFileSync(new URL("./fixtures/day-note.md", import.meta.url), "utf8");
 
 describe("the record format, as documented", () => {
-  it("reads three entries with their dimensions, threads and sequences", () => {
+  it("reads three entries with their dimensions, branches and sequences", () => {
     const index = parseEntries(SOURCE);
 
-    expect(index.entries.map((entry) => [entry.d, entry.c, entry.n])).toEqual([
+    expect(index.entries.map((entry) => [entry.d, entry.b, entry.n])).toEqual([
       [1, 1, 1],
       [2, 1, 2],
       [2, 1, 3]

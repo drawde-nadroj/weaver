@@ -1,7 +1,7 @@
 /**
  * Weaver: a day note is a linear list of entries.
  *
- * An entry is `{ D.C.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.
+ * An entry is `{ D.B.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.
  * The note and the navigator are the whole surface: nothing else navigates, and
  * every write of a day note goes through one writer.
  */
@@ -209,18 +209,25 @@ export default class WeaverPlugin extends Plugin {
   private registerCommands(): void {
     // Every command carries an icon so Obsidian's mobile toolbar can show it.
     this.addCommand({
-      id: "append-entry",
-      name: "Append an entry",
+      id: "start-entry",
+      name: "Start an entry",
       icon: "plus",
       // `Mod+Enter` is taken by the core "Open link under cursor in new tab",
       // whose scope runs before any plugin keymap — see `ENTRY_KEYS`.
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "E" }],
       // Not an editor callback: today's note is the target even from Reading
       // view, and from no note at all.
-      callback: () => void this.entries.appendEntry(new Date())
+      callback: () => void this.entries.startEntry(new Date())
     });
 
-    // The one navigation: append, descend and jump in a single list, with the
+    this.addCommand({
+      id: "descend",
+      name: "Descend into a child entry",
+      icon: "arrow-down-right",
+      callback: () => this.entries.descendAtCaret()
+    });
+
+    // The one navigation: start, descend and jump in a single list, with the
     // return stack inside it.
     this.addCommand({
       id: "navigate",
@@ -228,18 +235,6 @@ export default class WeaverPlugin extends Plugin {
       icon: "list",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "P" }],
       callback: () => void this.openNavigator()
-    });
-
-    this.addCommand({
-      id: "line-break",
-      name: "Insert a line break",
-      icon: "corner-down-left",
-      // `Enter` settles an open entry on every platform, so a phone's keyboard
-      // has no newline: this is the one the toolbar can host. A newline is not
-      // prose, so it starts no clock — the writing does.
-      editorCallback: (editor) => {
-        editor.replaceSelection("\n");
-      }
     });
 
     this.addCommand({

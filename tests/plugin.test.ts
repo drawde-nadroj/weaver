@@ -27,9 +27,9 @@ describe("the command surface", () => {
     const commands = registeredCommands(plugin);
 
     expect(commands.map((command) => command.id)).toEqual([
-      "append-entry",
+      "start-entry",
+      "descend",
       "navigate",
-      "line-break",
       "close-day"
     ]);
 
@@ -37,17 +37,17 @@ describe("the command surface", () => {
       (command.hotkeys ?? []).map((hotkey) => `${hotkey.modifiers.join("+")}+${hotkey.key}`)
     );
     // `Mod+Enter` is the core "open link" chord and never reaches a plugin, so
-    // appending owns `Mod+Shift+E` instead.
+    // starting an entry owns `Mod+Shift+E` instead.
     expect(chords[0]).toEqual(["Mod+Shift+E"]);
-    expect(chords[1]).toEqual(["Mod+Shift+P"]);
-    expect(chords[2]).toEqual([]);
+    expect(chords[1]).toEqual([]);
+    expect(chords[2]).toEqual(["Mod+Shift+P"]);
     expect(chords[3]).toEqual([]);
 
     // Every command carries an icon, so the phone's toolbar can draw it.
     expect(commands.map((command) => command.icon)).toEqual([
       "plus",
+      "arrow-down-right",
       "list",
-      "corner-down-left",
       "check-circle"
     ]);
 
