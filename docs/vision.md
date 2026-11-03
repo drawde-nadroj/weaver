@@ -41,7 +41,7 @@ never to write prose.
 | **Navigator** | The card that lists today's entries and the return stack, and starts, descends, jumps or deletes from it. | Search, a second editor, an outline, a dialog to write in. |
 | **Stop** | The place a move left: an entry, a caret and a scroll offset, remembered in the return stack. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
-| **Whisper** | The model's reading of an entry: two or three `~` rows above its prose — a name, a `learn:` line, a `next:` line, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |
+| **Whisper** | The model's reading of an entry: one to three `~` rows above its prose — a name, then at most one each of `learn:`, `next:`, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |
 | **Day plane** | Today's day note, `Chronomancer/YYYY.MM.DD.md` — the file the core Daily Notes plugin opens. | The ingest ledger under `Autonomic Ingest/`, which is machine-written. |
 
 **Rule.** Product copy says *entry* for the unit and *dimension* for its depth; the

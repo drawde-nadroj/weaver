@@ -36,7 +36,7 @@ the same grammar the marker is drawn in.
 | --- | --- | --- | --- |
 | Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ D.B.N }`, matched as a prefix |
 | Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row that is not a whisper row, trimmed at both ends |
-| Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>`, two or three rows |
+| Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>` — one to three rows (the prompt asks for two or three); a `thread:` row may be appended later |
 | Moment | the entry's first write | `parseClockRow` | `HH:MM:SS` at the head of the clock row |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS`; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
@@ -115,6 +115,7 @@ transaction, so one undo reverses all of it.
 | `planDeleteEntry` | remove a subtree | the block and the blank separator below it | yes — surviving `B` values |
 | `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
 | `planWhisper` | name an entry | whisper rows above the first prose line | no |
+| `planThread` | place an entry in its day | one `thread:` row below the last whisper row | no |
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
@@ -123,6 +124,7 @@ transaction, so one undo reverses all of it.
 <!-- claim: src/core/insert.ts#planDeleteEntry @7d2327a51c -->
 <!-- claim: src/core/insert.ts#planDuration @543224e52c -->
 <!-- claim: src/core/insert.ts#planWhisper @a9fb1e4a70 -->
+<!-- claim: src/core/insert.ts#planThread @a8069bde30 -->
 <!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
 
 Two invariants hold across every plan, and both are tested against
@@ -253,6 +255,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Whisper the day | `src/entries/engine.ts#whisperDay` | one whisper per settled entry that has none | the whole pass | `Nothing to whisper: every settled entry already has one, or a name.` |
+| Descend command | `src/main.ts#WeaverPlugin` | settle `+`, or a child | the plan, once per transaction | `this needs an editable note.` or `put the caret in an entry.` — nothing written |
 | Close day | `src/main.ts#WeaverPlugin` | `✓` plus the counters | the plan | `this day is already closed. Nothing was written.` |
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
@@ -303,7 +306,7 @@ current name at all (`entryWeight`, dropped with the per-entry weight slider;
 **Vocabulary is a coupling, not a preference.** The unit is an *entry*, its depth
 a *dimension*, its state *open* or *settled*. `heading` names Markdown syntax and
 nothing else, which is why the settings fields are `entrySize` and
-`equalizeEntrySizes` and why the v2 names appear once, in the migration. The four
+`equalizeEntrySizes` and why the v2 names appear once, in the migration. The three
 labels of a frame — marker, moment, stopwatch — carry the note's own weight, so no
 setting exists for theirs.
 
@@ -389,7 +392,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/stopwatch-widget.ts` | editor | 159 | 2 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
 | `src/entries/day-note.ts` | entries | 96 | 3 | yes |
-| `src/entries/engine.ts` | entries | 821 | 1 | yes |
+| `src/entries/engine.ts` | entries | 822 | 1 | yes |
 | `src/entries/session.ts` | entries | 47 | 2 | no |
 | `src/entries/writer.ts` | entries | 100 | 5 | yes |
 | `src/main.ts` | root | 355 | 1 | yes |
@@ -437,7 +440,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `whisperThreads` | `false` | `entries/engine.ts`<br>`settings-tab.ts` |
 | `debug` | `false` | `main.ts`<br>`settings-tab.ts` |
 
-The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the three v2 spellings and nothing else reads them.
+The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the v2 spellings and nothing else reads them.
 
 ### DOM names
 
@@ -666,7 +669,7 @@ The frame around one entry: a box, and nothing else.
 
 #### `src/core/insert.ts`
 
-The three plans that write entry text, and the arithmetic every plan shares.
+The plans that write entry text, and the arithmetic every plan shares.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
@@ -840,11 +843,11 @@ The day plane, resolved against the vault: which file today's note is, and how
 
 #### `src/entries/engine.ts`
 
-The only writer of entry text.
+The editor path that changes an entry.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `EntryEngine` | class | 81 | `export class EntryEngine` | `main.ts` | — |
+| `EntryEngine` | class | 82 | `export class EntryEngine` | `main.ts` | — |
 
 #### `src/entries/session.ts`
 

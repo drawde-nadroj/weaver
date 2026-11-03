@@ -74,7 +74,7 @@ opens the child above older siblings. With the caret outside an entry it refuses
 
 ## Flow: whisper
 
-Every settled entry may carry a **whisper**: two or three `~` rows above its prose —
+Every settled entry may carry a **whisper**: one to three `~` rows above its prose —
 the subject (a bare name, the anchor the navigator and a search both use), what it
 names but has not settled (`learn:`), what it would do next (`next:`), and the
 question it leaves open (`ask:`). It is written once and never rewritten or

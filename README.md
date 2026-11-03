@@ -168,7 +168,7 @@ changes, and only when *Write day counters* is on.
 
 **Close mark** — `✓ HH:MM:SS` on its own line, at most one per day.
 
-**Whisper rows** — two or three lines above an entry's first prose line, each
+**Whisper rows** — one to three lines above an entry's first prose line, each
 beginning `~ `: a bare name (up to ten words, the subject you would search for), then
 at most one each of `learn: <what it has not settled>` (twelve words), `next: <an
 imperative>` (twelve), and `ask: <a question, ending in "?">` (fourteen). The name is
@@ -395,9 +395,9 @@ card open.
   row and its bottom edge through the middle of its own clock row, each exactly
   once and never dimmed. The bottom edge is labelled twice: the moment at the
   left corner, the duration at the right, with the rail visible between them, and
-  both labels read as white digits around dimension-coloured colons. The day's date
-  Marker, moment and stopwatch all read at the note's own weight — no bold, and no
-  date: the filename is the day. Both rails are cut behind their labels,
+  both labels read as white digits around dimension-coloured colons. Marker, moment
+  and stopwatch all read at the note's own weight — no bold, and no date: the
+  filename is the day. Both rails are cut behind their labels,
   with a short stub left beside each corner — `16 px` on the left, `10 px` on the
   right — so the box reads as running into its own text, and no glyph or label
   background is clipped at the row's bottom. Scroll to the middle of a long entry:

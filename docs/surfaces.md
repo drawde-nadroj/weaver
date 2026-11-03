@@ -315,8 +315,9 @@ the first prose line is the title, the rest is the entry
   changes.
 - Close: `✓ HH:MM:SS`, at most one per day.
 - Whisper: a line beginning `~ `, then a bare name, `learn: <noun phrase>`,
-  `next: <imperative>`, or `ask: <question ending in "?">`. Two or three per entry,
-  at most one of each kind, and the name goes first. A name is at most ten words and
+  `next: <imperative>`, or `ask: <question ending in "?">`. One to three per entry,
+  at most one of each kind, and the name goes first; the prompt asks the model for
+  two or three. A name is at most ten words and
   the other rows at most twelve (fourteen for `ask:`). A question mark is allowed on
   `ask:` alone; the antithesis (`X, not Y`, `rather than`, `instead of`) is refused
   everywhere, while the writer's own negations are ordinary prose. The name may reuse

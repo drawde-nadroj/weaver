@@ -122,7 +122,7 @@ function renderSettings(index) {
         } |`
     ),
     "",
-    "The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the three v2 spellings and nothing else reads them."
+    "The names on disk are these names: `settings.ts#LEGACY_SETTING_KEYS` maps the v2 spellings and nothing else reads them."
   ].join("\n");
 }
 

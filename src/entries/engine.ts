@@ -1,10 +1,11 @@
 /**
- * The only writer of entry text.
+ * The editor path that changes an entry.
  *
- * Every surface that changes an entry goes through here, so the rules live in one
- * place: `+` is final, `N` is only appended, `B` is the branch id, and a write
- * never guesses — the plan is built from the exact text the attempt is about to
- * replace, by `writer.ts`, and skipped when the entry it was aiming at is gone.
+ * Every surface that changes an entry goes through here or through
+ * `writer.ts`, so the rules live in one place: `+` is final, `N` is only
+ * appended, `B` is the branch id, and a write never guesses — the plan is built
+ * from the exact text the attempt is about to replace, by `writer.ts`, and
+ * skipped when the entry it was aiming at is gone.
  *
  * A move — start, descend, jump — pushes the place it left onto the plugin's
  * return stack before it goes, and carries `programmaticWrite`, so no move starts

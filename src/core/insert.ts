@@ -1,5 +1,5 @@
 /**
- * The three plans that write entry text, and the arithmetic every plan shares.
+ * The plans that write entry text, and the arithmetic every plan shares.
  *
  * A plan is a list of changes plus the selection to leave behind, applied in one
  * transaction so a single undo reverts all of it. `+` is never written twice,
