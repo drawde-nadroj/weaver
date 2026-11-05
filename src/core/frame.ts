@@ -18,6 +18,14 @@
  * Pure — no DOM, no measurement — so the geometry is testable without a browser.
  */
 
+/**
+ * Clearance from label ink to either side rail, matching Reading view's
+ * `calc(0.45em + 16px)`: the label halo must leave the rounded corner visible.
+ */
+export function frameLabelInset(fontSize: number): number {
+  return 16 + 0.45 * fontSize;
+}
+
 /** The column a frame may occupy, in the layer's own coordinates. */
 export interface FrameColumn {
   left: number;

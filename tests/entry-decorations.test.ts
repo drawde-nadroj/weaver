@@ -239,7 +239,6 @@ describe("the entry decorations", () => {
     // not a second line.
     expect(link?.spec.block).toBeUndefined();
     expect(link?.from).toBe(DOC.indexOf("\n"));
-    expect(dom?.className).toBe("weaver-entry-daylink weaver-frame-label");
     expect(dom?.textContent).toBe("[[2026-10-27]]");
   });
 
@@ -254,6 +253,27 @@ describe("the entry decorations", () => {
 
     dom?.click();
     expect(opened).toEqual([["2026-10-27", PATH]]);
+  });
+
+  it("reveals only the entry containing the selection head, including its rails", () => {
+    const doc = `${DOC}\n\n{ 2.1.2 }\nsecond prose\n+ 00:00:02 11:00:00\n\noutside`;
+    const revealed = (anchor: number, head = anchor): string[] => {
+      const state = stateAt(anchor, doc).update({ selection: { anchor, head } }).state;
+      return collect(state)
+        .filter((range) => range.spec.widget !== undefined &&
+          !(range.spec.widget instanceof DurationWidget))
+        .filter((range) => {
+          const dom = range.spec.widget?.toDOM?.() as unknown as HTMLElement;
+          return dom.classList.contains("weaver-daylink-caret");
+        })
+        .map((range) => state.doc.lineAt(range.from).text);
+    };
+    expect(revealed(0)).toEqual(["{ 1.2.1 }"]);
+    expect(revealed(DOC.length)).toEqual(["{ 1.2.1 }"]);
+    expect(revealed(doc.indexOf("second prose"))).toEqual(["{ 2.1.2 }"]);
+    expect(revealed(0, doc.indexOf("second prose"))).toEqual(["{ 2.1.2 }"]);
+    expect(revealed(DOC.length + 1)).toEqual([]);
+    expect(revealed(doc.length)).toEqual([]);
   });
 
   it("shows no day link on today's note, a non-day note, or in source mode", () => {

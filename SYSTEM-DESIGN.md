@@ -199,12 +199,12 @@ Nothing reflows. The text decides where the box is, never the reverse.
   `requestAnimationFrame` per batch (`src/editor/entry-frame.ts#schedule`). A row
   that has scrolled out of the render range falls back to its line block, whose
   centre is still the label's centre.
-- The constants that turn "a box" into this box — `LEFT_GUTTER`, `RIGHT_GUTTER`,
-  `MIN_AIR`, `NO_CLOCK_PAD`, `INLINE_TITLE_PAD` — are in that file, not in CSS,
-  because they are measurements, not styling.
-- A corner's air is the frame's visible stub: `LEFT_GUTTER` (16 px) and
-  `RIGHT_GUTTER` (10 px) are what is left beside the marker's ink and the text
-  column's right edge. Nothing renders *into* it. The labels cannot overhang the
+- The constants that turn "a box" into this box — `MIN_AIR`, `NO_CLOCK_PAD`,
+  `INLINE_TITLE_PAD` — stay in the measuring layer. The shared side clearance is
+  `src/core/frame.ts#frameLabelInset`: `16 px + 0.45em`, using the rendered marker's
+  font size, exactly the inset Reading view uses. The labels' background halos
+  therefore leave both rounded corners visible without moving the text.
+  Nothing renders into that air. The labels cannot overhang the
   row, because Obsidian's `contain: paint` clips a block widget at its padding box;
   a label that needs the corner is drawn inside the text column instead, and the
   gutter is the margin that keeps the rail off the ink.
@@ -220,7 +220,11 @@ Nothing reflows. The text decides where the box is, never the reverse.
   today's, a link to today's daily note labels the top-right corner — a fourth
   label, drawn by the entry decoration (Live Preview) or the frame element (Reading
   view), never by the text-free layer. It shows the current date, not the note's own
-  day; today's note carries none.
+  day; today's note carries none. `src/editor/entry-decorations.ts#DayLinkWidget`
+  reveals the caret's entry link from marker through clock row, while
+  `src/editor/entry-frame.ts#revealHoveredLink` independently reveals the hovered
+  frame's link. The stylesheet hides other links without changing geometry and
+  reveals keyboard-focused links; Reading view reveals on frame hover or focus.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
 <!-- claim: src/core/frame.ts#frameSpan @324739146a -->
@@ -245,6 +249,13 @@ unless `editorLivePreviewField` is true. Source mode is the file's own text. In
 Reading view the same shape is a real element made by the post processor, so no
 measurement is involved at all.
 
+`src/reading/entry-processor.ts#createEntryProcessor` reads source section
+addresses to attach a signed clock to its entry even when Markdown rendered it
+as a separate list block. That clock section is hidden independently of render
+order. Static frames allow overflow so their rail labels are never clipped.
+The marker's soft break is removed with its text, not carried into the first
+prose line as a blank row; later prose breaks and inline markup are retained.
+
 ## 6. Surfaces
 
 One row per surface that can be touched. "Writes" is the complete list of
@@ -267,7 +278,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
 <!-- claim: src/ui/navigator.ts#Navigator @2d455a315d -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @c905f311a8 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @0538b50dd5 -->
 
 A command's target is the day plane, and *Whisper the day* aims at the day note on
 screen — `src/entries/engine.ts#dayToWhisper` — falling back to today's note only
@@ -371,7 +382,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-39 files, 201 exported symbols, 31 test files.
+39 files, 202 exported symbols, 31 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -383,16 +394,16 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 118 | 6 | no |
 | `src/core/entries.ts` | core | 417 | 15 | no |
-| `src/core/frame.ts` | core | 96 | 7 | no |
+| `src/core/frame.ts` | core | 104 | 8 | no |
 | `src/core/insert.ts` | core | 322 | 12 | no |
 | `src/core/navigator-stack.ts` | core | 40 | 4 | no |
 | `src/core/whisper.ts` | core | 407 | 19 | no |
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 55 | 5 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 283 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 293 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 40 | 4 | no |
-| `src/editor/entry-frame.ts` | editor | 370 | 2 | yes |
+| `src/editor/entry-frame.ts` | editor | 407 | 2 | yes |
 | `src/editor/entry-keys.ts` | editor | 223 | 10 | no |
 | `src/editor/frame-effects.ts` | editor | 62 | 4 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 161 | 2 | no |
@@ -406,7 +417,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
 | `src/notices.ts` | root | 133 | 19 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 192 | 1 | yes |
+| `src/reading/entry-processor.ts` | reading | 236 | 1 | yes |
 | `src/settings-tab.ts` | root | 279 | 1 | yes |
 | `src/settings.ts` | root | 245 | 8 | no |
 | `src/ui/css.ts` | ui | 72 | 4 | no |
@@ -457,6 +468,8 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | --- | --- | --- |
 | `weaver-close-mark` | styled | `reading/close-processor.ts` |
 | `weaver-close-mark-line` | styled | `editor/close-decorations.ts` |
+| `weaver-daylink-caret` | styled | `editor/entry-decorations.ts` |
+| `weaver-daylink-hover` | styled | `editor/entry-frame.ts` |
 | `weaver-dcn-ink` | styled | `ui/dcn.ts` |
 | `weaver-dcn-num` | styled | `ui/dcn.ts` |
 | `weaver-duration` | styled | `editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
@@ -466,7 +479,7 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-duration-num` | styled | `editor/stopwatch-widget.ts`<br>`ui/dcn.ts` |
 | `weaver-duration-raw` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts` |
 | `weaver-duration-sigil` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
-| `weaver-entry-daylink` | styled | `ui/day-link.ts` |
+| `weaver-entry-daylink` | styled | `editor/entry-frame.ts`<br>`ui/day-link.ts` |
 | `weaver-entry-head` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-prose` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-whisper` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
@@ -650,7 +663,7 @@ The entry: the unit a day note is made of.
 | `EntryIndex` | interface | 77 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
 | `MarkerPrefix` | interface | 105 | `export interface MarkerPrefix` | — | — |
 | `parseMarkerPrefix` | function | 120 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
-| `parseEntries` | function | 158 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
+| `parseEntries` | function | 158 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/entry-field.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
 | `findEntryAtLine` | function | 335 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
 | `findEntryAtOffset` | function | 344 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
 | `findCurrentEntry` | function | 352 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
@@ -668,13 +681,14 @@ The frame around one entry: a box, and nothing else.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameColumn` | interface | 22 | `export interface FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `FrameBoxInput` | interface | 28 | `export interface FrameBoxInput` | — | — |
-| `FrameBox` | interface | 37 | `export interface FrameBox` | — | — |
-| `frameBox` | function | 50 | `export function frameBox(input: FrameBoxInput): FrameBox` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `FrameSpanInput` | interface | 57 | `export interface FrameSpanInput` | — | — |
-| `FrameSpan` | interface | 69 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
-| `frameSpan` | function | 90 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `frameLabelInset` | function | 25 | `export function frameLabelInset(fontSize: number): number` | `editor/entry-frame.ts` | — |
+| `FrameColumn` | interface | 30 | `export interface FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameBoxInput` | interface | 36 | `export interface FrameBoxInput` | — | — |
+| `FrameBox` | interface | 45 | `export interface FrameBox` | — | — |
+| `frameBox` | function | 58 | `export function frameBox(input: FrameBoxInput): FrameBox` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameSpanInput` | interface | 65 | `export interface FrameSpanInput` | — | — |
+| `FrameSpan` | interface | 77 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
+| `frameSpan` | function | 98 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -767,8 +781,8 @@ The entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `entryDecorationSet` | function | 113 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number, openDayLink?: OpenDayLink ): DecorationSet` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 261 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, openDayLink?: OpenDayLink ): Extension` | `main.ts` | — |
+| `entryDecorationSet` | function | 117 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number, openDayLink?: OpenDayLink ): DecorationSet` | — | `tests/entry-decorations.test.ts` |
+| `entryDecorationsExtension` | function | 271 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, openDayLink?: OpenDayLink ): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-field.ts`
 
@@ -787,8 +801,8 @@ The frame around every entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameHost` | interface | 57 | `export interface FrameHost` | — | — |
-| `entryFrameExtension` | function | 361 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
+| `FrameHost` | interface | 53 | `export interface FrameHost` | — | — |
+| `entryFrameExtension` | function | 398 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-keys.ts`
 

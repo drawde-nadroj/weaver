@@ -79,17 +79,21 @@ class DayLinkWidget extends WidgetType {
   constructor(
     readonly target: string,
     readonly sourcePath: string,
-    readonly open: OpenDayLink
+    readonly open: OpenDayLink,
+    readonly caret: boolean
   ) {
     super();
   }
 
   eq(other: DayLinkWidget): boolean {
-    return other.target === this.target && other.sourcePath === this.sourcePath;
+    return other.target === this.target && other.sourcePath === this.sourcePath &&
+      other.caret === this.caret;
   }
 
   toDOM(): HTMLElement {
-    return dayLinkElement(this.target, this.sourcePath, this.open);
+    const link = dayLinkElement(this.target, this.sourcePath, this.open);
+    link.classList.toggle("weaver-daylink-caret", this.caret);
+    return link;
   }
 
   ignoreEvent(): boolean {
@@ -177,7 +181,13 @@ export function entryDecorationSet(
         to: head.to,
         value: Decoration.widget({
           side: 1,
-          widget: new DayLinkWidget(dayLinkTarget, path, openDayLink ?? (() => {}))
+          widget: new DayLinkWidget(
+            dayLinkTarget, path, openDayLink ?? (() => {}),
+            state.selection.main.head >= entry.from &&
+              state.selection.main.head <= state.doc.line(
+                (entry.clockLine ?? entry.proseLines.at(-1) ?? entry.whisperLines.at(-1) ?? entry.line) + 1
+              ).to
+          )
         })
       });
     }

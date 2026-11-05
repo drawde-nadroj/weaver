@@ -3,8 +3,8 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 39,
-    "exports": 201,
-    "classes": 43,
+    "exports": 202,
+    "classes": 45,
     "testFiles": 31
   },
   "modules": [
@@ -646,7 +646,7 @@
             "src/core/insert.ts",
             "src/reading/entry-processor.ts"
           ],
-          "refCount": 8,
+          "refCount": 9,
           "testedBy": [
             "tests/duration.test.ts"
           ]
@@ -763,9 +763,10 @@
             "src/editor/entry-field.ts",
             "src/entries/engine.ts",
             "src/main.ts",
+            "src/reading/entry-processor.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 23,
+          "refCount": 25,
           "testedBy": [
             "tests/color.test.ts",
             "tests/day-stats.test.ts",
@@ -945,15 +946,29 @@
     {
       "file": "src/core/frame.ts",
       "layer": "core",
-      "lines": 96,
+      "lines": 104,
       "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the marker line — is the box's top-left\nlabel, and its own clock row is the bottom edge, labelling the bottom-left\ncorner with the duration and the bottom-right with the moment. Every label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the marker's ink to the right edge of the text column: a box that hugged\nits text could not put the duration at one bottom corner and the moment at the\nother without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
       "obsidian": false,
       "imports": [],
       "exports": [
         {
+          "name": "frameLabelInset",
+          "kind": "function",
+          "line": 25,
+          "signature": "export function frameLabelInset(fontSize: number): number",
+          "doc": "Clearance from label ink to either side rail, matching Reading view's\n`calc(0.45em + 16px)`: the label halo must leave the rounded corner visible.",
+          "hash": "901d9a1d47",
+          "bytes": 92,
+          "refs": [
+            "src/editor/entry-frame.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
           "name": "FrameColumn",
           "kind": "interface",
-          "line": 22,
+          "line": 30,
           "signature": "export interface FrameColumn",
           "doc": "The column a frame may occupy, in the layer's own coordinates.",
           "hash": "c35ea8d7ba",
@@ -969,7 +984,7 @@
         {
           "name": "FrameBoxInput",
           "kind": "interface",
-          "line": 28,
+          "line": 36,
           "signature": "export interface FrameBoxInput",
           "doc": "What a box needs: the column, the text's left edge, and the label inset.",
           "hash": "13f504ab95",
@@ -981,7 +996,7 @@
         {
           "name": "FrameBox",
           "kind": "interface",
-          "line": 37,
+          "line": 45,
           "signature": "export interface FrameBox",
           "doc": "The rectangle to draw, or `drawn: false` when there is nothing to enclose.",
           "hash": "635f1a434a",
@@ -993,7 +1008,7 @@
         {
           "name": "frameBox",
           "kind": "function",
-          "line": 50,
+          "line": 58,
           "signature": "export function frameBox(input: FrameBoxInput): FrameBox",
           "doc": "The box spans one label inset outside the entry's first row's ink to the\ncolumn's right edge.\n\nThere is no width below which a box is withheld: a narrow pane gets a narrow\nbox. The only way to get no box is to have measured nothing yet.",
           "hash": "cbb958de1d",
@@ -1009,7 +1024,7 @@
         {
           "name": "FrameSpanInput",
           "kind": "interface",
-          "line": 57,
+          "line": 65,
           "signature": "export interface FrameSpanInput",
           "doc": "The three rails: this entry's two, and where the next entry's top one sits.",
           "hash": "ec0d2677fb",
@@ -1021,7 +1036,7 @@
         {
           "name": "FrameSpan",
           "kind": "interface",
-          "line": 69,
+          "line": 77,
           "signature": "export interface FrameSpan",
           "doc": "The vertical extent to draw, or `drawn: false` when the rails leave no interior.",
           "hash": "69ed767a0d",
@@ -1035,7 +1050,7 @@
         {
           "name": "frameSpan",
           "kind": "function",
-          "line": 90,
+          "line": 98,
           "signature": "export function frameSpan(input: FrameSpanInput): FrameSpan",
           "doc": "The box's vertical extent: from one rail to the other, and nothing more.\n\nThe rails are the label lines, so there is no padding to add and no cap to\napply. The old version derived both ends from the text's edges and padded them,\nwhich put the top rail 5 px above the marker's own row and the bottom rail 5 px\nbelow the clock's — so the labels sat inside the box instead of on it, and the\nclock row was clipped by the rail under it.\n\nThe only judgement left is whether two rails are far enough apart: a box is\nwithheld when the next entry's rail is closer than {@link FrameSpanInput.air},\nbecause two labels would then share the space and neither would read. There is\nno trimming — a rail is a label's centre or it is nothing — and no padding cap.\nWhen the rails cross, there is no interior and no box.",
           "hash": "324739146a",
@@ -1795,7 +1810,7 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 283,
+      "lines": 293,
       "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nOn a note whose filename is a day other than today's, the marker row carries a\nthird piece of markup: the link to today's daily note at the top-right corner.\nIt is generated because it points at the current day rather than at anything in\nthe entry, and the frame layer paints no text at all. Today's note carries none:\nthe link would point back at the note it is painted on.",
       "obsidian": true,
       "imports": [
@@ -1814,11 +1829,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 113,
+          "line": 117,
           "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number, openDayLink?: OpenDayLink ): DecorationSet",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "f15cd41a04",
-          "bytes": 5184,
+          "hash": "ec23012cea",
+          "bytes": 5450,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1828,7 +1843,7 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 261,
+          "line": 271,
           "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, openDayLink?: OpenDayLink ): Extension",
           "doc": "Publishes the entry decorations as one state field.",
           "hash": "11faf9599e",
@@ -1841,6 +1856,7 @@
         }
       ],
       "classes": [
+        "weaver-daylink-caret",
         "weaver-duration-raw",
         "weaver-entry-head",
         "weaver-entry-prose",
@@ -1945,7 +1961,7 @@
     {
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
-      "lines": 370,
+      "lines": 407,
       "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its duration at the left corner, its moment at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nOn a note whose filename is a day other than today's, a link to today's daily\nnote labels the top-right corner. It is drawn by the entry decoration in the\nmarker row — never by this layer, which paints no text at all — and its own\nbackground cuts the top rail like the other three labels. Today's note carries\nnone: the link would point back at itself.",
       "obsidian": true,
       "imports": [
@@ -1963,7 +1979,7 @@
         {
           "name": "FrameHost",
           "kind": "interface",
-          "line": 57,
+          "line": 53,
           "signature": "export interface FrameHost",
           "doc": "What the layer may ask the plugin: settings, the session, the model, and a fallback path.",
           "hash": "0cbb7c436e",
@@ -1975,7 +1991,7 @@
         {
           "name": "entryFrameExtension",
           "kind": "function",
-          "line": 361,
+          "line": 398,
           "signature": "export function entryFrameExtension(host: FrameHost): Extension",
           "doc": "Draws one box per entry in a layer inside the scroller.",
           "hash": "049f956468",
@@ -1988,8 +2004,10 @@
         }
       ],
       "classes": [
+        "weaver-daylink-hover",
         "weaver-duration",
         "weaver-duration-raw",
+        "weaver-entry-daylink",
         "weaver-entry-head",
         "weaver-frame",
         "weaver-frame-layer"
@@ -3236,7 +3254,7 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 192,
+      "lines": 236,
       "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. On a note\nwhose filename is a day other than today's, a link to today's daily note is\nappended to the frame and positioned at its top-right corner; today's note\ncarries none, because it would link back to itself. The clock row's two halves\nare digit and punctuation runs, exactly as in the editor.",
       "obsidian": true,
       "imports": [
@@ -3255,9 +3273,9 @@
           "kind": "function",
           "line": 84,
           "signature": "export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor",
-          "doc": "Builds the post processor that frames entries in Reading view. It reads the\nparagraph text and nothing else — no settings, no vault access — and takes\nonly the opener the frame's day link needs.",
-          "hash": "c905f311a8",
-          "bytes": 4703,
+          "doc": "Builds the post processor that frames entries in Reading view. It reads the\nrendered paragraphs and their source section — no settings or vault access —\nand takes only the opener the frame's day link needs.",
+          "hash": "0538b50dd5",
+          "bytes": 7116,
           "refs": [
             "src/main.ts"
           ],
@@ -3980,6 +3998,8 @@
     "defined": [
       "weaver-close-mark",
       "weaver-close-mark-line",
+      "weaver-daylink-caret",
+      "weaver-daylink-hover",
       "weaver-dcn-ink",
       "weaver-dcn-num",
       "weaver-duration",

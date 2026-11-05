@@ -334,11 +334,23 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   color: color-mix(in oklab, var(--weaver-dcolor, var(--text-normal)) 75%, transparent);
   cursor: pointer;
   white-space: nowrap;
+  /* Opacity preserves both geometry and keyboard access; focus reveals the link. */
+  opacity: 0;
+  pointer-events: none;
 }
 
 .weaver-entry-daylink:focus-visible {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
+}
+
+.weaver-entry-daylink.weaver-daylink-caret,
+.weaver-entry-daylink.weaver-daylink-hover,
+.weaver-entry-daylink:focus-visible,
+.markdown-rendered .weaver-frame.is-static:hover > .weaver-entry-daylink,
+.markdown-rendered .weaver-frame.is-static:focus-within > .weaver-entry-daylink {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head {
@@ -354,7 +366,7 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
 
 .markdown-rendered .weaver-frame.is-static .weaver-entry-daylink {
   position: absolute;
-  right: 0.45em;
+  right: calc(0.45em + 16px);
   top: 0;
   transform: translateY(-50%);
 }
@@ -368,15 +380,20 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* Label shadows need air before prose, or they erase its ascenders/descenders. */
+  row-gap: 8px;
+  /* Unlike the editor overlay, this wrapper contains selectable, clickable text. */
+  pointer-events: auto;
+  /* Rail labels hang beyond this wrapper; only the editor overlay clips effects. */
+  overflow: visible;
   /* The frame's edges are the label centres. The measured Live Preview gap
    * between one entry's clock centre and the next marker centre is 58 px at
    * 32 px type; 1.8em reproduces it, and adjacent labels sit on opposite sides
    * of the frame, so they do not collide. */
-  margin: 1.8em 0 1.8em var(--weaver-frame-indent);
-  /* Horizontal only: vertical space belongs to the rows, which hang over the
-   * rails by half a line each. Half a line's worth either side, so the frame keeps
-   * the same air as Live Preview's `LEFT_GUTTER`/`RIGHT_GUTTER`. */
-  padding: 0 0.45em;
+  margin: 1.8em -16px 1.8em calc(var(--weaver-frame-indent) - 16px);
+  /* Extend the rails, not the text: the extra 16 px cancels in the margins and
+   * leaves the label halos clear of the rounded corners. */
+  padding: 0 calc(0.45em + 16px);
   border-radius: 10px;
   font-size: var(--weaver-entry-size);
   box-shadow: inset 0 0 0 1px
@@ -394,7 +411,7 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
  * indent moves inside it as the prose's padding — the same two modes as Live
  * Preview, expressed the way this surface does geometry. */
 body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static {
-  margin-left: 0;
+  margin-left: -16px;
 }
 
 body.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static .weaver-entry-prose,

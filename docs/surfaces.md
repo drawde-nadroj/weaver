@@ -123,8 +123,12 @@ Every surface must answer three questions; one that cannot is not a surface.
   today's, a link to today's daily note labels the top-right corner: `ui/day-link.ts`
   builds it, the marker row's decoration positions it absolutely in Live Preview, and
   the static frame does the same in Reading view. It names the current date, not the
-  note's own day, and its background cuts the top rail. Today's note carries none,
-  and Source mode carries none.
+  note's own day, and its background cuts the top rail. It is invisible until the
+  caret is inside that entry (marker through clock row), the pointer hovers over
+  its frame, or the link receives keyboard focus. Hovering another frame can reveal
+  a second link without hiding the caret's link; leaving hides that second link.
+  Reading view has no caret, so it reveals the link on hover or focus within the
+  frame. Revealing changes no geometry. Today's note and Source mode carry none.
 - The frame's labels — marker, the date link on another day, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
@@ -158,12 +162,12 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   paints over the rail behind it. That is the whole mechanism: no second rendering of
   the row, no masked rail, no character moved. The rails keep a short stub beside
   each corner, which is what makes the box read as a frame rather than a box.
-- The box spans the text column: `16 px` outside the marker's ink on the left and
-  `10 px` past the text column's right edge — the air beside each corner, and the
-  stub the rail leaves there. A box that hugged its text could not put the duration
+- The box spans the text column with `16 px + 0.45em` outside the marker's ink
+  on the left and past the text column's right edge, matching Reading view —
+  the stub the rail leaves there. A box that hugged its text could not put the duration
   at one bottom corner and the moment at the other without a second rendering of the
-  row. `src/core/frame.ts` is the whole geometry, two pure functions: `frameBox` and
-  `frameSpan`.
+  row. `src/core/frame.ts` owns `frameBox`, `frameSpan`, and the shared
+  `frameLabelInset` clearance.
 - Nothing reflows: the box catches up to the text, never the other way round.
   `.cm-scroller` is already `position: relative`, so the boxes scroll with the
   content and a scroll costs no measurement; only a reflow or a resize schedules
@@ -207,9 +211,14 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 
 The same shape, from a post processor: a `<p>` starting with a marker becomes the
 frame's first child — the file's own marker characters, split into digit runs — each
-following sibling becomes `.weaver-entry-prose` inside the frame, and a `<p>` that is
-only a duration becomes its last child. The wrapper is a real element because a box
+following sibling becomes `.weaver-entry-prose` inside the frame. Obsidian can
+render a signed clock as a separate list block; the processor reads its exact
+source row, places the clock at the frame's bottom edge, and hides that separate
+section without changing the note. The wrapper is a real element because a box
 needs one to enclose, and the browser needs no measurement at all to draw it.
+The marker's own soft break is removed too, so the first prose line starts
+directly below the top label with only the 8 px clearance its background needs.
+Later author-written breaks and inline markup remain intact.
 
 The frame's edges are the rails, so the first and last children *hang half a line
 over them*: `align-self` shrink-wraps each one to its own text, and a negative
@@ -220,14 +229,15 @@ margin is the measured Live Preview gap between one entry's clock centre and the
 marker centre, 58 px at 32 px type. A duration paragraph with no entry above it is
 never labelled: it has no rail to cut.
 
-The frame's horizontal air is `0.45em` either side, the same on both platforms, and
-the clock row's `3px` of vertical padding is carried in its own negative margin
-(`calc(-0.675em - 3px)`) so the rail still lands on the glyphs' centre. No label
-overhangs: the padding *is* the stub beside each corner, exactly as `LEFT_GUTTER` and
-`RIGHT_GUTTER` are in Live Preview. In the fixed mode the frame's `margin-left` goes to
-`0` and the indent moves onto the prose's padding, which is how this surface expresses
-the same two modes — that is the one place the geometry differs between the two
-modes rather than being a single shared rule.
+The frame adds 16 px of horizontal air outside the existing `0.45em` inset:
+negative outer margins cancel the extra padding, so the prose stays in place
+while the labels' 8 px background halos no longer erase the curved corners. An
+8 px row gap keeps those same halos off the prose's ascenders and descenders.
+The clock row's `3px` of vertical padding is carried in its own negative margin
+(`calc(-0.675em - 3px)`) so the rail still lands on the glyphs' centre. Static
+frames allow overflow so the raised labels remain intact; unlike the editor's
+paint-only overlay they also accept pointer events. In fixed mode the left
+margin is `-16px`, cancelling the extra air without following the dimension.
 
 Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.

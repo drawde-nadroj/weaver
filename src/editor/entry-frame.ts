@@ -36,16 +36,12 @@ import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
 import { dimensionColor } from "../core/color";
-import { frameBox, frameSpan, type FrameColumn } from "../core/frame";
+import { frameBox, frameLabelInset, frameSpan, type FrameColumn } from "../core/frame";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { entryIndexField } from "./entry-field";
 import { FRAME_EFFECTS, frameEffect } from "./frame-effects";
 
-/** Air between the marker's ink and the left rail, and the stub the frame leaves beside each corner. */
-const LEFT_GUTTER = 16;
-/** Air between the text column's right edge and the right rail, and the stub that labels the corner. */
-const RIGHT_GUTTER = 10;
 /** Clear space required between two entries' rails. */
 const MIN_AIR = 8;
 /** Air below the last prose row when an entry has no clock row. */
@@ -149,6 +145,18 @@ class EntryFrames {
   private readonly observer: ResizeObserver;
   private pending = 0;
   private destroyed = false;
+  private pointer: { x: number; y: number } | null = null;
+
+  private readonly pointerMove = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") return;
+    this.pointer = { x: event.clientX, y: event.clientY };
+    this.revealHoveredLink();
+  };
+
+  private readonly pointerLeave = (): void => {
+    this.pointer = null;
+    this.revealHoveredLink();
+  };
 
   constructor(
     private readonly view: EditorView,
@@ -158,6 +166,9 @@ class EntryFrames {
     this.layer.className = "weaver-frame-layer";
     this.layer.setAttribute("aria-hidden", "true");
     view.scrollDOM.appendChild(this.layer);
+    view.scrollDOM.addEventListener("pointermove", this.pointerMove);
+    view.scrollDOM.addEventListener("pointerleave", this.pointerLeave);
+    view.scrollDOM.addEventListener("scroll", this.pointerLeave);
 
     this.observer = new ResizeObserver(() => this.schedule());
     this.observer.observe(view.scrollDOM);
@@ -184,6 +195,9 @@ class EntryFrames {
 
   destroy(): void {
     this.destroyed = true;
+    this.view.scrollDOM.removeEventListener("pointermove", this.pointerMove);
+    this.view.scrollDOM.removeEventListener("pointerleave", this.pointerLeave);
+    this.view.scrollDOM.removeEventListener("scroll", this.pointerLeave);
     this.observer.disconnect();
     if (this.pending !== 0) window.cancelAnimationFrame(this.pending);
     this.pending = 0;
@@ -204,11 +218,29 @@ class EntryFrames {
   private clear(): void {
     for (const node of this.frames.values()) node.root.remove();
     this.frames.clear();
+    this.revealHoveredLink();
   }
 
   private path(): string {
     const info = this.view.state.field(editorInfoField, false);
     return info?.file?.path ?? this.host.fallbackPath();
+  }
+
+  /** Hover reads the painted boxes without making the overlay intercept editing. */
+  private revealHoveredLink(): void {
+    const rows = renderedRows(this.view);
+    for (const [n, row] of rows) {
+      const link = row.head?.querySelector(".weaver-entry-daylink");
+      if (link === null || link === undefined) continue;
+      const frame = this.frames.get(n)?.root.getBoundingClientRect();
+      const head = row.head?.getBoundingClientRect();
+      const pointer = this.pointer;
+      const hovered = pointer !== null && frame !== undefined && head !== undefined &&
+        pointer.x >= frame.left && pointer.x <= frame.right &&
+        pointer.y >= Math.min(frame.top, head.top) &&
+        pointer.y <= Math.max(frame.bottom, head.bottom);
+      link.classList.toggle("weaver-daylink-hover", hovered);
+    }
   }
 
   private measure(): void {
@@ -237,10 +269,14 @@ class EntryFrames {
     const toX = (clientX: number): number => clientX + scroller.scrollLeft - base.left;
     const toY = (screenY: number): number => screenY - base.top + scroller.scrollTop;
 
+    const head = this.view.contentDOM.querySelector<HTMLElement>(".weaver-entry-head");
+    const labelInset = frameLabelInset(Number.parseFloat(
+      window.getComputedStyle(head ?? this.view.contentDOM).fontSize
+    ));
     const content = this.view.contentDOM.getBoundingClientRect();
     const column: FrameColumn = {
       left: toX(base.left),
-      right: Math.min(toX(content.right) + RIGHT_GUTTER, toX(base.right))
+      right: Math.min(toX(content.right) + labelInset, toX(base.right))
     };
 
     const path = this.path();
@@ -307,7 +343,7 @@ class EntryFrames {
       const box = frameBox({
         column,
         textLeft: this.lefts.get(entry.n) ?? null,
-        gutter: LEFT_GUTTER
+        gutter: labelInset
       });
 
       const span = frameSpan({
@@ -354,6 +390,7 @@ class EntryFrames {
       node.root.remove();
       this.frames.delete(n);
     }
+    this.revealHoveredLink();
   }
 }
 

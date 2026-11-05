@@ -23,7 +23,7 @@ import type { MarkdownPostProcessor } from "obsidian";
 import { dimensionColorVars } from "../core/color";
 import { dayKey, dayKeyFromName, dayNameLike } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
-import { parseMarkerPrefix } from "../core/entries";
+import { parseEntries, parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
 import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
@@ -78,8 +78,8 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
 
 /**
  * Builds the post processor that frames entries in Reading view. It reads the
- * paragraph text and nothing else — no settings, no vault access — and takes
- * only the opener the frame's day link needs.
+ * rendered paragraphs and their source section — no settings or vault access —
+ * and takes only the opener the frame's day link needs.
  */
 export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor {
   return (element: HTMLElement, context): void => {
@@ -91,6 +91,24 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
     // The link goes to today, not to the note it is painted on.
     const dayLinkTarget = dayNameLike(today, basename);
     const open = openDayLink ?? (() => {});
+
+    // Obsidian renders each Markdown block separately. A canonical + or - clock
+    // is a list in another section, not a paragraph beside the entry's prose.
+    // Read its source address rather than guessing a sigil from the rendered list.
+    const section = context.getSectionInfo?.(element) ?? null;
+    const sourceIndex = section === null ? null : parseEntries(section.text);
+    if (section !== null && sourceIndex !== null) {
+      const sectionText = sourceIndex.lines.slice(section.lineStart, section.lineEnd + 1).join("\n").trim();
+      const clockEntry = sourceIndex.entries.find((entry) =>
+        entry.clockLine !== null &&
+        entry.clockLine >= section.lineStart && entry.clockLine <= section.lineEnd &&
+        sectionText === sourceIndex.lines[entry.clockLine]?.trim()
+      );
+      if (clockEntry !== undefined) {
+        element.setAttribute("hidden", "");
+        return;
+      }
+    }
 
     // The nearest marker above a duration is simply the last one met, because
     // paragraphs arrive in document order.
@@ -132,7 +150,22 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
       const first = paragraph.firstChild;
       const firstText = first?.textContent ?? "";
       if (first !== null && first.nodeType === TEXT_NODE && firstText.startsWith(text.slice(0, prefix.length))) {
-        first.textContent = firstText.slice(prefix.length);
+        const remainder = firstText.slice(prefix.length);
+        first.textContent = remainder;
+        // The marker's own soft break is not a blank prose line. Remove exactly
+        // that separator, retaining any later author-written breaks and markup.
+        const separator = first.nextSibling;
+        if (remainder.trim() === "" && separator !== null &&
+            separator.nodeType === 1 && (separator as Element).tagName === "BR") {
+          first.remove();
+          separator.remove();
+          const proseStart = paragraph.firstChild;
+          if (proseStart?.nodeType === TEXT_NODE) {
+            proseStart.textContent = (proseStart.textContent ?? "").replace(/^\r?\n/, "");
+          }
+        } else if (/^[ \t]*\r?\n/.test(remainder)) {
+          first.textContent = remainder.replace(/^[ \t]*\r?\n/, "");
+        }
       }
 
       const frame = document.createElement("div");
@@ -185,6 +218,17 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         sibling.setAttribute("style", dimensionColorVars(prefix.d));
         frame.appendChild(sibling);
         sibling = next;
+      }
+
+      // The clock's own section is suppressed independently, so block rendering
+      // order and virtualized section boundaries cannot leave a bullet behind.
+      const sourceEntry = section === null ? undefined : sourceIndex?.entries.find((entry) =>
+        entry.n === prefix.n && entry.line >= section.lineStart && entry.line <= section.lineEnd
+      );
+      if (sourceEntry?.clockLine !== null && sourceEntry?.clockLine !== undefined &&
+          sourceEntry.clockLine > (section?.lineEnd ?? -1)) {
+        const sourceClock = parseClockRow(sourceIndex?.lines[sourceEntry.clockLine]?.trim() ?? "");
+        if (sourceClock !== null) frame.appendChild(clockElement(sourceClock, prefix.d, true));
       }
     }
   };

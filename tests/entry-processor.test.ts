@@ -22,7 +22,57 @@ function container(): ShimElement {
 }
 
 describe("the entry processor", () => {
+  it.each(["+", "-"])("keeps a %s clock in its frame across Obsidian sections", (sigil) => {
+    const source = `{ 15.1.29 }\nprose\n${sigil} 00:00:29 08:30:06`;
+    const root = container();
+    paragraph(root, "{ 15.1.29 }\nprose");
+    const clockSection = container();
+    clockSection.createEl("ul").createEl("li").setText("00:00:29 08:30:06");
+    const sectionContext = (start: number, end: number): MarkdownPostProcessorContext => ({
+      ...context("Chronomancer/2026.11.02.md"),
+      getSectionInfo: () => ({ text: source, lineStart: start, lineEnd: end })
+    });
+    const process = createEntryProcessor();
+    // Sections can arrive in either order, including a list before its marker.
+    process(clockSection as never, sectionContext(2, 2));
+    process(root as never, sectionContext(0, 1));
+    const frame = root.querySelector(".weaver-frame");
+    expect(frame?.lastChild?.hasClass("weaver-duration")).toBe(true);
+    expect(frame?.querySelector(".weaver-duration-clock")?.textContent).toBe(`${sigil} 00:00:29`);
+    expect(frame?.querySelector(".weaver-duration-moment")?.textContent).toBe("08:30:06");
+    expect(clockSection.getAttr("hidden")).toBe("");
+
+    const unrelated = container();
+    unrelated.createEl("ul").createEl("li").setText("00:00:29 08:30:06");
+    process(unrelated as never, {
+      ...context("Chronomancer/2026.11.02.md"),
+      getSectionInfo: () => ({ text: "+ 00:00:29 08:30:06", lineStart: 0, lineEnd: 0 })
+    });
+    expect(unrelated.getAttr("hidden")).toBeNull();
+  });
   const PATH = "Chronomancer/2026.10.26.md";
+
+  it("removes the marker's soft break without losing prose markup or later breaks", () => {
+    const root = container();
+    const p = paragraph(root, "{ 2.1.3 }");
+    p.createEl("br");
+    p.appendChild(document.createTextNode("\n") as unknown as ShimElement);
+    p.createEl("strong").setText("first prose");
+    p.createEl("br");
+    p.appendChild(document.createTextNode("\nsecond line") as unknown as ShimElement);
+    createEntryProcessor()(root as never, context(PATH));
+    const prose = root.querySelector(".weaver-entry-prose");
+    expect(prose?.querySelector("strong")?.textContent).toBe("first prose");
+    expect(prose?.querySelectorAll("br").length).toBe(1);
+    expect(prose?.textContent).toBe("first prose\nsecond line");
+  });
+
+  it("removes only the marker newline when soft breaks are rendered as text", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }\n\nfirst prose");
+    createEntryProcessor()(root as never, context(PATH));
+    expect(root.querySelector(".weaver-entry-prose")?.textContent).toBe("\nfirst prose");
+  });
 
   it("turns a marker paragraph into the head, with the punctuation coloured", () => {
     const root = container();
