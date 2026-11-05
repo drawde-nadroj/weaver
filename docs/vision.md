@@ -30,11 +30,11 @@ never to write prose.
 | Term | Means | Is not |
 | --- | --- | --- |
 | **Entry** | One unit of a day note: a marker line, its prose, and at most one clock row. | A Markdown heading, a block, a file. |
-| **Marker** | `{ D.B.N }`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
+| **Marker** | `{ B.D.N }`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
 | **D** | The dimension: how deep the thought sits inside its branch. `1` is the top of a day. | A rank, a score, an order. |
 | **B** | The branch id: a depth-1 entry's position among depth-1 entries, carried unchanged all the way down its subtree. Repaired only when a root is deleted. | Identity. It moves. |
 | **N** | The day sequence: assigned once, only ever appended. | A sort key you can rewrite. |
-| **Clock row** | The entry's last line: the moment `HH:MM:SS` it was written, then its duration `[+-=] HH:MM:SS`. Either half may be absent. | Prose, a heading, a timestamp in frontmatter. |
+| **Clock row** | The entry's last line: the duration `[+-=] HH:MM:SS`, then the moment `HH:MM:SS` it was written. Either half may be absent. | Prose, a heading, a timestamp in frontmatter. |
 | **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its moment. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
 | **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Settle** | `⏎` on an open entry: the duration becomes `+`, once, and the clock stops. Nothing else moves. | Saving, syncing, submitting. |
@@ -66,7 +66,7 @@ appears in copy — depth reads `1D`…`nD`.
 The two writes the table names — settle and pause — are `planDuration` with `+`
 and `=`, and nothing else can change a duration half.
 
-<!-- claim: src/core/insert.ts#planDuration @543224e52c -->
+<!-- claim: src/core/insert.ts#planDuration @546c356091 -->
 
 ## Evidence versus session
 

@@ -18,15 +18,17 @@
  *
  * The file's own rows are the box's rails, and each rail runs through the centre
  * of the row that labels it: the marker row is the top-left label, the clock row
- * the bottom edge — its moment at the left corner, its duration at the right —
+ * the bottom edge — its duration at the left corner, its moment at the right —
  * and each label's own background cuts the rail behind it, so the box reads as
  * running into the text that names it. Nothing is at `opacity: 0`, nothing is
  * painted twice, and the frame survives its ends scrolling out of the render
  * range because a row that is not rendered falls back to the line block's centre.
  *
- * The date labels the top-right corner on every entry, and it is drawn by the
- * entry decoration in the marker row — never by this layer, which paints no text
- * at all.
+ * On a note whose filename is a day other than today's, a link to today's daily
+ * note labels the top-right corner. It is drawn by the entry decoration in the
+ * marker row — never by this layer, which paints no text at all — and its own
+ * background cuts the top rail like the other three labels. Today's note carries
+ * none: the link would point back at itself.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -279,7 +281,7 @@ class EntryFrames {
       const lastRow = this.view.state.doc.line(lastLine + 1);
 
       // The bottom rail is the clock row's centre, so its glyphs straddle it —
-      // the moment at one corner and the duration at the other. An entry with no
+      // the duration at one corner and the moment at the other. An entry with no
       // clock row has no bottom label: its box closes below its last prose row
       // instead, on air rather than on a rail.
       let lastRail: number;

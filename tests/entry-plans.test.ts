@@ -27,7 +27,7 @@ describe("planStartEntry", () => {
     if (plan === null) return;
 
     const next = applied(source, plan);
-    expect(next).toBe("{ 1.1.1 }\n\n13:27:43 - 00:00:00\n");
+    expect(next).toBe("{ 1.1.1 }\n\n- 00:00:00 13:27:43\n");
 
     // The caret sits on the blank prose line, where the writing happens.
     expect(next.slice(0, plan.selection.from)).toBe("{ 1.1.1 }\n");
@@ -35,13 +35,13 @@ describe("planStartEntry", () => {
   });
 
   it("appends a second root after the existing one", () => {
-    const source = ["{ 1.1.1 }", "prose", "10:00:00 + 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "+ 00:01:00 10:00:00"].join("\n");
     const plan = planStartEntry(source, parseEntries(source), AT_1337);
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(source, plan);
-    expect(next).toContain("{ 1.2.2 }");
-    expect(next).toContain("13:27:43 - 00:00:00");
+    expect(next).toContain("{ 2.1.2 }");
+    expect(next).toContain("- 00:00:00 13:27:43");
   });
 });
 
@@ -49,13 +49,13 @@ describe("planChildEntry", () => {
   const SOURCE = [
     "{ 1.1.1 }",
     "root",
-    "10:00:00 + 00:01:00",
-    "{ 2.1.2 }",
+    "+ 00:01:00 10:00:00",
+    "{ 1.2.2 }",
     "first child",
-    "10:01:00 + 00:00:00",
+    "+ 00:00:00 10:01:00",
     "{ 2.2.3 }",
     "second child",
-    "10:02:00 - 00:00:00"
+    "- 00:00:00 10:02:00"
   ].join("\n");
 
   it("goes one dimension deeper on the same branch, next in the sequence", () => {
@@ -67,8 +67,8 @@ describe("planChildEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(SOURCE, plan);
-    expect(next).toContain("{ 2.1.4 }");
-    expect(next).toContain("13:27:43 - 00:00:00");
+    expect(next).toContain("{ 1.2.4 }");
+    expect(next).toContain("- 00:00:00 13:27:43");
     expect(next.split("\n").length).toBe(SOURCE.split("\n").length + 4);
     // One change, one undo: an insert renumbers nothing.
     expect(plan.changes.length).toBe(1);
@@ -76,13 +76,13 @@ describe("planChildEntry", () => {
     // Directly under the parent's own block, above the older siblings: the
     // newest branch is the closest one to what it descends from.
     const lines = next.split("\n");
-    const parentClock = lines.indexOf("10:00:00 + 00:01:00");
-    expect(lines[parentClock + 2]).toBe("{ 2.1.4 }");
-    expect(lines.indexOf("{ 2.1.4 }")).toBeLessThan(lines.indexOf("{ 2.1.2 }"));
+    const parentClock = lines.indexOf("+ 00:01:00 10:00:00");
+    expect(lines[parentClock + 2]).toBe("{ 1.2.4 }");
+    expect(lines.indexOf("{ 1.2.4 }")).toBeLessThan(lines.indexOf("{ 1.2.2 }"));
   });
 
   it("inserts after the parent's own clock row when it has no children yet", () => {
-    const childless = ["{ 1.1.1 }", "root", "10:00:00 + 00:01:00"].join("\n");
+    const childless = ["{ 1.1.1 }", "root", "+ 00:01:00 10:00:00"].join("\n");
     const index = parseEntries(childless);
     const parent = index.entries[0];
     if (parent === undefined) throw new Error("expected a parent");
@@ -91,18 +91,18 @@ describe("planChildEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     const lines = applied(childless, plan).split("\n");
-    const parentClock = lines.indexOf("10:00:00 + 00:01:00");
-    expect(lines[parentClock + 2]).toBe("{ 2.1.2 }");
+    const parentClock = lines.indexOf("+ 00:01:00 10:00:00");
+    expect(lines[parentClock + 2]).toBe("{ 1.2.2 }");
   });
 
   it("keeps a crooked branch's B when inserting under it", () => {
     const crooked = [
       "{ 1.1.1 }",
       "root",
-      "10:00:00 + 00:01:00",
-      "{ 2.5.2 }",
+      "+ 00:01:00 10:00:00",
+      "{ 5.2.2 }",
       "crooked child",
-      "10:01:00 + 00:00:00"
+      "+ 00:00:00 10:01:00"
     ].join("\n");
 
     const index = parseEntries(crooked);
@@ -114,10 +114,10 @@ describe("planChildEntry", () => {
 
     const next = applied(crooked, plan);
     // The child inherits the parent's written `B`: the branch stays uniform.
-    expect(next).toContain("{ 2.1.3 }");
+    expect(next).toContain("{ 1.2.3 }");
     // The existing child is left exactly as the writer typed it.
-    expect(next).toContain("{ 2.5.2 }");
-    expect(next).toContain("10:01:00 + 00:00:00");
+    expect(next).toContain("{ 5.2.2 }");
+    expect(next).toContain("+ 00:00:00 10:01:00");
   });
 });
 
@@ -147,15 +147,15 @@ describe("planDeleteEntry", () => {
   const THREE = [
     "{ 1.1.1 }",
     "first",
-    "10:00:00 + 00:01:00",
+    "+ 00:01:00 10:00:00",
     "",
-    "{ 1.2.2 }",
+    "{ 2.1.2 }",
     "second",
-    "10:05:00 + 00:02:00",
+    "+ 00:02:00 10:05:00",
     "",
-    "{ 1.3.3 }",
+    "{ 3.1.3 }",
     "third",
-    "10:10:00 + 00:03:00",
+    "+ 00:03:00 10:10:00",
     ""
   ].join("\n");
 
@@ -176,11 +176,11 @@ describe("planDeleteEntry", () => {
       [
         "{ 1.1.1 }",
         "first",
-        "10:00:00 + 00:01:00",
+        "+ 00:01:00 10:00:00",
         "",
-        "{ 1.2.3 }",
+        "{ 2.1.3 }",
         "third",
-        "10:10:00 + 00:03:00",
+        "+ 00:03:00 10:10:00",
         ""
       ].join("\n")
     );
@@ -190,17 +190,17 @@ describe("planDeleteEntry", () => {
     const source = [
       "{ 1.1.1 }",
       "root",
-      "10:00:00 + 00:01:00",
-      "{ 2.1.2 }",
+      "+ 00:01:00 10:00:00",
+      "{ 1.2.2 }",
       "child",
-      "10:01:00 + 00:01:00",
-      "{ 3.1.3 }",
+      "+ 00:01:00 10:01:00",
+      "{ 1.3.3 }",
       "grandchild",
-      "10:02:00 + 00:01:00",
+      "+ 00:01:00 10:02:00",
       "",
-      "{ 1.2.4 }",
+      "{ 2.1.4 }",
       "sibling",
-      "10:03:00 + 00:01:00",
+      "+ 00:01:00 10:03:00",
       ""
     ].join("\n");
     const { index, entry } = entryAt(source, 1);
@@ -209,24 +209,24 @@ describe("planDeleteEntry", () => {
     if (plan === null) throw new Error("expected a plan");
 
     expect(applied(source, plan)).toBe(
-      ["{ 1.1.4 }", "sibling", "10:03:00 + 00:01:00", ""].join("\n")
+      ["{ 1.1.4 }", "sibling", "+ 00:01:00 10:03:00", ""].join("\n")
     );
   });
 
   it("leaves one trailing newline and no blank line when the last entry goes", () => {
-    const source = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00", "", "{ 1.2.2 }", "second", "10:05:00 + 00:02:00", ""].join("\n");
+    const source = ["{ 1.1.1 }", "first", "+ 00:01:00 10:00:00", "", "{ 2.1.2 }", "second", "+ 00:02:00 10:05:00", ""].join("\n");
     const { index, entry } = entryAt(source, 2);
 
     const plan = planDeleteEntry(source, index, entry);
     if (plan === null) throw new Error("expected a plan");
 
     expect(applied(source, plan)).toBe(
-      ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00", ""].join("\n")
+      ["{ 1.1.1 }", "first", "+ 00:01:00 10:00:00", ""].join("\n")
     );
   });
 
   it("leaves an empty document when the only entry goes, caret at the top", () => {
-    const source = ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:00", ""].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00", ""].join("\n");
     const { index, entry } = entryAt(source, 1);
 
     const plan = planDeleteEntry(source, index, entry);
@@ -241,15 +241,15 @@ describe("planDeleteEntry", () => {
     const plan = planDeleteEntry(THREE, index, entry);
     if (plan === null) throw new Error("expected a plan");
 
-    expect(THREE.slice(plan.selection.from).startsWith("{ 1.2.2 }")).toBe(true);
+    expect(THREE.slice(plan.selection.from).startsWith("{ 2.1.2 }")).toBe(true);
     expect(plan.selection.to).toBe(plan.selection.from);
   });
 });
 
 describe("planDuration", () => {
-  const DRAFT = ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:01"].join("\n");
-  const PAUSED = ["{ 1.1.1 }", "prose", "10:00:00 = 00:00:01"].join("\n");
-  const SETTLED = ["{ 1.1.1 }", "prose", "10:00:00 + 00:00:01"].join("\n");
+  const DRAFT = ["{ 1.1.1 }", "prose", "- 00:00:01 10:00:00"].join("\n");
+  const PAUSED = ["{ 1.1.1 }", "prose", "= 00:00:01 10:00:00"].join("\n");
+  const SETTLED = ["{ 1.1.1 }", "prose", "+ 00:00:01 10:00:00"].join("\n");
 
   const first = (source: string) => {
     const index = parseEntries(source);
@@ -265,12 +265,12 @@ describe("planDuration", () => {
     if (plan === null) throw new Error("expected a plan");
 
     expect(applied(DRAFT, plan)).toBe(
-      ["{ 1.1.1 }", "prose", "10:00:00 + 00:05:42"].join("\n")
+      ["{ 1.1.1 }", "prose", "+ 00:05:42 10:00:00"].join("\n")
     );
   });
 
   it("keeps a moment the writer typed short", () => {
-    const source = ["{ 1.1.1 }", "prose", "9:14 - 00:00:01"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "- 00:00:01 9:14"].join("\n");
     const { index, entry } = first(source);
 
     const plan = planDuration(source, index, entry, "+", 342_000);
@@ -278,7 +278,7 @@ describe("planDuration", () => {
 
     // The moment is not normalised on the way out: only the tail is written.
     expect(applied(source, plan)).toBe(
-      ["{ 1.1.1 }", "prose", "9:14 + 00:05:42"].join("\n")
+      ["{ 1.1.1 }", "prose", "+ 00:05:42 9:14"].join("\n")
     );
   });
 
@@ -290,7 +290,7 @@ describe("planDuration", () => {
       if (plan === null) throw new Error("expected a plan");
 
       expect(applied(source, plan)).toBe(
-        ["{ 1.1.1 }", "prose", "10:00:00 = 00:01:00"].join("\n")
+        ["{ 1.1.1 }", "prose", "= 00:01:00 10:00:00"].join("\n")
       );
     }
   });
@@ -340,7 +340,7 @@ describe("planDuration", () => {
 });
 
 describe("settling and descending", () => {
-  const SOURCE = ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:00"].join("\n");
+  const SOURCE = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
 
   it("settles to `+` and touches nothing else", () => {
     const index = parseEntries(SOURCE);
@@ -351,7 +351,7 @@ describe("settling and descending", () => {
     if (duration === null) throw new Error("expected a duration plan");
 
     expect(applied(SOURCE, duration)).toBe(
-      ["{ 1.1.1 }", "prose", "10:00:00 + 00:04:00"].join("\n")
+      ["{ 1.1.1 }", "prose", "+ 00:04:00 10:00:00"].join("\n")
     );
   });
 
@@ -377,14 +377,14 @@ describe("settling and descending", () => {
       [
         "{ 1.1.1 }",
         "prose",
-        "10:00:00 + 00:04:00",
+        "+ 00:04:00 10:00:00",
         "",
-        "{ 2.1.2 }",
+        "{ 1.2.2 }",
         "",
-        "13:27:43 - 00:00:00"
+        "- 00:00:00 13:27:43"
       ].join("\n")
     );
-    expect(next.slice(0, child.selection.from).endsWith("{ 2.1.2 }\n")).toBe(true);
+    expect(next.slice(0, child.selection.from).endsWith("{ 1.2.2 }\n")).toBe(true);
   });
 });
 
@@ -392,7 +392,7 @@ describe("planWhisper", () => {
   const SOURCE = [
     "{ 1.1.1 }",
     "the marker row's own words",
-    "10:00:00 + 00:01:00"
+    "+ 00:01:00 10:00:00"
   ].join("\n");
 
   it("inserts above the first prose line, keeping the clock row last", () => {
@@ -413,7 +413,7 @@ describe("planWhisper", () => {
         "~ a pricing decision",
         "~ next: read it once more",
         "the marker row's own words",
-        "10:00:00 + 00:01:00"
+        "+ 00:01:00 10:00:00"
       ].join("\n")
     );
     // One insertion: the selection is the empty range past the new rows.
@@ -424,7 +424,7 @@ describe("planWhisper", () => {
   });
 
   it("lands above a prose line that sits after a blank one", () => {
-    const source = ["{ 1.1.1 }", "", "written prose", "10:00:00 + 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "", "written prose", "+ 00:01:00 10:00:00"].join("\n");
     const index = parseEntries(source);
     const entry = index.entries[0];
     if (entry === undefined) throw new Error("expected an entry");
@@ -438,7 +438,7 @@ describe("planWhisper", () => {
         "",
         "~ written prose, read",
         "written prose",
-        "10:00:00 + 00:01:00"
+        "+ 00:01:00 10:00:00"
       ].join("\n")
     );
   });

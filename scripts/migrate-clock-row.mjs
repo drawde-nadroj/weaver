@@ -8,16 +8,16 @@
  *
  * The old grammar put the moment on the marker:
  *
- *   { 1.2.3 } - 13:27:43
+ *   { 2.1.3 } - 13:27:43
  *   the prose
  *   + 00:04:12
  *
- * The new grammar gives the marker its own line and puts the moment and the
- * duration together on the entry's last line:
+ * The new grammar gives the marker its own line and puts the duration and the
+ * moment together on the entry's last line:
  *
- *   { 1.2.3 }
+ *   { 2.1.3 }
  *   the prose
- *   13:27:43 + 00:04:12
+ *   + 00:04:12 13:27:43
  *
  * A title written after the old clock moves to the line below the marker, where
  * the parser already reads it. An entry with no duration line gains `+ 00:00:00`
@@ -34,7 +34,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
 const FENCE = /^( {0,3})(`{3,}|~{3,})/;
-/** `{ D.C.N } - HH:MM:SS` with an optional title after it. */
+/** `{ B.D.N } - HH:MM:SS` with an optional title after it. */
 const LEGACY = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)(.*)$/;
 /** Any marker, old or new: the boundary between two entries. */
 const MARKER = /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}/;
@@ -42,8 +42,8 @@ const MARKER = /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}/;
 const DURATION = /^([+\-=])[ \t]+(\d{2,}:[0-5]\d:[0-5]\d)[ \t]*$/;
 /** The day's close mark: a decision, not the entry's prose. */
 const CLOSE = /^✓[ \t]+\d{1,2}:\d{2}(?::\d{2})?$/;
-/** A clock row, moment first; the parser's own shape, lightly. */
-const CLOCK_ROW = /^(\d{1,2}:\d{2}(?::\d{2})?)(?:[ \t]+([+\-=])[ \t]+(\d{2,}:[0-5]\d:[0-5]\d))?[ \t]*$/;
+/** A clock row, duration first; the parser's own shape, lightly. */
+const CLOCK_ROW = /^([+\-=])[ \t]+(\d{2,}:[0-5]\d:[0-5]\d)(?:[ \t]+(\d{1,2}:\d{2}(?::\d{2})?))?[ \t]*$/;
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -106,8 +106,8 @@ function oldEntries(body, skip) {
       if (legacy === null) return;
       current = {
         line: index,
-        d: legacy[1],
-        b: legacy[2],
+        b: legacy[1],
+        d: legacy[2],
         n: legacy[3],
         time: normalizeClock(legacy[4] ?? "0:00"),
         title: (legacy[5] ?? "").trim(),
@@ -145,7 +145,7 @@ function migrate(source) {
       durationAt < 0
         ? "+ 00:00:00"
         : (body[durationAt] ?? "").trim().replace(/[ \t]+/g, " ");
-    const clockRow = `${entry.time} ${duration}`;
+    const clockRow = `${duration} ${entry.time}`;
 
     if (durationAt >= 0) {
       body[durationAt] = clockRow;
@@ -163,7 +163,7 @@ function migrate(source) {
       body.splice(after + 1, 0, clockRow);
     }
 
-    const replacement = [`{ ${entry.d}.${entry.b}.${entry.n} }`];
+    const replacement = [`{ ${entry.b}.${entry.d}.${entry.n} }`];
     if (entry.title !== "") replacement.push(entry.title);
     body.splice(entry.line, 1, ...replacement);
   }

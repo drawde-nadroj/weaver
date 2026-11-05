@@ -538,7 +538,7 @@ export class EntryEngine {
     }
 
     return {
-      marker: formatMarker(entry.d, entry.b, entry.n),
+      marker: formatMarker(entry.b, entry.d, entry.n),
       prose: entry.proseLines.map((line) => index.lines[line] ?? "").join("\n"),
       ancestors
     };
@@ -650,7 +650,7 @@ export class EntryEngine {
       if (target.whisper.some((row) => row.type === "thread")) continue;
 
       const own = skeleton.find(
-        (each) => each.marker === formatMarker(target.d, target.b, target.n)
+        (each) => each.marker === formatMarker(target.b, target.d, target.n)
       );
       // The first entry of the day has no earlier entry to cite.
       if (own === undefined || skeleton.indexOf(own) === 0) continue;
@@ -744,7 +744,7 @@ export class EntryEngine {
     return index.entries
       .filter((entry) => entry.state === "settled" && entry.proseLines.length > 0)
       .map((entry) => ({
-        marker: formatMarker(entry.d, entry.b, entry.n),
+        marker: formatMarker(entry.b, entry.d, entry.n),
         name:
           names.get(index.entries.indexOf(entry)) ??
           entry.whisper[0]?.text ??

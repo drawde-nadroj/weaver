@@ -2,17 +2,18 @@
  * The rendered clock row.
  *
  * The row is the frame's bottom edge, and its two ends are its two labels: the
- * moment at the left corner, the duration at the right. The widget renders the
- * row the file holds — the moment the parser read, the duration from its sigil
- * and milliseconds — and a half the row does not carry is not drawn: a
- * moment-only row has no clock at its right corner, and a duration-only row has
- * no moment at its left. Each half carries its own background, so the rail is cut
+ * duration at the left corner, the moment at the right. The widget renders the
+ * row the file holds — the duration from its sigil and milliseconds, then the
+ * moment the parser read — and a half the row does not carry is not drawn: a
+ * moment-only row has no clock at its left corner, and a duration-only row has
+ * no moment at its right. Each half carries its own background, so the rail is cut
  * twice and stays visible in the gap between them.
  *
  * Each half is three white digit spans around two dimension-coloured colons — the
  * same grammar the marker and the date label are drawn in, so the whole frame
- * reads as one type. The day link no longer lives here: the date labels the top
- * right corner and is drawn by the decoration.
+ * reads as one type. The sigil is followed by a real space, exactly as the file
+ * writes it. The day link does not live here: the date labels the top-right
+ * corner and is drawn by the decoration.
  *
  * While the session is live the widget ticks itself: it mutates the duration
  * half's three digit spans every second and dispatches nothing, so the document,
@@ -82,16 +83,9 @@ export class DurationWidget extends WidgetType {
     const root = document.createElement("span");
     root.className = "weaver-duration";
 
-    // The bottom-left label: the moment, in white digits and the dimension's
-    // colons — the same grammar as the stopwatch beside it.
-    const moment = document.createElement("span");
-    moment.className = "weaver-duration-moment weaver-frame-label";
-    if (this.input.time !== null) appendClockRuns(moment, this.input.time);
-    root.appendChild(moment);
-
-    // The bottom-right label: the sigil, then the clock. A row that carries only
-    // a moment has no duration half, so the widget draws none: the frame must not
-    // label a corner with a value the file does not hold.
+    // The bottom-left label: the sigil, a space, then the clock. A row that
+    // carries only a moment has no duration half, so the widget draws none: the
+    // frame must not label a corner with a value the file does not hold.
     if (this.input.sigil !== null) {
       const clock = document.createElement("span");
       clock.className = "weaver-duration-clock weaver-frame-label";
@@ -99,6 +93,7 @@ export class DurationWidget extends WidgetType {
       const sigil = document.createElement("span");
       sigil.className = "weaver-duration-sigil";
       clock.appendChild(sigil);
+      clock.appendChild(document.createTextNode(" "));
 
       this.digits = appendClockRuns(clock, formatClock(this.input.ms));
 
@@ -106,6 +101,13 @@ export class DurationWidget extends WidgetType {
     } else {
       this.digits = [];
     }
+
+    // The bottom-right label: the moment, in white digits and the dimension's
+    // colons — the same grammar as the stopwatch beside it.
+    const moment = document.createElement("span");
+    moment.className = "weaver-duration-moment weaver-frame-label";
+    if (this.input.time !== null) appendClockRuns(moment, this.input.time);
+    root.appendChild(moment);
 
     this.root = root;
     this.paint(root);

@@ -32,9 +32,9 @@ import {
 } from "../test-support/harness";
 
 const DAY = "Chronomancer/2026.10.27.md";
-const DRAFT = ["{ 1.1.1 }", "wrote a thing about it", "10:00:00 - 00:01:00"].join("\n");
-const SETTLED = ["{ 1.1.1 }", "wrote a thing about it", "10:00:00 + 00:01:00"].join("\n");
-const WHISPERED = ["{ 1.1.1 }", "~ a thing, written", "wrote a thing about it", "10:00:00 + 00:01:00"].join("\n");
+const DRAFT = ["{ 1.1.1 }", "wrote a thing about it", "- 00:01:00 10:00:00"].join("\n");
+const SETTLED = ["{ 1.1.1 }", "wrote a thing about it", "+ 00:01:00 10:00:00"].join("\n");
+const WHISPERED = ["{ 1.1.1 }", "~ a thing, written", "wrote a thing about it", "+ 00:01:00 10:00:00"].join("\n");
 
 const WHISPER: WhisperItem[] = [{ type: "name", text: "a thing, written" }];
 const ANSWER = JSON.stringify({ whisper: WHISPER });
@@ -304,10 +304,10 @@ describe("the entry's view of the model", () => {
       "{ 1.1.1 }",
       "~ the root's name",
       "the root's first line",
-      "10:00:00 + 00:01:00",
-      "{ 2.1.2 }",
+      "+ 00:01:00 10:00:00",
+      "{ 1.2.2 }",
       "the child's line",
-      "10:01:00 - 00:00:30"
+      "- 00:00:30 10:01:00"
     ].join("\n");
     const model = new Fixed(ANSWER);
 
@@ -326,7 +326,7 @@ describe("the entry's view of the model", () => {
     expect(model.asked).toBe(1);
     expect(model.prompt).toBe(
       [
-        "{ 2.1.2 }",
+        "{ 1.2.2 }",
         "names already in this branch, never reuse one:",
         "  the root's name",
         "note:",
@@ -341,24 +341,24 @@ describe("whispering the day", () => {
   const NOTE = [
     "{ 1.1.1 }",
     "the first thought of the day",
-    "09:00:00 + 00:01:00",
+    "+ 00:01:00 09:00:00",
     "",
-    "{ 1.2.2 }",
+    "{ 2.1.2 }",
     "~ an existing name",
     "the second thought of the day",
-    "09:05:00 + 00:02:00",
+    "+ 00:02:00 09:05:00",
     "",
-    "{ 1.3.3 } a name the writer gave it",
+    "{ 3.1.3 } a name the writer gave it",
     "the third thought of the day",
-    "09:10:00 + 00:03:00",
+    "+ 00:03:00 09:10:00",
     "",
-    "{ 1.4.4 }",
+    "{ 4.1.4 }",
     "still open",
-    "09:15:00 - 00:00:30",
+    "- 00:00:30 09:15:00",
     "",
-    "{ 1.5.5 }",
+    "{ 5.1.5 }",
     "the last thought of the day",
-    "09:20:00 + 00:04:00",
+    "+ 00:04:00 09:20:00",
     ""
   ].join("\n");
 
@@ -410,7 +410,7 @@ describe("whispering the day", () => {
     const pastBody = [
       "{ 1.1.1 }",
       "a thought from four days ago",
-      "09:00:00 + 00:01:00"
+      "+ 00:01:00 09:00:00"
     ].join("\n");
 
     vi.useFakeTimers();
@@ -504,11 +504,11 @@ describe("whispering the day", () => {
     const parentChild = [
       "{ 1.1.1 }",
       "a parent thought",
-      "09:00:00 + 00:01:00",
+      "+ 00:01:00 09:00:00",
       "",
-      "{ 2.1.2 }",
+      "{ 1.2.2 }",
       "the child thought",
-      "09:01:00 + 00:00:30"
+      "+ 00:00:30 09:01:00"
     ].join("\n");
 
     vi.useFakeTimers();
@@ -539,7 +539,7 @@ describe("whispering the day", () => {
     expect(prompts.length).toBe(3);
     expect(prompts[1]).toBe(
       [
-        "{ 2.1.2 }",
+        "{ 1.2.2 }",
         "names already in this branch, never reuse one:",
         "  name 1",
         "note:",

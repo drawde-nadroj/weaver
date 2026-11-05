@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MarkdownPostProcessorContext } from "obsidian";
 
 import { createCloseProcessor } from "../src/reading/close-processor";
+import { dayKey } from "../src/core/day";
 import { createEntryProcessor } from "../src/reading/entry-processor";
 import { ShimElement } from "../test-support/dom";
 
@@ -25,7 +26,7 @@ describe("the entry processor", () => {
 
   it("turns a marker paragraph into the head, with the punctuation coloured", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "{ 2.1.3 }");
 
     createEntryProcessor()(root as never, context(PATH));
 
@@ -33,20 +34,20 @@ describe("the entry processor", () => {
     expect(head).not.toBeNull();
     expect(head?.getAttr("style")).toBe("--weaver-dcolor:#ef4444;--weaver-d:1");
     expect(head?.querySelectorAll(".weaver-dcn-num").map((node) => node.textContent)).toEqual([
-      "1",
       "2",
+      "1",
       "3"
     ]);
     expect(head?.querySelector(".weaver-dcn-ink")?.textContent).toBe("{ ");
     // The marker row is the top rail's label, in the file's own characters.
     expect(head?.hasClass("weaver-frame-label")).toBe(true);
-    expect(head?.textContent).toBe("{ 1.2.3 }");
+    expect(head?.textContent).toBe("{ 2.1.3 }");
   });
 
   it("turns a clock paragraph into the rendered row", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
-    paragraph(root, "13:27:43 + 00:04:12");
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 13:27:43");
 
     createEntryProcessor()(root as never, context(PATH));
 
@@ -61,6 +62,7 @@ describe("the entry processor", () => {
     ).toEqual([":", ":"]);
     expect(row?.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
     expect(row?.querySelector(".weaver-duration-sigil")?.textContent).toBe("+");
+    expect(row?.querySelector(".weaver-duration-clock")?.textContent).toBe("+ 00:04:12");
     expect(
       row?.querySelectorAll(".weaver-duration-clock .weaver-duration-num").map((n) => n.textContent)
     ).toEqual(["00", "04", "12"]);
@@ -72,7 +74,7 @@ describe("the entry processor", () => {
 
   it("keeps a whisper row as text, in the note's own colour", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "{ 2.1.3 }");
     paragraph(root, "~ learn: durable execution");
 
     createEntryProcessor()(root as never, context(PATH));
@@ -88,7 +90,7 @@ describe("the entry processor", () => {
 
   it("draws a moment-only row without inventing a duration", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "{ 2.1.3 }");
     paragraph(root, "13:27:43");
 
     createEntryProcessor()(root as never, context(PATH));
@@ -102,9 +104,9 @@ describe("the entry processor", () => {
 
   it("labels the bottom rail at both corners", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "{ 2.1.3 }");
     paragraph(root, "the thought this one opened");
-    paragraph(root, "13:27:43 + 00:04:12");
+    paragraph(root, "+ 00:04:12 13:27:43");
 
     createEntryProcessor()(root as never, context(PATH));
 
@@ -115,11 +117,11 @@ describe("the entry processor", () => {
     // label of the rail it sits on, so each cuts that rail behind itself.
     expect(frame?.firstChild?.hasClass("weaver-entry-head")).toBe(true);
     expect(frame?.firstChild?.hasClass("weaver-frame-label")).toBe(true);
-    expect(frame?.firstChild?.textContent).toBe("{ 1.2.3 }");
+    expect(frame?.firstChild?.textContent).toBe("{ 2.1.3 }");
 
     const row = frame?.lastChild;
     expect(row?.hasClass("weaver-duration")).toBe(true);
-    // Two labels, one row: the moment at the left corner and the duration at the
+    // Two labels, one row: the duration at the left corner and the moment at the
     // right, with the rail itself left visible between them.
     expect(row?.querySelector(".weaver-duration-moment")?.hasClass("weaver-frame-label")).toBe(true);
     expect(row?.querySelector(".weaver-duration-clock")?.hasClass("weaver-frame-label")).toBe(true);
@@ -131,13 +133,13 @@ describe("the entry processor", () => {
 
   it("keeps a title typed after the marker as the first prose line", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 } a title");
+    paragraph(root, "{ 2.1.3 } a title");
 
     createEntryProcessor()(root as never, context(PATH));
 
     // The label is the canonical marker, never the title: a rail cannot ellipsize
     // away a line of the entry.
-    expect(root.querySelector(".weaver-entry-head")?.textContent).toBe("{ 1.2.3 }");
+    expect(root.querySelector(".weaver-entry-head")?.textContent).toBe("{ 2.1.3 }");
     expect(root.querySelector(".weaver-entry-prose")?.textContent?.trim()).toBe("a title");
   });
 
@@ -159,16 +161,48 @@ describe("the entry processor", () => {
 
   it("marks the prose and keeps its markup", () => {
     const root = container();
-    paragraph(root, "{ 1.2.3 }");
+    paragraph(root, "{ 2.1.3 }");
     const prose = paragraph(root, "");
     prose.createEl("strong").setText("bold");
-    paragraph(root, "13:27:43 + 00:04:12");
+    paragraph(root, "+ 00:04:12 13:27:43");
 
     createEntryProcessor()(root as never, context(PATH));
 
     expect(root.querySelector(".weaver-entry-prose")?.querySelector("strong")?.textContent).toBe("bold");
     // The clock row is an entry element, not prose.
     expect(root.querySelectorAll(".weaver-entry-prose").length).toBe(1);
+  });
+
+  it("puts the daily-note link in the frame's top-right corner", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    const opened: [string, string][] = [];
+
+    createEntryProcessor((target, source) => {
+      opened.push([target, source]);
+    })(root as never, context(PATH));
+
+    const todayName = dayKey(new Date()).replace(/-/g, ".");
+    const link = root.querySelector(".weaver-entry-daylink");
+    expect(link?.hasClass("weaver-frame-label")).toBe(true);
+    // The link names today, not the note's own day.
+    expect(link?.textContent).toBe(`[[${todayName}]]`);
+    // It is a child of the frame, not of the shrink-wrapped head.
+    expect(link?.parentElement?.hasClass("weaver-frame")).toBe(true);
+
+    link?.click();
+    expect(opened).toEqual([[todayName, PATH]]);
+  });
+
+  it("draws no day link on today's note or a note that is not a day", () => {
+    const todayPath = `Chronomancer/${dayKey(new Date()).replace(/-/g, ".")}.md`;
+
+    for (const path of [todayPath, "Chronomancer/notes.md"]) {
+      const root = container();
+      paragraph(root, "{ 2.1.3 }");
+      createEntryProcessor()(root as never, context(path));
+      expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
+    }
   });
 
   it("leaves a paragraph that is not an entry alone", () => {

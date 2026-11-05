@@ -354,7 +354,7 @@ export class Navigator {
         button.className = "weaver-navigator-row weaver-navigator-stop";
         const entry = item.entry;
         button.textContent =
-          entry === null ? "↩ return point" : `↩ ${entry.d}.${entry.b}.${entry.n}`;
+          entry === null ? "↩ return point" : `↩ ${entry.b}.${entry.d}.${entry.n}`;
         if (at === this.selected) button.classList.add("is-selected");
         if (entry !== null) button.setAttribute("style", dimensionColorVars(entry.d));
         button.addEventListener("click", onRow(at));
@@ -376,7 +376,7 @@ export class Navigator {
 
       const dcn = document.createElement("span");
       dcn.className = "weaver-navigator-dcn";
-      appendDigitRuns(dcn, `${item.entry.d}.${item.entry.b}.${item.entry.n}`);
+      appendDigitRuns(dcn, `${item.entry.b}.${item.entry.d}.${item.entry.n}`);
       open.appendChild(dcn);
 
       const time = document.createElement("span");

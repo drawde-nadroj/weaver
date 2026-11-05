@@ -70,7 +70,7 @@ Every surface must answer three questions; one that cannot is not a surface.
   sat at the pane's left edge at every level while the clock row, a block widget and
   not a `.cm-line`, indented alone, so the time drifted right of the text it
   belonged to. Measured at an 8 px step: level 1 at 52 px, level 2 at 60 px, level 3
-  at 68 px, marker, prose and moment agreeing at every level.
+  at 68 px, marker, prose and stopwatch agreeing at every level.
 - The marker keeps its text. Only its runs are marked up: digits are
   `.weaver-dcn-num` (the note's own text colour), punctuation `.weaver-dcn-ink`
   (the dimension's colour). The line therefore stays typable.
@@ -96,13 +96,15 @@ Every surface must answer three questions; one that cannot is not a surface.
   the note's own text colour, colons in the dimension's. `appendClockRuns` builds
   both halves from one grammar, the same one the marker uses, so the moment reads
   exactly like the stopwatch beside it.
-- The widget is one flex row with two labels: the moment at the left corner and
-  the duration at the right, each `.weaver-frame-label` with its own background. The
+- The widget is one flex row with two labels: the duration at the left corner and
+  the moment at the right, each `.weaver-frame-label` with its own background. The
   row itself is transparent, so the rail runs visibly between them. `display: flex`
   is stated `!important`, because Obsidian's `.cm-content > *` rule sets
   `display: block` at higher specificity and would inert `justify-content` and
-  `margin-left: auto`. `margin-left: auto` on the clock half is what keeps a
-  duration-only row's label at the right corner.
+  `margin-left: auto`. `margin-left: auto` on the moment half is what keeps a
+  moment-only row's label at the right corner; a duration-only row stays at the
+  left. The sigil is followed by a real space text node, so the rendered row reads
+  `+ 00:04:12`, exactly like the file.
 - Neither half overhangs the row: Obsidian's `contain: paint` on a block widget clips
   at the row's padding box, so a `-32px` margin or a `padding-right` never painted
   past the text column. Instead the row carries `3px` of padding above and below —
@@ -116,11 +118,17 @@ Every surface must answer three questions; one that cannot is not a surface.
   order.
 - A half the row does not carry is not drawn: the frame labels only what the note
   holds, never an invented `00:00:00`.
-- The day is not drawn into an entry. The filename *is* the day and the note's own
-  header shows it permanently, so a per-entry date would print one word on every box.
-- The frame's three labels — marker, moment, stopwatch — carry the note's own weight;
-  nothing sets one, and there is no weight setting. They are told apart from the prose
-  by colour, tabular figures and position, not by weight.
+- The day is not drawn into an entry's text. The filename *is* the day and the
+  note's own header shows it permanently. On a note whose filename day is not
+  today's, a link to today's daily note labels the top-right corner: `ui/day-link.ts`
+  builds it, the marker row's decoration positions it absolutely in Live Preview, and
+  the static frame does the same in Reading view. It names the current date, not the
+  note's own day, and its background cuts the top rail. Today's note carries none,
+  and Source mode carries none.
+- The frame's labels — marker, the date link on another day, stopwatch and moment —
+  carry the note's own weight; nothing sets one, and there is no weight setting. They
+  are told apart from the prose by colour, tabular figures and position, not by
+  weight.
 - Where a frame starts is a setting. *Frame follows the indent* (on by default) gives
   the marker, the prose and the clock row the same indent, and because the frame's left
   edge sits a fixed air left of the marker, the boxes step right with the nesting. Off,
@@ -141,8 +149,10 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 
 - The layer draws the border and the live highlight, and no text at all. The label
   is the entry's own: the marker row sits on the box's top rail, its clock row on
-  the bottom edge — moment at the left corner, duration at the right. Each appears
-  once, from the file, and is never dimmed, hidden or duplicated.
+  the bottom edge — duration at the left corner, moment at the right. Each appears
+  once, from the file, and is never dimmed, hidden or duplicated. The one generated
+  label is the day link on another day; the entry decoration draws it in the marker
+  row, not this layer, so it stays clickable above the text.
 - Both rails run through the *middle* of the row that labels them, and the label's
   own background — `.weaver-frame-label`, note-background fill plus an 8 px shadow —
   paints over the rail behind it. That is the whole mechanism: no second rendering of
@@ -150,8 +160,8 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   each corner, which is what makes the box read as a frame rather than a box.
 - The box spans the text column: `16 px` outside the marker's ink on the left and
   `10 px` past the text column's right edge — the air beside each corner, and the
-  stub the rail leaves there. A box that hugged its text could not put the moment at
-  one bottom corner and the duration at the other without a second rendering of the
+  stub the rail leaves there. A box that hugged its text could not put the duration
+  at one bottom corner and the moment at the other without a second rendering of the
   row. `src/core/frame.ts` is the whole geometry, two pure functions: `frameBox` and
   `frameSpan`.
 - Nothing reflows: the box catches up to the text, never the other way round.
@@ -168,7 +178,7 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   closer than 8 px to its bottom rail. There is no trimming — a rail is a label's
   centre or it is nothing — so a box is never drawn at a height that cuts its own
   clock. When the rails touch or cross, there is no interior and no box.
-- A marker row that also carries prose (the inline-title case, `{ D.B.N } a title`)
+- A marker row that also carries prose (the inline-title case, `{ B.D.N } a title`)
   keeps its rail *above* the row, by 12 px, or the rail would cut the entry's own
   first line.
 - An entry without a clock row has no bottom label, so its box closes 8 px below its
@@ -176,8 +186,8 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - There is no width below which a box is withheld: a narrow pane gets a narrow box.
   The only way to have no frame is to have measured nothing yet — a frame is never
   a function of the caret, the scroll position or the width of the pane.
-- The clock row is one flex row: the moment at the box's bottom-left corner, the
-  duration at the bottom-right, and the rail visible between them. Both keep
+- The clock row is one flex row: the duration at the box's bottom-left corner, the
+  moment at the bottom-right, and the rail visible between them. Both keep
   `tabular-nums`, so a ticking second never moves the row.
 - The live entry's border carries a highlight travelling counter-clockwise once
   every three seconds, and stops under `prefers-reduced-motion`. The labels paint
@@ -223,7 +233,9 @@ Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
 Inline markup inside the prose is untouched, and only the marker's own characters
 leave the marker paragraph — a title typed after the clock, with its links and
-emphasis, stays in the DOM exactly as Obsidian made it.
+emphasis, stays in the DOM exactly as Obsidian made it. On a note that is not
+today's, a link to today's daily note is appended to the static frame and positioned
+at its top-right corner; it is a child of the frame, not of the shrink-wrapped head.
 
 ### The navigator
 
@@ -235,8 +247,8 @@ card, with the return stack inside it.
   on the card in the capture phase, and every chord it does not claim reaches
   Obsidian untouched.
 - The first row is `＋ start an entry`. Below it, when there are stops, a `return`
-  block: one row per place a move left — `↩ D.B.N` while that entry exists. Below
-  that, `today`: every entry in document order — `D.B.N`, clock, title, `+N`
+  block: one row per place a move left — `↩ B.D.N` while that entry exists. Below
+  that, `today`: every entry in document order — `B.D.N`, clock, title, `+N`
   children — with the caret's own entry marked `is-current` and the selection marked
   `is-selected`.
 - Keys: `↑`/`↓` move, `⏎` jump, `⇧⏎` settle and descend under the selection, `n`
@@ -276,8 +288,8 @@ with the caret's entry selected.
 | Surface | Desktop | Phone |
 | --- | --- | --- |
 | Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured; a whisper row is neutral at the entry's indent | same, with `--weaver-indent-step-mobile`, and the same neutral whisper |
-| Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
-| Clock row | flex widget, ticks while live, the moment at the bottom-left corner and the duration at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
+| Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; the date link at the top-right on another day; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
+| Clock row | flex widget, ticks while live, the duration at the bottom-left corner and the moment at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |
 | Toolbar | *Start an entry*, *Descend into a child entry*, *Today's entries*, *Whisper the day*, *Close the day* — every command carries an icon | the same five, added under *Manage toolbar options* |
@@ -297,18 +309,18 @@ the first prose line is the title, the rest is the entry
 16:10:00 + 00:04:12
 ```
 
-- Marker: `{ D.B.N }`, matched as a prefix. `{1.2.3}` reads the same. A marker in
+- Marker: `{ B.D.N }`, matched as a prefix. `{1.2.3}` reads the same. A marker in
   frontmatter or a fenced block is text. In a frame it is the box's top rail label.
 - `B` is the branch id: a depth-1 entry's `B` is its position among depth-1 entries,
   and everything under it carries that same `B` all the way down. An insert inherits
   it; deleting a root renumbers the survivors, in the same undoable transaction.
 - Prose: everything after the marker up to the next marker or clock row, trimmed of
   blank lines at both ends.
-- Clock row: the entry's last line, an optional moment `HH:MM:SS` then an optional
-  duration `[+-=] HH:MM:SS`. Either half may be absent. `-` is open and being
+- Clock row: the entry's last line, an optional duration `[+-=] HH:MM:SS` then an
+  optional moment `HH:MM:SS`. Either half may be absent. `-` is open and being
   written, `=` is open and paused, `+` alone is settled. Minutes and seconds are
   `0–59`, hours unbounded, and the duration half is the only mutable part of an
-  entry. A settled entry is never rewritten.
+  entry. A settled entry is never rewritten; the moment keeps its own characters.
 - Legacy: a marker that still carries `- HH:MM:SS` sets `legacyFormat`; every plan
   refuses the note and the plugin says to migrate it.
 - Frontmatter: `date`, `travels`, `depth`, `duration`. Written only when a value

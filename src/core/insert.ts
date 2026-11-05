@@ -84,15 +84,15 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 }
 
 /**
- * A new root entry at the tip of the note: `{ 1.k.m }`, a blank prose line, and
- * its clock row `HH:MM:SS - 00:00:00`.
+ * A new root entry at the tip of the note: `{ b.1.m }`, a blank prose line, and
+ * its clock row `- 00:00:00 HH:MM:SS`.
  *
  * The caret lands on the blank line, which is where the writing happens.
  */
 export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(1, nextBranch(index), nextSeq(index));
+  const marker = formatMarker(nextBranch(index), 1, nextSeq(index));
   const clock = formatClockRow(formatClock(now), "-", 0);
   const text = `${marker}${NEWLINE}${NEWLINE}${clock}`;
   return planAppendLine(source, text, marker.length + 1);
@@ -117,7 +117,7 @@ export function planChildEntry(
 ): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(parent.d + 1, parent.b, nextSeq(index));
+  const marker = formatMarker(parent.b, parent.d + 1, nextSeq(index));
   const clock = formatClockRow(formatClock(now), "-", 0);
 
   // The parent's own block ends at its last non-blank line, before its first
@@ -184,12 +184,12 @@ export function planDeleteEntry(
  * A settled entry — a `+` half, or a row that carries no duration at all — is
  * final: nothing is planned for it, whatever the sigil. An open entry is
  * rewritten whenever the bytes would change, which the identical-text guard
- * decides, so a pause that reaches the same second plans nothing. Only the tail
- * is rewritten: the moment keeps its own characters, so the row cannot move. The
- * selection is reported at the prose, because the caller keeps the live
- * selection: rewriting a duration must not move the caret. A note that still
- * carries the old marker is refused whole — its old duration line parses as a
- * clock row, so a field-level rewrite would be the one write that slipped
+ * decides, so a pause that reaches the same second plans nothing. Only the
+ * duration half is rewritten: the moment keeps its own characters, so the row
+ * cannot move. The selection is reported at the prose, because the caller keeps
+ * the live selection: rewriting a duration must not move the caret. A note that
+ * still carries the old marker is refused whole — its old duration line parses
+ * as a clock row, so a field-level rewrite would be the one write that slipped
  * through the migration.
  */
 export function planDuration(
@@ -207,9 +207,12 @@ export function planDuration(
 
   const line = index.lines[entry.clockLine] ?? "";
   const row = parseClockRow(line);
-  if (row === null) return null;
+  if (row === null || row.durationSpan === null) return null;
 
-  const target = `${row.head}${formatDurationLine(sigil, ms)}`;
+  const target =
+    line.slice(0, row.durationSpan.from) +
+    formatDurationLine(sigil, ms) +
+    line.slice(row.durationSpan.to);
   if (line === target) return null;
 
   return {

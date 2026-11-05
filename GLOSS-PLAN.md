@@ -58,7 +58,7 @@ Three conclusions:
 
 | First draft | Now | Why |
 | --- | --- | --- |
-| Proposal shown in the frame's **top-right corner** | **deleted** | the frame is where the plugin speaks without writing; a gloss is writing |
+| Proposal shown in the frame's **top-right corner** | **deleted** | the top-right corner is the day link; the frame is where the plugin speaks without writing, and a gloss is writing |
 | Two tiers: proposal + adopted | **one tier**: real lines, written at settle | an editable ghost line cannot exist — a text column has no spare vertical space |
 | 3 items ≤ 2 words, ≤ 24 chars | **2–3 items joined by "and", ≤ 8 words** | 974 headings say 6 words, 95% ≤ 8 — length discipline kept |
 | A question is allowed | **no questions** | 1 in 974 |
@@ -150,7 +150,7 @@ visible row inside an entry is text. A rendered line would have to insert vertic
 space (reflow, rails move) or be real blank lines (a schema change). So anything
 editable above the prose **is** prose.
 
-The frame keeps its three labels — marker, moment, duration. No fourth corner.
+The frame keeps four labels — marker, the day link on another day, duration, moment. The fourth corner is the day link, not a gloss.
 
 ### 2. The form is a typed head
 

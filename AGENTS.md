@@ -1,7 +1,7 @@
 # Weaver — agent notes
 
 Weaver is an Obsidian plugin (TypeScript, esbuild, Vitest) whose day note is a
-linear list of entries: `{ D.C.N }`, prose, `HH:MM:SS [+-=] HH:MM:SS`.
+linear list of entries: `{ B.D.N }`, prose, `[+-=] HH:MM:SS HH:MM:SS`.
 
 **The map is `SYSTEM-DESIGN.md`.** Every mechanism sentence in it names the code
 that implements it as `path#symbol`, and `npm run docs:check` fails when that
@@ -67,11 +67,13 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   text in a note, and nothing but the model writes them.
 - **One surface per intent.** The navigator is the only navigation.
 - **The frame:** the marker row is the top-left rail label; the clock row labels the
-  bottom edge at both corners — the moment left, the duration right. The rails pass
-  through those rows' centres and are cut behind their labels; rows are found by
-  `data-weaver-n`, not DOM position; the extent is `frameSpan`. No fact is rendered
-  twice, and the day is not drawn into an entry: the filename is the day and the
-  note's header shows it.
+  bottom edge at both corners — the duration left, the moment right. On a note whose
+  filename day is not today's, a link to today's daily note is the top-right label, cut into the
+  rail like the other corners; today's note carries none. The rails pass through
+  those rows' centres and are cut behind their labels; rows are found by
+  `data-weaver-n`, not DOM position; the extent is `frameSpan`. No entry fact is
+  rendered twice, and the day is not drawn into the entry's text: the filename is the
+  day and the note's header shows it.
 - **Mobile is not a fork.** One implementation; platform differences are geometry,
   row height, and — for a whisper — the address: a phone does not call a loopback
   endpoint it cannot reach.
@@ -96,8 +98,8 @@ re-read: the hash exists to make that impossible, not to be bypassed.
 
 `npm run deploy` targets `$WEAVER_VAULT/.obsidian/plugins/weaver`, default
 `/Users/jordan/Knowledge`. Migration scripts are `node scripts/migrate-dcn.mjs`,
-`node scripts/migrate-duration.mjs` and `node scripts/migrate-clock-row.mjs`;
-dry-run and verify before any rewrite.
+`node scripts/migrate-duration.mjs`, `node scripts/migrate-clock-row.mjs` and
+`node scripts/migrate-order.mjs`; dry-run and verify before any rewrite.
 
 ## Code conventions
 

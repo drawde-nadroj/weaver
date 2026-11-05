@@ -5,25 +5,28 @@
  * its last; the prose between them is the frame's interior. The wrapper is a real
  * element because a box needs one to enclose — and because the file's own text is
  * what labels it: the marker row is the top rail's label, and the clock row is the
- * bottom edge, its moment at the left corner and its duration at the right. The
+ * bottom edge, its duration at the left corner and its moment at the right. The
  * rails run through the middle of those rows and are cut behind them by the
  * labels' own backgrounds, so the box reads as running into its own text.
  *
  * The marker's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
- * the marker stays in the DOM untouched, links and emphasis included. The day is
- * not drawn into the entry: the day is the file's name, and the note's own header
- * shows it. The clock row's two halves are digit and punctuation runs, exactly as
- * in the editor.
+ * the marker stays in the DOM untouched, links and emphasis included. On a note
+ * whose filename is a day other than today's, a link to today's daily note is
+ * appended to the frame and positioned at its top-right corner; today's note
+ * carries none, because it would link back to itself. The clock row's two halves
+ * are digit and punctuation runs, exactly as in the editor.
  */
 
 import type { MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
+import { dayKey, dayKeyFromName, dayNameLike } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
 import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
+import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 
 /** Containers whose paragraphs must never be rewritten. */
 const SKIP_SELECTOR = "blockquote, .callout, .markdown-embed, li, table, pre, code";
@@ -34,7 +37,7 @@ const WHISPER_CLASS = "weaver-entry-whisper";
 const TEXT_NODE = 3;
 
 /**
- * The clock row, in Reading view: the moment at the left corner, the duration at
+ * The clock row, in Reading view: the duration at the left corner, the moment at
  * the right, each carrying its own background so the rail is cut twice and shows
  * between them. The parser accepts only the canonical shape, so this re-renders
  * the file's own text: the digits stay white and the colons take the dimension's
@@ -46,6 +49,23 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
   root.setAttribute(PROCESSED, "true");
   if (d !== null) root.setAttribute("style", dimensionColorVars(d));
 
+  if (parsed.duration !== null) {
+    const clock = document.createElement("span");
+    clock.className = labelled
+      ? "weaver-duration-clock weaver-frame-label"
+      : "weaver-duration-clock";
+
+    const sigil = document.createElement("span");
+    sigil.className = "weaver-duration-sigil";
+    sigil.textContent = parsed.duration.sigil;
+    clock.appendChild(sigil);
+    clock.appendChild(document.createTextNode(" "));
+
+    appendClockRuns(clock, formatClock(parsed.duration.ms));
+
+    root.appendChild(clock);
+  }
+
   const moment = document.createElement("span");
   moment.className = labelled
     ? "weaver-duration-moment weaver-frame-label"
@@ -53,31 +73,25 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
   if (parsed.time !== null) appendClockRuns(moment, parsed.time);
   root.appendChild(moment);
 
-  if (parsed.duration === null) return root;
-
-  const clock = document.createElement("span");
-  clock.className = labelled
-    ? "weaver-duration-clock weaver-frame-label"
-    : "weaver-duration-clock";
-
-  const sigil = document.createElement("span");
-  sigil.className = "weaver-duration-sigil";
-  sigil.textContent = parsed.duration.sigil;
-  clock.appendChild(sigil);
-
-  appendClockRuns(clock, formatClock(parsed.duration.ms));
-
-  root.appendChild(clock);
   return root;
 }
 
 /**
  * Builds the post processor that frames entries in Reading view. It reads the
- * paragraph text and nothing else — no settings, no vault access — so it takes no
- * arguments.
+ * paragraph text and nothing else — no settings, no vault access — and takes
+ * only the opener the frame's day link needs.
  */
-export function createEntryProcessor(): MarkdownPostProcessor {
-  return (element: HTMLElement): void => {
+export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor {
+  return (element: HTMLElement, context): void => {
+    const sourcePath = context.sourcePath ?? "";
+    const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
+    const fileDay = dayKeyFromName(basename);
+    const today = new Date();
+    const showDayLink = fileDay !== null && fileDay !== dayKey(today);
+    // The link goes to today, not to the note it is painted on.
+    const dayLinkTarget = dayNameLike(today, basename);
+    const open = openDayLink ?? (() => {});
+
     // The nearest marker above a duration is simply the last one met, because
     // paragraphs arrive in document order.
     let depth: number | null = null;
@@ -127,6 +141,11 @@ export function createEntryProcessor(): MarkdownPostProcessor {
       frame.setAttribute("data-weaver-d", String(prefix.d));
       paragraph.replaceWith(frame);
       frame.appendChild(head);
+
+      // The top-right label on a note that is not today's. It is a child of the
+      // frame, not of the shrink-wrapped head, so the head stays exactly the
+      // marker's own characters.
+      if (showDayLink) frame.appendChild(dayLinkElement(dayLinkTarget, sourcePath, open));
 
       if ((paragraph.textContent ?? "").trim() !== "") {
         const inline = document.createElement("p");

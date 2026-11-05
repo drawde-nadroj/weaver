@@ -1,5 +1,5 @@
 /**
- * The digit-and-ink grammar: `D.B.N`, the clock row and the date label all split
+ * The digit-and-ink grammar: `B.D.N`, the clock row and the date label all split
  * the same way — digits in the note's own text colour, punctuation in the
  * dimension's.
  *
@@ -17,7 +17,7 @@ export const NUM_CLASS = "weaver-dcn-num";
 /** The class punctuation carries: the dimension's colour. */
 export const INK_CLASS = "weaver-dcn-ink";
 
-/** A piece of `D.B.N`: its text, and the class it carries. */
+/** A piece of `B.D.N`: its text, and the class it carries. */
 export interface Slice {
   text: string;
   cls: string;
@@ -35,7 +35,7 @@ export function markerSlices(text: string): Slice[] {
     .map((part) => ({ text: part, cls: DIGITS.test(part) ? NUM_CLASS : INK_CLASS }));
 }
 
-/** Splits `D.B.N` into digit runs and separators inside `parent`. */
+/** Splits `B.D.N` into digit runs and separators inside `parent`. */
 export function appendDigitRuns(parent: HTMLElement, text: string): void {
   for (const slice of markerSlices(text)) {
     const span = document.createElement("span");

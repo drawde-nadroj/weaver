@@ -1,16 +1,16 @@
 /**
  * The entry: the unit a day note is made of.
  *
- * An entry is a marker line `{ D.B.N }`, prose, then at most one clock row
- * `09:14:22 + 00:04:31` — the moment it was written, then how long it took. `D`
- * is the dimension, `B` the branch id (a depth-1 entry's position among depth-1
- * entries, carried unchanged by everything beneath it), `N` the day sequence
+ * An entry is a marker line `{ B.D.N }`, prose, then at most one clock row
+ * `+ 00:04:31 09:14:22` — how long it took, then the moment it was written. `B`
+ * is the branch id (a depth-1 entry's position among depth-1 entries, carried
+ * unchanged by everything beneath it), `D` the dimension, `N` the day sequence
  * (assigned once, only appended). `N` is identity, `B` is address: `N` never
  * moves, and `B` changes only when a root is deleted, never on insert.
  *
  * The marker is matched as a **prefix**, so a title written on it becomes the
  * first prose line instead of breaking the entry. The clock row is the entry's
- * last line, which is what lets the moment and the duration label the frame's
+ * last line, which is what lets the duration and the moment label the frame's
  * bottom rail at its two corners. Markers inside frontmatter or a fenced code
  * block are text.
  *
@@ -46,7 +46,7 @@ export interface Entry {
   branch: number;
   /** The moment, normalised `HH:MM:SS`; null when the entry has no clock row. */
   time: string | null;
-  /** Absolute offset just past the marker, where a title or the day link sits. */
+  /** Absolute offset just past the marker, where a title may sit. */
   markerEnd: number;
   /** `-` is a draft; `+`, `=` and an absent duration are settled. */
   state: "draft" | "settled";
@@ -103,8 +103,8 @@ const LEGACY_MARKER =
 
 /** What a marker line carries, and how much of the text it occupies. */
 export interface MarkerPrefix {
-  d: number;
   b: number;
+  d: number;
   n: number;
   /** Length of the marker text, in characters. */
   length: number;
@@ -122,8 +122,8 @@ export function parseMarkerPrefix(text: string): MarkerPrefix | null {
   if (match === null) return null;
 
   return {
-    d: Number.parseInt(match[1] ?? "1", 10),
-    b: Number.parseInt(match[2] ?? "1", 10),
+    b: Number.parseInt(match[1] ?? "1", 10),
+    d: Number.parseInt(match[2] ?? "1", 10),
     n: Number.parseInt(match[3] ?? "1", 10),
     length: match[0].length
   };
@@ -387,9 +387,9 @@ export function nextBranch(index: EntryIndex): number {
   return childrenOf(index, null).length + 1;
 }
 
-/** `{ 1.2.3 }`; one space inside each brace, and nothing after it. */
-export function formatMarker(d: number, b: number, n: number): string {
-  return `{ ${d}.${b}.${n} }`;
+/** `{ 1.2.3 }`: branch, dimension, sequence; one space inside each brace. */
+export function formatMarker(b: number, d: number, n: number): string {
+  return `{ ${b}.${d}.${n} }`;
 }
 
 /**
@@ -405,7 +405,7 @@ export function repairBranches(index: EntryIndex): TextChange[] {
   for (const entry of index.entries) {
     if (entry.b === entry.branch) continue;
 
-    const span = MARKER.exec(index.lines[entry.line] ?? "")?.indices?.[2];
+    const span = MARKER.exec(index.lines[entry.line] ?? "")?.indices?.[1];
     if (span === undefined) continue;
 
     const start = index.lineStarts[entry.line] ?? 0;

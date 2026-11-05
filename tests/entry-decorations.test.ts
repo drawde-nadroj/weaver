@@ -9,7 +9,7 @@ import { DurationWidget } from "../src/editor/stopwatch-widget";
 import { EntrySession } from "../src/entries/session";
 
 
-const DOC = ["{ 2.1.1 }", "prose here", "10:00:00 + 00:01:00"].join("\n");
+const DOC = ["{ 1.2.1 }", "prose here", "+ 00:01:00 10:00:00"].join("\n");
 // Not today: the run below is dated 27 October 2026.
 const PATH = "Chronomancer/2026-10-26.md";
 const NOW = new Date(2026, 9, 27, 12, 0, 0).getTime();
@@ -34,9 +34,10 @@ interface ShimNode {
 function collect(
   state: EditorState,
   session = new EntrySession(),
-  path = PATH
+  path = PATH,
+  openDayLink?: (target: string, sourcePath: string) => void
 ): Found[] {
-  const set = entryDecorationSet(state, session, path, NOW);
+  const set = entryDecorationSet(state, session, path, NOW, openDayLink);
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -51,11 +52,11 @@ function collect(
 }
 
 /** The caret sits in the prose unless a test says otherwise. */
-function stateAt(anchor = DOC.indexOf("prose"), doc = DOC): EditorState {
+function stateAt(anchor = DOC.indexOf("prose"), doc = DOC, live = true): EditorState {
   return EditorState.create({
     doc,
     selection: { anchor },
-    extensions: [entryIndexField, editorLivePreviewField]
+    extensions: [entryIndexField, editorLivePreviewField.init(() => live)]
   });
 }
 
@@ -68,6 +69,13 @@ function clockWidget(found: Found[]): DurationWidget | undefined {
   return found.find((range) => range.spec.widget instanceof DurationWidget)?.spec.widget as
     | DurationWidget
     | undefined;
+}
+
+/** The one non-block widget: the day link. */
+function dayLinkWidget(found: Found[]): Found | undefined {
+  return found.find(
+    (range) => range.spec.widget !== undefined && !(range.spec.widget instanceof DurationWidget)
+  );
 }
 
 describe("the entry decorations", () => {
@@ -85,14 +93,14 @@ describe("the entry decorations", () => {
     const digits = found.filter((range) => range.spec.class === "weaver-dcn-num");
     const ink = found.filter((range) => range.spec.class === "weaver-dcn-ink");
 
-    expect(digits.map((range) => range.text)).toEqual(["2", "1", "1"]);
+    expect(digits.map((range) => range.text)).toEqual(["1", "2", "1"]);
     // The braces and the dots are punctuation: the whole marker is the top
     // rail's label, so no character of it belongs to the box instead.
     expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| }");
   });
 
   it("marks a whisper row without giving it the dimension's colour", () => {
-    const doc = ["{ 2.1.1 }", "~ a pricing decision", "prose here", "10:00:00 + 00:01:00"].join("\n");
+    const doc = ["{ 1.2.1 }", "~ a pricing decision", "prose here", "+ 00:01:00 10:00:00"].join("\n");
     const whisper = collect(stateAt(doc.indexOf("prose"), doc)).find(
       (range) => range.spec.class === "weaver-entry-whisper"
     );
@@ -108,7 +116,7 @@ describe("the entry decorations", () => {
 
     // One mark over the file's own marker: the rail is cut behind these
     // characters, and no character is added, moved or hidden.
-    expect(label?.text).toBe("{ 2.1.1 }");
+    expect(label?.text).toBe("{ 1.2.1 }");
   });
 
   it("stamps each row with the entry it belongs to", () => {
@@ -158,9 +166,9 @@ describe("the entry decorations", () => {
     expect(raw?.spec.attributes?.["data-weaver-n"]).toBe("1");
     // The bottom rail's label is the same row, in the file's own characters.
     const label = found.find(
-      (range) => range.spec.class === "weaver-frame-label" && range.text.startsWith("10:")
+      (range) => range.spec.class === "weaver-frame-label" && range.text.startsWith("+ ")
     );
-    expect(label?.text).toBe("10:00:00 + 00:01:00");
+    expect(label?.text).toBe("+ 00:01:00 10:00:00");
   });
 
   it("keeps the marker's own text on the line whatever the caret does", () => {
@@ -189,7 +197,7 @@ describe("the entry decorations", () => {
   });
 
   it("shows the sigil the file kept once nothing is running", () => {
-    const settled = ["{ 2.1.1 }", "prose here", "10:00:00 = 00:01:00"].join("\n");
+    const settled = ["{ 1.2.1 }", "prose here", "= 00:01:00 10:00:00"].join("\n");
     const widget = clockWidget(collect(stateAt(settled.indexOf("prose"), settled)));
 
     expect(widget?.input.sigil).toBe("=");
@@ -219,6 +227,52 @@ describe("the entry decorations", () => {
     ]);
     expect(texts(root, ".weaver-duration-clock .weaver-duration-ink")).toEqual([":", ":"]);
     widget.destroy();
+  });
+
+  it("puts the daily-note link at the top-right on a note that is not today's", () => {
+    const link = dayLinkWidget(collect(stateAt()));
+    const dom = link?.spec.widget?.toDOM?.() as
+      | (ShimNode & { click: () => void })
+      | undefined;
+
+    // Non-block, at the end of the marker row: the widget is the corner label,
+    // not a second line.
+    expect(link?.spec.block).toBeUndefined();
+    expect(link?.from).toBe(DOC.indexOf("\n"));
+    expect(dom?.className).toBe("weaver-entry-daylink weaver-frame-label");
+    expect(dom?.textContent).toBe("[[2026-10-27]]");
+  });
+
+  it("opens the daily note from the day link", () => {
+    const opened: [string, string][] = [];
+    const link = dayLinkWidget(
+      collect(stateAt(), new EntrySession(), PATH, (target, source) => {
+        opened.push([target, source]);
+      })
+    );
+    const dom = link?.spec.widget?.toDOM?.() as { click: () => void } | undefined;
+
+    dom?.click();
+    expect(opened).toEqual([["2026-10-27", PATH]]);
+  });
+
+  it("shows no day link on today's note, a non-day note, or in source mode", () => {
+    expect(
+      dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/2026-10-27.md"))
+    ).toBeUndefined();
+    expect(
+      dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/notes.md"))
+    ).toBeUndefined();
+
+    const source = stateAt(DOC.indexOf("prose"), DOC, false);
+    expect(dayLinkWidget(collect(source))).toBeUndefined();
+  });
+
+  it("keeps the day link off a marker row that also carries prose", () => {
+    const doc = ["{ 1.1.1 } a title", "prose", "+ 00:01:00 10:00:00"].join("\n");
+    const found = collect(stateAt(doc.indexOf("prose"), doc));
+
+    expect(dayLinkWidget(found)).toBeUndefined();
   });
 
   it("decorates nothing when the note has no entries", () => {

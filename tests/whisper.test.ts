@@ -15,7 +15,7 @@ import headings from "./fixtures/whisper-headings.json";
 const PROSE = "made a version of pi with durable execution in go";
 
 const INPUT: WhisperInput = {
-  marker: "{ 1.5.8 }",
+  marker: "{ 5.1.8 }",
   prose: PROSE,
   ancestors: []
 };
@@ -121,8 +121,8 @@ describe("validateWhisper", () => {
       reason([{ type: "learn", text: "one two three four five six seven eight nine ten eleven twelve thirteen" }])
     ).toBe("too long");
     // The address is not a name.
-    expect(reason([{ type: "name", text: "1.5.8" }])).toBe("names the address");
-    expect(reason([{ type: "name", text: "{ 1.5.8 }" }])).toBe("names the address");
+    expect(reason([{ type: "name", text: "5.1.8" }])).toBe("names the address");
+    expect(reason([{ type: "name", text: "{ 5.1.8 }" }])).toBe("names the address");
     expect(reason([{ type: "name", text: "durable work, not portable" }])).toBe("negation");
     expect(reason([{ type: "name", text: "durable rather than portable" }])).toBe("negation");
     expect(reason([{ type: "name", text: "durable — portable" }])).toBe("em dash");
@@ -185,20 +185,20 @@ describe("whisperKey", () => {
     const index = parseEntries(source);
     const entry = index.entries[0];
     return whisperKey({
-      marker: "{ 1.5.8 }",
+      marker: "{ 5.1.8 }",
       prose: (entry?.proseLines ?? []).map((line) => index.lines[line]).join("\n"),
       ancestors
     });
   };
 
   it("ignores the sigil changing from draft to settled", () => {
-    expect(of(`{ 1.5.8 }\n${PROSE}\n09:14:22 - 00:00:30`)).toBe(
-      of(`{ 1.5.8 }\n${PROSE}\n09:14:22 + 00:00:30`)
+    expect(of(`{ 5.1.8 }\n${PROSE}\n- 00:00:30 09:14:22`)).toBe(
+      of(`{ 5.1.8 }\n${PROSE}\n+ 00:00:30 09:14:22`)
     );
   });
 
   it("ignores a whisper added to the entry or to an ancestor", () => {
-    const withWhisper = `{ 1.5.8 }\n~ durable pi in go\n${PROSE}\n09:14:22 + 00:00:30`;
+    const withWhisper = `{ 5.1.8 }\n~ durable pi in go\n${PROSE}\n+ 00:00:30 09:14:22`;
     const index = parseEntries(withWhisper);
     expect(index.entries[0]?.whisper[0]?.text).toBe("durable pi in go");
 
@@ -208,11 +208,11 @@ describe("whisperKey", () => {
   });
 
   it("changes with the prose, and with an ancestor's title", () => {
-    expect(of(`{ 1.5.8 }\n${PROSE}, later\n09:14:22 + 00:00:30`)).not.toBe(
-      of(`{ 1.5.8 }\n${PROSE}\n09:14:22 + 00:00:30`)
+    expect(of(`{ 5.1.8 }\n${PROSE}, later\n+ 00:00:30 09:14:22`)).not.toBe(
+      of(`{ 5.1.8 }\n${PROSE}\n+ 00:00:30 09:14:22`)
     );
-    expect(of(`{ 1.5.8 }\n${PROSE}`, [{ title: "a parent", whisper: null }])).not.toBe(
-      of(`{ 1.5.8 }\n${PROSE}`, [{ title: "another parent", whisper: null }])
+    expect(of(`{ 5.1.8 }\n${PROSE}`, [{ title: "a parent", whisper: null }])).not.toBe(
+      of(`{ 5.1.8 }\n${PROSE}`, [{ title: "another parent", whisper: null }])
     );
   });
 });
@@ -259,12 +259,12 @@ describe("parseWhisperResponse", () => {
 describe("the entry's partition", () => {
   it("keeps whisper rows out of the prose, the title and the offsets", () => {
     const source = [
-      "{ 1.2.3 }",
+      "{ 2.1.3 }",
       "~ durable pi in go",
       "~ learn: durable execution",
       "made a version of pi durable also",
       "and article",
-      "10:02:11 + 00:01:00"
+      "+ 00:01:00 10:02:11"
     ].join("\n");
     const entry = parseEntries(source).entries[0];
 

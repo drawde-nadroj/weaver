@@ -1,22 +1,22 @@
 # Weaver
 
 Weaver is an Obsidian plugin where a day note is a linear list of **entries**. An
-entry is a marker line `{ D.B.N }`, its prose, and one clock row
-`HH:MM:SS [+-=] HH:MM:SS`:
+entry is a marker line `{ B.D.N }`, its prose, and one clock row
+`[+-=] HH:MM:SS HH:MM:SS`:
 
 ```markdown
 { 1.1.1 }
 sparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]
 - **kashmir Shaivism & Bhartrhari's Gammarian**
-16:10:00 + 00:04:12
++ 00:04:12 16:10:00
 
-{ 2.1.2 }
+{ 1.2.2 }
 the thought this one opened, one dimension deeper
-16:12:00 = 00:01:30
+= 00:01:30 16:12:00
 ```
 
-`D` is the dimension, `B` the branch id — a depth-1 entry's position among depth-1
-entries, carried unchanged all the way down — and `N` the day sequence (assigned
+`B` is the branch id — a depth-1 entry's position among depth-1 entries, carried
+unchanged all the way down — `D` the dimension, and `N` the day sequence (assigned
 once, only appended). `N` is identity, `B` is address, and the duration
 half is the only mutable field. Colour is a pure function of `D`, so nothing is
 recalculated when a deeper entry appears: depth 7 looks the same before and after.
@@ -119,7 +119,7 @@ the first tap and deletes on the second. The footer names the gestures the platf
 can make.
 
 The first row is `＋ start an entry`, then a `return` block — one row per place a move
-left — then `today`: every entry in document order, `D.B.N`, clock, title, `+N`
+left — then `today`: every entry in document order, `B.D.N`, clock, title, `+N`
 children (that count is the blast radius of `x`), with the caret's own entry marked.
 `x` asks for no confirmation: the whole subtree goes in one undoable transaction,
 the surviving branches' `B` values are repaired in that same transaction, and one
@@ -132,7 +132,7 @@ writes to — so reaching another day means opening that note.
 
 ## Record formats
 
-**Marker line** — `{ D.B.N }`, matched as a prefix, so a title typed after it
+**Marker line** — `{ B.D.N }`, matched as a prefix, so a title typed after it
 becomes the first prose line. Whitespace inside the braces is optional:
 `{1.2.3}` reads the same. A marker inside frontmatter or a fenced code block is
 text. `B` is the branch id: a depth-1 entry's position among depth-1 entries,
@@ -141,15 +141,15 @@ deleted. On a framed surface the marker's characters are the box's top rail labe
 the rail runs through the middle of the row and is cut behind it, so the file's
 own text is what names the box.
 
-**Clock row** — the entry's last line: an optional moment `HH:MM:SS`, then an
-optional duration `[+-=] HH:MM:SS`. Either half may be absent, so a hand-written
+**Clock row** — the entry's last line: an optional duration `[+-=] HH:MM:SS`,
+then an optional moment `HH:MM:SS`. Either half may be absent, so a hand-written
 `09:14:22` and a stray `+ 00:04:12` are both clock rows. When both are there the
-row reads as one line, `09:14:22 + 00:04:12`: the moment at the left corner of the
-frame's bottom edge, the duration at the right. Both halves read alike — white
+row reads as one line, `+ 00:04:12 09:14:22`: the duration at the left corner of
+the frame's bottom edge, the moment at the right. Both halves read alike — white
 digits around dimension-coloured colons, the same grammar as the marker, and at the
 note's own weight. A half that is absent labels no corner, so the frame never shows a value the file does not hold. The moment is
 written once, when the entry is created, and never moves; settling rewrites only
-the tail. Minutes and seconds are `0–59`; hours are unbounded. One sigil decides
+the duration half and leaves the moment's characters alone. Minutes and seconds are `0–59`; hours are unbounded. One sigil decides
 what the entry is: `-` is open and being written, `=` is open and paused, and `+`
 alone is settled. A settled entry is final — nothing rewrites it, not a pause, not
 a settle, not a session that wandered in. The duration half is the only mutable
@@ -199,7 +199,7 @@ before its title.
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
-| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the moment labels the bottom-left corner, the duration the bottom-right, each running through the middle of the row and cut behind its label. |
+| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the duration labels the bottom-left corner, the moment the bottom-right, each running through the middle of the row and cut behind its label. |
 | Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note. |
 | Whisper | Whisper settled entries | off | Write one to three `~` rows above a settled entry: the model's reading of what it holds. |
 | Whisper | Place each entry in its day | off | One extra request per entry, asking which earlier entry it repeats or picks up. A small model answers thinly — measured, about one usable placement per day's twenty entries — so it is off by default. |
@@ -292,8 +292,8 @@ node scripts/migrate-dcn.mjs --verify --from <original> <file…>   # plus line 
 
 `D` is the hash count, `B` the branch id (a root's position among roots, carried
 down its branch), `N` the rank by clock across the file (ties by document order).
-Every non-heading line survives byte for byte; a file whose lines already start
-with a marker is left untouched.
+The pass writes `{ B.D.N }`. Every non-heading line survives byte for byte; a file
+whose lines already start with a marker is left untouched.
 
 Notes already in marker form from an earlier build carry the old per-parent `B`.
 One pass rewrites them onto their branch ids, and it rewrites nothing but those `B`
@@ -305,10 +305,11 @@ node scripts/migrate-dcn.mjs --branches <file…>             # branch in place
 node scripts/migrate-dcn.mjs --branches --verify --from <copy> <file…>
 ```
 
-Roots already hold their own `B`, so the only bytes that differ are the `B` fields of
-depth-2 and deeper markers. `--verify` checks that the marker count, every `D`, every
-`N`, every root's `B` and every non-marker byte survived, and that every deeper `B`
-equals its root's. Run it once; a branched file reports `already branched`. The
+The pass rewrites the `B` field onto the branch id — a root's position among roots,
+carried down its subtree — and touches no other byte. `--verify` checks that the
+marker count, every `D`, every `N` and every non-marker byte survived, and that
+every `B` now equals its branch. Run it once; a branched file reports
+`already branched`. The
 plugin never rewrites a note's numbering on load: an unmigrated note reads as the
 file says, and the next deletion repairs every drifted `B` in the same undoable
 transaction.
@@ -338,12 +339,28 @@ node scripts/migrate-clock-row.mjs --verify <file…>           # self-consisten
 node scripts/migrate-clock-row.mjs --verify --from <original> <file…>  # plus line survival
 ```
 
-`{ 1.2.3 } - 13:27:43` becomes `{ 1.2.3 }` with `13:27:43` at the head of the
+`{ 2.1.3 } - 13:27:43` becomes `{ 2.1.3 }` with `+ 00:00:00 13:27:43` on the
 entry's clock row; a title written after the old clock moves to the line below the
 marker, where the parser already reads it. An entry with no duration line gains
 `+ 00:00:00`, because it was settled. Frontmatter, fenced code, prose, blank lines
 and the close mark are copied verbatim. The plugin refuses an unmigrated note and
 says so — it never rewrites a note because it opened it.
+
+The record changed one more time: the marker now puts the branch first (`{ B.D.N }`)
+and the clock row puts the duration first (`[+-=] HH:MM:SS HH:MM:SS`). A note in
+the previous order needs one one-shot pass; `--expect dbn` keeps it one-shot, and
+`--from` may be a directory of copies:
+
+```sh
+node scripts/migrate-order.mjs --expect dbn --dry-run <file…>   # print, write nothing
+node scripts/migrate-order.mjs --expect dbn <file…>             # reorder in place
+node scripts/migrate-order.mjs --expect dbn --verify --from <copy|dir> <file…>
+```
+
+The pass swaps the three marker fields and the two clock halves and changes nothing
+else — no byte of prose, frontmatter, fenced code or the close mark. A note that
+still carries the old per-parent `B` needs the `--branches` pass above after the
+reorder; that pass now reads and writes the branch first.
 
 ## Manual checks
 
@@ -357,7 +374,7 @@ These need a live Obsidian and are not covered by `npm test`:
   keystroke resumes from that second and the rendered sigil returns to `-` without
   the file moving.
 - `⏎` on the open entry: the duration half becomes `+ HH:MM:SS`, no child appears
-  and the caret does not move. `⏎` again: a child `{ 2.1.2 }` with its own clock row
+  and the caret does not move. `⏎` again: a child `{ 1.2.2 }` with its own clock row
   appears directly under it, with the caret in its prose.
 - Prose renders in the dimension's colour, the stopwatch's two colons render in
   that colour while its digits keep the note's own text colour, and the clock row
@@ -393,11 +410,15 @@ card open.
 - Frames, Live Preview: every entry is enclosed by one unbroken box spanning the
   text column; the box's top rail runs through the middle of the entry's own marker
   row and its bottom edge through the middle of its own clock row, each exactly
-  once and never dimmed. The bottom edge is labelled twice: the moment at the
-  left corner, the duration at the right, with the rail visible between them, and
-  both labels read as white digits around dimension-coloured colons. Marker, moment
-  and stopwatch all read at the note's own weight — no bold, and no date: the
-  filename is the day. Both rails are cut behind their labels,
+  once and never dimmed. The bottom edge is labelled twice: the duration at the
+  left corner, the moment at the right, with the rail visible between them, and
+  both labels read as white digits around dimension-coloured colons. The stopwatch
+  carries a real space after its sigil, exactly as the file writes it. Marker,
+  moment and stopwatch all read at the note's own weight — no bold. On a note whose
+  filename day is not today's, the top-right corner carries `[[today]]`: a link to
+  the current day's daily note, cut into the rail like the other three labels. The
+  link is how you get back to today; it is not the note's own day. Today's note
+  carries none; the filename is the day. Both rails are cut behind their labels,
   with a short stub left beside each corner — `16 px` on the left, `10 px` on the
   right — so the box reads as running into its own text, and no glyph or label
   background is clipped at the row's bottom. Scroll to the middle of a long entry:
@@ -418,8 +439,14 @@ card open.
   marker hangs half a line over the top rail and the clock half a line over the
   bottom one, both centred on their rails, with the frame's air halved to `0.45em`
   either side.
-- Frames, phone: the box reaches the pane's edge, and the moment and the duration
-  read on one line at the bottom two corners.
+- Frames, phone: the box reaches the pane's edge, and the duration and the moment
+  read on one line at the bottom two corners; on a past day the date link sits at
+  the top-right without covering the marker.
+- Frames, another day: open a note whose filename day is not today's. Every frame
+  carries today's `[[YYYY.MM.DD]]` at the top-right, its background cutting the top
+  rail, and the link opens today's daily note. Today's note carries none, and Source
+  mode carries none. Add an entry to the past note: its frame shows the current
+  date, not the note's date.
 - Whisper, warm: with *Whisper settled entries* on and oMLX answering, write about
   forty dictated words, pause two seconds, press `⏎`. The `~` rows appear above the
   prose in the same undo as `+` — one `⌘Z` removes both — neutral where the prose is

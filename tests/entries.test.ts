@@ -13,7 +13,7 @@ import {
   repairBranches
 } from "../src/core/entries";
 
-const SINGLE = ["{ 1.2.3 }", "the title line", "13:27:43 + 00:04:12"].join("\n");
+const SINGLE = ["{ 2.1.3 }", "the title line", "+ 00:04:12 13:27:43"].join("\n");
 
 describe("parseEntries", () => {
   it("reads the marker's three numbers and its clocks", () => {
@@ -30,15 +30,15 @@ describe("parseEntries", () => {
   });
 
   it("accepts a bare marker and a two-field moment", () => {
-    const entry = parseEntries("{1.2.3}\n9:14").entries[0];
+    const entry = parseEntries("{2.1.3}\n9:14").entries[0];
 
     expect(entry?.time).toBe("09:14:00");
-    expect(entry?.markerEnd).toBe("{1.2.3}".length);
+    expect(entry?.markerEnd).toBe("{2.1.3}".length);
     expect(entry?.duration).toBeNull();
   });
 
   it("turns a title written after the marker into the first prose line", () => {
-    const source = "{ 2.1.4 } spoke about the breath\nand then more";
+    const source = "{ 1.2.4 } spoke about the breath\nand then more";
     const entry = parseEntries(source).entries[0];
 
     expect(entry?.title).toBe("spoke about the breath");
@@ -87,16 +87,16 @@ describe("parseEntries", () => {
       "{ 1.1.1 }",
       "root",
       "+ 00:00:00",
-      "{ 2.1.2 }",
+      "{ 1.2.2 }",
       "child",
       "+ 00:00:00",
-      "{ 3.1.3 }",
+      "{ 1.3.3 }",
       "grandchild",
       "+ 00:00:00",
       "{ 2.2.4 }",
       "sibling",
       "+ 00:00:00",
-      "{ 1.2.5 }"
+      "{ 2.1.5 }"
     ].join("\n");
 
     const index = parseEntries(source);
@@ -109,7 +109,7 @@ describe("parseEntries", () => {
   });
 
   it("addresses entries by line, offset and sequence", () => {
-    const source = ["{ 1.1.1 }", "first", "", "{ 1.2.2 }", "second"].join("\n");
+    const source = ["{ 1.1.1 }", "first", "", "{ 2.1.2 }", "second"].join("\n");
     const index = parseEntries(source);
 
     expect(findEntryAtLine(index, 0)?.n).toBe(1);
@@ -121,7 +121,7 @@ describe("parseEntries", () => {
   });
 
   it("counts children and the next branch", () => {
-    const source = ["{ 1.1.1 }", "{ 2.1.2 }", "{ 2.2.3 }"].join("\n");
+    const source = ["{ 1.1.1 }", "{ 1.2.2 }", "{ 2.2.3 }"].join("\n");
     const index = parseEntries(source);
     const root = index.entries[0] ?? null;
 
@@ -131,26 +131,26 @@ describe("parseEntries", () => {
   });
 
   it("formats a marker with one space inside each brace", () => {
-    expect(formatMarker(1, 2, 3)).toBe("{ 1.2.3 }");
+    expect(formatMarker(2, 1, 3)).toBe("{ 2.1.3 }");
   });
 
   it("gives every entry in a branch its branch id", () => {
     // Crooked on purpose: the markers agree on nothing, and the branch is read
     // from the tree, never from the digits.
     const source = [
-      "{ 2.5.1 }",
+      "{ 5.2.1 }",
       "root",
       "+ 00:00:00",
-      "{ 3.9.2 }",
+      "{ 9.3.2 }",
       "child",
       "+ 00:00:00",
-      "{ 4.7.3 }",
+      "{ 7.4.3 }",
       "grandchild",
       "+ 00:00:00",
-      "{ 3.2.4 }",
+      "{ 2.3.4 }",
       "second child",
       "+ 00:00:00",
-      "{ 1.9.5 }",
+      "{ 9.1.5 }",
       "second root",
       "+ 00:00:00"
     ].join("\n");
@@ -168,20 +168,20 @@ describe("parseEntries", () => {
       (text, change) => text.slice(0, change.from) + change.text + text.slice(change.to),
       source
     );
-    expect(next.split("\n")[0]).toBe("{ 2.1.1 }");
-    expect(next.split("\n")[3]).toBe("{ 3.1.2 }");
-    expect(next.split("\n")[6]).toBe("{ 4.1.3 }");
-    expect(next.split("\n")[9]).toBe("{ 3.1.4 }");
-    expect(next.split("\n")[12]).toBe("{ 1.2.5 }");
+    expect(next.split("\n")[0]).toBe("{ 1.2.1 }");
+    expect(next.split("\n")[3]).toBe("{ 1.3.2 }");
+    expect(next.split("\n")[6]).toBe("{ 1.4.3 }");
+    expect(next.split("\n")[9]).toBe("{ 1.3.4 }");
+    expect(next.split("\n")[12]).toBe("{ 2.1.5 }");
   });
 
   it("rewrites nothing when every branch already carries its branch id", () => {
     const source = [
       "{ 1.1.1 }",
       "first",
-      "{ 2.1.2 }",
+      "{ 1.2.2 }",
       "child",
-      "{ 1.2.3 }",
+      "{ 2.1.3 }",
       "second"
     ].join("\n");
 

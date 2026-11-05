@@ -4,6 +4,7 @@ import {
   dayFrontmatter,
   dayKey,
   dayKeyFromName,
+  dayNameLike,
   dayNotePath
 } from "../src/core/day";
 import { ensureDayNote, resolveDayNote } from "../src/entries/day-note";
@@ -37,6 +38,12 @@ describe("day keys", () => {
     expect(dayKeyFromName("2026.10.27")).toBe("2026-10-27");
     expect(dayKeyFromName("2026-10-27")).toBe("2026-10-27");
     expect(dayKeyFromName("Meeting notes")).toBeNull();
+  });
+
+  it("names today in the note's own filename style", () => {
+    expect(dayNameLike(AT_1637, "2026.10.27")).toBe("2024.01.02");
+    expect(dayNameLike(AT_1637, "2026-10-27")).toBe("2024-01-02");
+    expect(dayNameLike(AT_1637, "Meeting notes")).toBe("2024-01-02");
   });
 });
 

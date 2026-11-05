@@ -198,10 +198,11 @@ decision stands.
 ## Flow: read a day back
 
 Nothing is written. The note itself is the view: each entry in its frame, the
-marker centred on the top rail and the clock row on the bottom edge — moment at the
-left corner, duration at the right — with both rails cut behind their labels, digits
+marker centred on the top rail and the clock row on the bottom edge — duration at
+the left corner, moment at the right — with both rails cut behind their labels, digits
 in the text colour and punctuation in the dimension's colour, durations as they were
-settled, and `[[day]]` after the moment on any note that is not today's.
+settled. On any note that is not today's, a link to today's daily note cuts the top
+rail at the top-right corner and opens the current date.
 
 ## Flow: phone capture
 

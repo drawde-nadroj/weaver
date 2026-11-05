@@ -31,10 +31,9 @@ import { basename } from "node:path";
 const HASH = /^(#{1,6})[ \t]+(.*)$/;
 /** A line that lost its newline in front of a heading still holds its heading. */
 const REPAIR = /^([^\w\s#]{0,8})(#{1,6}[ \t]+\d{1,2}:\d{2}(?::\d{2})?.*)$/;
-const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)/;
+const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/;
 /** The same marker with the `B` field's span marked, for the `--branches` pass. */
-const MARKER_SPAN =
-  /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)/d;
+const MARKER_SPAN = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
 const BRACE = /^\{\s*\d{1,3}\s*\}(?:[ \t]*-[ \t]*)?/;
 const CLOCK = /^(\d{1,2}:\d{2}(?::\d{2})?)\b/;
 const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
@@ -146,7 +145,7 @@ function parseOld(body) {
   return { preamble, entries };
 }
 
-/** `D.B.N` per entry, in document order: `N` by clock, `B` by branch. */
+/** `B.D.N` per entry, in document order: `N` by clock, `B` by branch. */
 function number(entries) {
   const timed = entries
     .map((entry, index) => ({ entry, index }))
@@ -237,7 +236,7 @@ function migrate(source, path) {
   if (preamble.length > 0) out.push(...preamble, "");
 
   for (const entry of numbered) {
-    out.push(`{ ${entry.d}.${entry.b}.${entry.n} } - ${entry.time ?? "00:00:00"}`);
+    out.push(`{ ${entry.b}.${entry.d}.${entry.n} } - ${entry.time ?? "00:00:00"}`);
     if (entry.title !== "") out.push(entry.title);
 
     const prose = [...entry.body];
@@ -314,9 +313,9 @@ function markerLines(lines) {
 
     marked.push({
       line: offset + index,
-      d: Number(match[1]),
-      b: Number(match[2]),
-      span: match.indices[2]
+      b: Number(match[1]),
+      d: Number(match[2]),
+      span: match.indices[1]
     });
   });
 
@@ -361,8 +360,9 @@ function branchPass(source) {
 }
 
 /**
- * The `--branches` checks: same lines, same `D` and `N`, every root's `B` kept,
- * every deeper `B` equal to its root's, and no non-marker byte touched.
+ * The `--branches` checks: same lines, same `D` and `N`, every `B` equal to its
+ * branch id, and no non-marker byte touched. A root's `B` may move: the pass
+ * repairs a root that was not its own position among roots.
  */
 function verifyBranches(before, after) {
   const problems = [];
@@ -394,7 +394,7 @@ function verifyBranches(before, after) {
 
     const before = MARKER.exec(beforeLines[line] ?? "");
     const after = MARKER.exec(afterLines[line] ?? "");
-    if (before?.[1] !== after?.[1]) problems.push(`line ${line + 1}: D changed`);
+    if (before?.[2] !== after?.[2]) problems.push(`line ${line + 1}: D changed`);
     if (before?.[3] !== after?.[3]) problems.push(`line ${line + 1}: N changed`);
   }
 
@@ -405,11 +405,6 @@ function verifyBranches(before, after) {
       continue;
     }
 
-    if (!marker.root) continue;
-    const previous = was.get(marker.line);
-    if (previous !== undefined && previous.b !== marker.b) {
-      problems.push(`line ${marker.line + 1}: a root's B moved`);
-    }
   }
 
   return problems;
@@ -439,7 +434,7 @@ function verify(source, original) {
 
   const deepest = markers.reduce((most, line) => {
     const match = MARKER.exec(line);
-    return Math.max(most, Number(match?.[1] ?? 0));
+    return Math.max(most, Number(match?.[2] ?? 0));
   }, 0);
   if (depth !== String(deepest)) problems.push(`depth is ${String(depth)}, deepest D is ${deepest}`);
 

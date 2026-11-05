@@ -61,6 +61,29 @@ describe("the duration widget", () => {
     expect(texts(moment, ".weaver-duration-ink")).toEqual([":", ":"]);
   });
 
+  it("puts the stopwatch left, the moment right, and a space after the sigil", () => {
+    const root = widget().toDOM();
+
+    expect(root.children[0]?.classList.contains("weaver-duration-clock")).toBe(true);
+    expect(root.children[1]?.classList.contains("weaver-duration-moment")).toBe(true);
+    // The rendered row carries the same space the file writes after the sigil.
+    expect(root.querySelector(".weaver-duration-clock")?.textContent).toBe("- 00:00:00");
+  });
+
+  it("draws only the half the row carries", () => {
+    const momentOnly = widget({ sigil: null }).toDOM();
+    expect(momentOnly.children.length).toBe(1);
+    expect(momentOnly.children[0]?.classList.contains("weaver-duration-moment")).toBe(true);
+
+    const durationOnly = widget({ time: null }).toDOM();
+    expect(durationOnly.children.length).toBe(2);
+    expect(durationOnly.children[0]?.classList.contains("weaver-duration-clock")).toBe(true);
+    // The moment half is present but empty; `:empty` hides it, so the duration
+    // still labels the left corner.
+    expect(durationOnly.children[1]?.classList.contains("weaver-duration-moment")).toBe(true);
+    expect(durationOnly.children[1]?.textContent).toBe("");
+  });
+
   it("writes the tick into the clock half and never into the moment", () => {
     const root = widget({ active: true, ms: 0 }).toDOM();
 

@@ -67,19 +67,19 @@ describe("starting an entry", () => {
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n13:27:43 - 00:00:00");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 13:27:43");
 
     plugin.onunload();
   });
 
   it("starts in the note that already holds one", async () => {
-    const existing = createFile(DAY, ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n"));
+    const existing = createFile(DAY, ["{ 1.1.1 }", "first", "+ 00:01:00 09:00:00"].join("\n"));
     const { plugin, app } = await start([existing]);
 
     await plugin.entries.startEntry(AT_1337);
 
     const text = reading(app, DAY);
-    expect(text).toContain("{ 1.2.2 }");
+    expect(text).toContain("{ 2.1.2 }");
     expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();
@@ -92,7 +92,7 @@ describe("starting an entry", () => {
 
     // No clock before the first keystroke: a write is not typing.
     expect(plugin.session.active()).toBeNull();
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n13:27:43 - 00:00:00");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 13:27:43");
 
     plugin.onunload();
   });
@@ -101,8 +101,8 @@ describe("starting an entry", () => {
     // A sync, a terminal, another device: the file holds two more entries than
     // the note the starter was looking at. The plan is built from the text
     // being written, so `N` counts the file's entries, not the stale ones.
-    const stale = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
-    const grown = [stale, "", "", "{ 1.2.2 }", "second", "09:30:00 + 00:02:00", ""].join("\n");
+    const stale = ["{ 1.1.1 }", "first", "+ 00:01:00 09:00:00"].join("\n");
+    const grown = [stale, "", "", "{ 2.1.2 }", "second", "+ 00:02:00 09:30:00", ""].join("\n");
     const file = createFile(DAY, stale);
     const { plugin, app } = await start([file]);
 
@@ -111,8 +111,8 @@ describe("starting an entry", () => {
     await plugin.entries.startEntry(AT_1337);
 
     const text = reading(app, DAY);
-    expect(text).toContain("{ 1.3.3 }");
-    expect(text.endsWith("13:27:43 - 00:00:00\n")).toBe(true);
+    expect(text).toContain("{ 3.1.3 }");
+    expect(text.endsWith("- 00:00:00 13:27:43\n")).toBe(true);
     expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();
@@ -155,7 +155,7 @@ describe("deleting the entry being written", () => {
   });
 
   it("leaves the file alone when the entry it would settle is gone", async () => {
-    const survived = ["{ 1.1.1 }", "first", "09:00:00 + 00:01:00"].join("\n");
+    const survived = ["{ 1.1.1 }", "first", "+ 00:01:00 09:00:00"].join("\n");
     const file = createFile(DAY, survived);
     const { plugin, app } = await start([file]);
 
@@ -170,7 +170,7 @@ describe("deleting the entry being written", () => {
 });
 
 describe("when the clock may start", () => {
-  const DRAFT = ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n");
+  const DRAFT = ["{ 1.1.1 }", "prose", "- 00:01:00 10:00:00"].join("\n");
 
   it("starts on the writer's own typing, at the file's stored time", async () => {
     const { plugin } = await start([createFile(DAY, DRAFT)]);
@@ -199,7 +199,7 @@ describe("when the clock may start", () => {
 
 describe("writing a duration", () => {
   it("rewrites the clock row through the vault", async () => {
-    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n"));
+    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "- 00:01:00 10:00:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
     plugin.entries.publish(DAY, 1, "+", 342_000, true);
@@ -210,7 +210,7 @@ describe("writing a duration", () => {
   });
 
   it("skips the write when the entry it aimed at is gone", async () => {
-    const source = ["{ 1.1.1 }", "prose", "10:00:00 - 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "prose", "- 00:01:00 10:00:00"].join("\n");
     const file = createFile(DAY, source);
     const { plugin, app } = await start([file]);
 
@@ -222,7 +222,7 @@ describe("writing a duration", () => {
   });
 
   it("pauses the live session onto the draft's own line", async () => {
-    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "10:00:00 - 00:00:00"].join("\n"));
+    const file = createFile(DAY, ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
     plugin.session.start(DAY, 1, 4000, AT_1337.getTime());
@@ -288,11 +288,11 @@ describe("moving the caret", () => {
   const TWO = [
     "{ 1.1.1 }",
     "first",
-    "10:00:00 + 00:01:00",
+    "+ 00:01:00 10:00:00",
     "",
-    "{ 1.2.2 }",
+    "{ 2.1.2 }",
     "second",
-    "10:05:00 + 00:02:00",
+    "+ 00:02:00 10:05:00",
     ""
   ].join("\n");
 
@@ -326,7 +326,7 @@ describe("moving the caret", () => {
   });
 
   it("descends without starting a clock, on the parent's branch", () => {
-    const source = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
+    const source = ["{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
     const file = createFile(DAY, source);
     return start([file]).then(({ plugin }) => {
       const view = liveEditor(file, source, source.indexOf("first"));
@@ -336,7 +336,7 @@ describe("moving the caret", () => {
       plugin.entries.descend(view, parent);
 
       expect(plugin.session.active()).toBeNull();
-      expect(view.state.doc.toString()).toContain("{ 2.1.2 }");
+      expect(view.state.doc.toString()).toContain("{ 1.2.2 }");
       expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
 
       plugin.onunload();
@@ -345,8 +345,8 @@ describe("moving the caret", () => {
 });
 
 describe("the descent command", () => {
-  const SETTLED = ["{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
-  const OPEN = ["{ 1.1.1 }", "first", "10:00:00 - 00:00:00"].join("\n");
+  const SETTLED = ["{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
+  const OPEN = ["{ 1.1.1 }", "first", "- 00:00:00 10:00:00"].join("\n");
 
   it("opens a child under the caret's settled entry, and starts no clock", async () => {
     const file = createFile(DAY, SETTLED);
@@ -357,7 +357,7 @@ describe("the descent command", () => {
     try {
       plugin.entries.descendAtCaret();
 
-      expect(view.state.doc.toString()).toContain("{ 2.1.2 }");
+      expect(view.state.doc.toString()).toContain("{ 1.2.2 }");
       expect(plugin.session.active()).toBeNull();
     } finally {
       unregisterEditorView(view);
@@ -376,8 +376,8 @@ describe("the descent command", () => {
 
       const text = view.state.doc.toString();
       // The parent's own row settled; the child's row is a fresh draft.
-      expect(text.split("\n")[2]).toBe("10:00:00 + 00:00:00");
-      expect(text).toContain("{ 2.1.2 }");
+      expect(text.split("\n")[2]).toBe("+ 00:00:00 10:00:00");
+      expect(text).toContain("{ 1.2.2 }");
       expect(plugin.session.active()).toBeNull();
     } finally {
       unregisterEditorView(view);
@@ -388,7 +388,7 @@ describe("the descent command", () => {
   it("refuses outside every entry, and writes nothing", async () => {
     // The caret sits on the blank line above the note's first marker, so no
     // entry's subtree holds it.
-    const source = ["", "{ 1.1.1 }", "first", "10:00:00 + 00:01:00"].join("\n");
+    const source = ["", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
     const file = createFile(DAY, source);
     const { plugin } = await start([file]);
     const view = liveEditor(file, source, 0);

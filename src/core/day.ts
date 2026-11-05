@@ -43,6 +43,18 @@ export function dayKeyFromName(basename: string): string | null {
   return DASHED_DAY.test(basename) ? basename : null;
 }
 
+/**
+ * Today's name in the same dotted or dashed style as a day-note basename.
+ *
+ * The frame's top-right link points at the *current* day even when the note on
+ * screen is another day, so it can take the reader back to today. The note's own
+ * filename is the only style signal the surfaces share.
+ */
+export function dayNameLike(now: Date, basename: string): string {
+  const day = dayKey(now);
+  return DOTTED_DAY.test(basename) ? day.replace(/-/g, ".") : day;
+}
+
 /** The frontmatter a brand-new day note carries, and nothing else. */
 export function dayFrontmatter(day: string): string {
   return [

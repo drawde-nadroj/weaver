@@ -30,7 +30,7 @@ export interface WhisperItem {
 
 /** What a whisper is written about: the entry, and the ancestors it reads after. */
 export interface WhisperInput {
-  /** `{ D.B.N }`, for the prompt only. */
+  /** `{ B.D.N }`, for the prompt only. */
   marker: string;
   /** The entry's prose, lines joined by `\n`, no marker, no clock, no whisper. */
   prose: string;
@@ -247,7 +247,7 @@ Answer with one JSON object and nothing else, no prose around it. "type" is "nam
 
 /** One entry of the day, as the thread question sees it. */
 export interface WhisperDayEntry {
-  /** `{ D.B.N }`, for the skeleton. */
+  /** `{ B.D.N }`, for the skeleton. */
   marker: string;
   /** The name the entry carries — its whisper name, or a short title. */
   name: string;

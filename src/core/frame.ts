@@ -4,7 +4,7 @@
  * The layer that uses this draws a border and the live highlight. It draws no
  * text: the entry's own first row — the marker line — is the box's top-left
  * label, and its own clock row is the bottom edge, labelling the bottom-left
- * corner with the moment and the bottom-right with the duration. Every label is
+ * corner with the duration and the bottom-right with the moment. Every label is
  * read once, from the file, in the place a label would sit. Nothing is hidden
  * and nothing is duplicated.
  *
@@ -12,7 +12,7 @@
  * own background cuts the rail behind it, so the box reads as running into its
  * own text rather than enclosing it. The box therefore spans from one label inset
  * outside the marker's ink to the right edge of the text column: a box that hugged
- * its text could not put the moment at one bottom corner and the duration at the
+ * its text could not put the duration at one bottom corner and the moment at the
  * other without a second rendering of the row.
  *
  * Pure — no DOM, no measurement — so the geometry is testable without a browser.

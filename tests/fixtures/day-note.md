@@ -7,14 +7,14 @@ duration: 00:09:05
 
 { 1.1.1 }
 sparked by [[2026.10.26 - Breaking Free and Building Thoughtware]]
-16:10:00 + 00:04:12
++ 00:04:12 16:10:00
 
-{ 2.1.2 }
+{ 1.2.2 }
 the thought this one opened, one dimension deeper
-16:14:12 + 00:01:30
++ 00:01:30 16:14:12
 
-{ 2.1.3 }
+{ 1.2.3 }
 and the one beside it, still open
-16:15:42 = 00:03:23
+= 00:03:23 16:15:42
 
 ✓ 17:02:00

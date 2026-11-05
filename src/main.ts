@@ -1,7 +1,7 @@
 /**
  * Weaver: a day note is a linear list of entries.
  *
- * An entry is `{ D.B.N }`, its prose, and one clock row `HH:MM:SS + HH:MM:SS`.
+ * An entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS HH:MM:SS`.
  * The note and the navigator are the whole surface: nothing else navigates, and
  * every write of a day note goes through one writer.
  */
@@ -93,7 +93,10 @@ export default class WeaverPlugin extends Plugin {
       entryIndexExtension(),
       entryDecorationsExtension(
         () => this.session,
-        () => this.app.workspace.getActiveFile()?.path ?? ""
+        () => this.app.workspace.getActiveFile()?.path ?? "",
+        (target, sourcePath) => {
+          void this.app.workspace.openLinkText(target, sourcePath, false);
+        }
       ),
       closeDecorationsExtension(),
       entryFrameExtension({
@@ -106,7 +109,11 @@ export default class WeaverPlugin extends Plugin {
       entryEditExtension(this)
     ]);
 
-    this.registerMarkdownPostProcessor(createEntryProcessor());
+    this.registerMarkdownPostProcessor(
+      createEntryProcessor((target, sourcePath) => {
+        void this.app.workspace.openLinkText(target, sourcePath, false);
+      })
+    );
     this.registerMarkdownPostProcessor(createCloseProcessor());
 
     this.registerEvent(

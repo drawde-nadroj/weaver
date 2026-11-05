@@ -16,23 +16,27 @@
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
  *
- * The marker row carries a second piece of markup and nothing else: the day is not
- * drawn into the entry at all. The day *is* the file's name, and a note's own
- * header already shows it, so a per-entry date would print one word on every box.
+ * On a note whose filename is a day other than today's, the marker row carries a
+ * third piece of markup: the link to today's daily note at the top-right corner.
+ * It is generated because it points at the current day rather than at anything in
+ * the entry, and the frame layer paints no text at all. Today's note carries none:
+ * the link would point back at the note it is painted on.
  */
 
-import { editorInfoField } from "obsidian";
+import { editorInfoField, editorLivePreviewField } from "obsidian";
 import {
   StateField,
   type EditorState,
   type Extension,
   type Range
 } from "@codemirror/state";
-import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
+import { dayKey, dayKeyFromName, dayNameLike } from "../core/day";
 import type { EntrySession } from "../entries/session";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
+import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
 import { DurationWidget } from "./stopwatch-widget";
 
@@ -64,9 +68,42 @@ function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string):
   }
 }
 
+/**
+ * The link to today's daily note at the top-right corner: part of the marker row,
+ * positioned absolutely so it never joins the text flow or moves a character.
+ *
+ * `ignoreEvent` keeps a click from also placing the caret: the link is the
+ * click's, and the frame around the entry is not a place to write.
+ */
+class DayLinkWidget extends WidgetType {
+  constructor(
+    readonly target: string,
+    readonly sourcePath: string,
+    readonly open: OpenDayLink
+  ) {
+    super();
+  }
+
+  eq(other: DayLinkWidget): boolean {
+    return other.target === this.target && other.sourcePath === this.sourcePath;
+  }
+
+  toDOM(): HTMLElement {
+    return dayLinkElement(this.target, this.sourcePath, this.open);
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function pathOfState(state: EditorState, fallback: () => string): string {
   const info = state.field(editorInfoField, false);
   return info?.file?.path ?? fallback();
+}
+
+function basenameOf(path: string): string {
+  return (path.split("/").pop() ?? path).replace(/\.md$/, "");
 }
 
 /**
@@ -77,18 +114,37 @@ export function entryDecorationSet(
   state: EditorState,
   session: EntrySession,
   path: string,
-  now: number
+  now: number,
+  openDayLink?: OpenDayLink
 ): DecorationSet {
   const index = state.field(entryIndexField, false);
   if (index === undefined || index.entries.length === 0) return Decoration.none;
 
   const ranges: Range<Decoration>[] = [];
 
+  // The link belongs to the frame, and a frame is a Live Preview thing: source
+  // mode is the file's own text. A note whose filename is not a day has no daily
+  // note to point at, and today's note would link back to itself.
+  const basename = basenameOf(path);
+  const fileDay = dayKeyFromName(basename);
+  const today = new Date(now);
+  const showDayLink =
+    state.field(editorLivePreviewField, false) === true &&
+    fileDay !== null &&
+    fileDay !== dayKey(today);
+  // The corner link is a way back to today, not a restatement of the note's own
+  // day: on a past note it reads today's date and opens today's daily note.
+  const dayLinkTarget = dayNameLike(today, basename);
+
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
+    // The legacy inline-title row carries prose beside the marker, so an
+    // absolute label at its right would sit on top of the writer's first line.
+    const inlineTitle =
+      entry.firstProseLine !== null && entry.firstProseLine === entry.line;
 
     // The marker keeps its own text, always: the frame is drawn beside it, never
     // over it, so there is no class to swap when the caret arrives. The stamp is
@@ -112,6 +168,19 @@ export function entryDecorationSet(
       value: Decoration.mark({ class: LABEL_CLASS })
     });
     addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
+
+    // The top-right corner's label: generated, absolutely positioned, and the
+    // only text on this row that the file does not hold.
+    if (showDayLink && !inlineTitle) {
+      ranges.push({
+        from: head.to,
+        to: head.to,
+        value: Decoration.widget({
+          side: 1,
+          widget: new DayLinkWidget(dayLinkTarget, path, openDayLink ?? (() => {}))
+        })
+      });
+    }
 
     for (const line of entry.proseLines) {
       if (line >= state.doc.lines) continue;
@@ -191,10 +260,11 @@ export function entryDecorationSet(
 /** Publishes the entry decorations as one state field. */
 export function entryDecorationsExtension(
   getSession: () => EntrySession,
-  getPath: () => string
+  getPath: () => string,
+  openDayLink?: OpenDayLink
 ): Extension {
   const build = (state: EditorState): DecorationSet =>
-    entryDecorationSet(state, getSession(), pathOfState(state, getPath), Date.now());
+    entryDecorationSet(state, getSession(), pathOfState(state, getPath), Date.now(), openDayLink);
 
   const field = StateField.define<DecorationSet>({
     create: build,
