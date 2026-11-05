@@ -8,6 +8,7 @@
  */
 
 import { formatClock } from "./clock";
+import { dayKey } from "./day";
 import { lineStartsOf } from "./document";
 import { formatClockRow, formatDurationLine, parseClockRow, type DurationSigil } from "./duration";
 import {
@@ -85,7 +86,11 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 
 /**
  * A new root entry at the tip of the note: `{ b.1.m }`, a blank prose line, and
- * its clock row `- 00:00:00 HH:MM:SS`.
+ * its clock row `- 00:00:00 YYYY-MM-DD HH:MM:SS`.
+ *
+ * The row carries the entry's own creation day and moment, both read from the
+ * one `now` the caller passed: a note may be named for another day, and the
+ * entry still records when it was actually written.
  *
  * The caret lands on the blank line, which is where the writing happens.
  */
@@ -93,7 +98,7 @@ export function planStartEntry(source: string, index: EntryIndex, now: Date): In
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
   const marker = formatMarker(nextBranch(index), 1, nextSeq(index));
-  const clock = formatClockRow(formatClock(now), "-", 0);
+  const clock = formatClockRow(formatClock(now), "-", 0, dayKey(now));
   const text = `${marker}${NEWLINE}${NEWLINE}${clock}`;
   return planAppendLine(source, text, marker.length + 1);
 }
@@ -108,6 +113,10 @@ export function planStartEntry(source: string, index: EntryIndex, now: Date): In
  * is what makes it a single change. `N` is still `maxN + 1`, so the new child is
  * the day's newest entry even when it is shown above older siblings carrying
  * smaller numbers: `N` is identity, not display order.
+ *
+ * The child's clock row records the creation day and moment from the one `now`
+ * it was given — its own, not the parent's — so a child written after midnight
+ * under an old parent is dated the day it was written.
  */
 export function planChildEntry(
   _source: string,
@@ -118,7 +127,7 @@ export function planChildEntry(
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
   const marker = formatMarker(parent.b, parent.d + 1, nextSeq(index));
-  const clock = formatClockRow(formatClock(now), "-", 0);
+  const clock = formatClockRow(formatClock(now), "-", 0, dayKey(now));
 
   // The parent's own block ends at its last non-blank line, before its first
   // child. Inserting there puts the newest branch directly under the parent and
@@ -186,8 +195,10 @@ export function planDeleteEntry(
  * rewritten whenever the bytes would change, which the identical-text guard
  * decides, so a pause that reaches the same second plans nothing. Only the
  * duration half is rewritten: the moment keeps its own characters, so the row
- * cannot move. The selection is reported at the prose, because the caller keeps
- * the live selection: rewriting a duration must not move the caret. A note that
+ * cannot move, and neither can the day written beside it: everything outside
+ * `durationSpan` is copied byte for byte. The selection is reported at the
+ * prose, because the caller keeps the live selection: rewriting a duration must
+ * not move the caret. A note that
  * still carries the old marker is refused whole — its old duration line parses
  * as a clock row, so a field-level rewrite would be the one write that slipped
  * through the migration.

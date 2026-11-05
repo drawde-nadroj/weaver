@@ -325,7 +325,7 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   box-shadow: 0 0 0 8px var(--background-primary);
 }
 
-/* The day link is the top-right corner's label on a note that is not today's.
+/* The entry-day link is the top-right corner's label on a day note.
  * It is out of the text flow — the marker row's own line never moves for it — and
  * its `weaver-frame-label` background cuts the top rail like the other corners.
  * The live preview positions it inside the marker line, so that line is the

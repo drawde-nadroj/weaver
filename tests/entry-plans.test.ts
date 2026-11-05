@@ -27,7 +27,7 @@ describe("planStartEntry", () => {
     if (plan === null) return;
 
     const next = applied(source, plan);
-    expect(next).toBe("{ 1.1.1 }\n\n- 00:00:00 13:27:43\n");
+    expect(next).toBe("{ 1.1.1 }\n\n- 00:00:00 2026-10-27 13:27:43\n");
 
     // The caret sits on the blank prose line, where the writing happens.
     expect(next.slice(0, plan.selection.from)).toBe("{ 1.1.1 }\n");
@@ -41,7 +41,24 @@ describe("planStartEntry", () => {
 
     const next = applied(source, plan);
     expect(next).toContain("{ 2.1.2 }");
-    expect(next).toContain("- 00:00:00 13:27:43");
+    expect(next).toContain("- 00:00:00 2026-10-27 13:27:43");
+  });
+
+  it("writes the creation day from the one `now`, not the note's older entries", () => {
+    // The note is a past day's; the entry being written is today's. The row
+    // records the day it was actually created, and the old row keeps its own.
+    const source = ["{ 1.1.1 }", "yesterday", "+ 00:01:00 2026-10-26 23:00:00"].join("\n");
+    const plan = planStartEntry(source, parseEntries(source), AT_1337);
+    if (plan === null) throw new Error("expected a plan");
+
+    const next = applied(source, plan);
+    expect(next).toContain("+ 00:01:00 2026-10-26 23:00:00");
+    expect(next).toContain("- 00:00:00 2026-10-27 13:27:43");
+
+    const [old, written] = parseEntries(next).entries;
+    expect(old?.day).toBe("2026-10-26");
+    expect(written?.day).toBe("2026-10-27");
+    expect(written?.time).toBe("13:27:43");
   });
 });
 
@@ -68,7 +85,7 @@ describe("planChildEntry", () => {
 
     const next = applied(SOURCE, plan);
     expect(next).toContain("{ 1.2.4 }");
-    expect(next).toContain("- 00:00:00 13:27:43");
+    expect(next).toContain("- 00:00:00 2026-10-27 13:27:43");
     expect(next.split("\n").length).toBe(SOURCE.split("\n").length + 4);
     // One change, one undo: an insert renumbers nothing.
     expect(plan.changes.length).toBe(1);
@@ -118,6 +135,24 @@ describe("planChildEntry", () => {
     // The existing child is left exactly as the writer typed it.
     expect(next).toContain("{ 5.2.2 }");
     expect(next).toContain("+ 00:00:00 10:01:00");
+  });
+
+  it("dates a child after midnight by its own creation, not its parent's day", () => {
+    const source = ["{ 1.1.1 }", "parent", "+ 00:01:00 2026-11-04 23:58:00"].join("\n");
+    const index = parseEntries(source);
+    const parent = index.entries[0];
+    if (parent === undefined) throw new Error("expected a parent");
+
+    const afterMidnight = new Date(2026, 10, 5, 0, 1, 0);
+    const plan = planChildEntry(source, index, parent, afterMidnight);
+    if (plan === null) throw new Error("expected a plan");
+
+    const next = applied(source, plan);
+    expect(next).toContain("- 00:00:00 2026-11-05 00:01:00");
+
+    const [, child] = parseEntries(next).entries;
+    expect(child?.day).toBe("2026-11-05");
+    expect(child?.time).toBe("00:01:00");
   });
 });
 
@@ -269,6 +304,23 @@ describe("planDuration", () => {
     );
   });
 
+  it("keeps the written day and moment when a duration is written", () => {
+    const source = ["{ 1.1.1 }", "prose", "- 00:00:01 2026-11-05 10:00:00"].join("\n");
+    const { index, entry } = first(source);
+
+    const plan = planDuration(source, index, entry, "+", 342_000);
+    if (plan === null) throw new Error("expected a plan");
+
+    const next = applied(source, plan);
+    expect(next).toBe(
+      ["{ 1.1.1 }", "prose", "+ 00:05:42 2026-11-05 10:00:00"].join("\n")
+    );
+
+    const written = parseEntries(next).entries[0];
+    expect(written?.day).toBe("2026-11-05");
+    expect(written?.time).toBe("10:00:00");
+  });
+
   it("keeps a moment the writer typed short", () => {
     const source = ["{ 1.1.1 }", "prose", "- 00:00:01 9:14"].join("\n");
     const { index, entry } = first(source);
@@ -381,7 +433,7 @@ describe("settling and descending", () => {
         "",
         "{ 1.2.2 }",
         "",
-        "- 00:00:00 13:27:43"
+        "- 00:00:00 2026-10-27 13:27:43"
       ].join("\n")
     );
     expect(next.slice(0, child.selection.from).endsWith("{ 1.2.2 }\n")).toBe(true);

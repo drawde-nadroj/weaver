@@ -67,7 +67,7 @@ describe("starting an entry", () => {
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 13:27:43");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 2026-10-27 13:27:43");
 
     plugin.onunload();
   });
@@ -92,7 +92,7 @@ describe("starting an entry", () => {
 
     // No clock before the first keystroke: a write is not typing.
     expect(plugin.session.active()).toBeNull();
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 13:27:43");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 2026-10-27 13:27:43");
 
     plugin.onunload();
   });
@@ -112,7 +112,7 @@ describe("starting an entry", () => {
 
     const text = reading(app, DAY);
     expect(text).toContain("{ 3.1.3 }");
-    expect(text.endsWith("- 00:00:00 13:27:43\n")).toBe(true);
+    expect(text.endsWith("- 00:00:00 2026-10-27 13:27:43\n")).toBe(true);
     expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();

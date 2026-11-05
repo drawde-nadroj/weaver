@@ -27,26 +27,67 @@ describe("formatClock", () => {
 describe("clock rows", () => {
   it("round-trips every duration it can write", () => {
     for (const ms of [0, 1_000, 59_000, 60_000, 372_000, 3_599_000]) {
-      const row = formatClockRow("09:14:22", "-", ms);
+      const row = formatClockRow("09:14:22", "-", ms, null);
       expect(row.startsWith("- ")).toBe(true);
       expect(row.endsWith(" 09:14:22")).toBe(true);
       expect(parseClockRow(row)).toMatchObject({
         time: "09:14:22",
+        day: null,
         duration: { sigil: "-", ms }
       });
     }
   });
 
-  it("reads the two halves independently", () => {
+  it("round-trips the day it writes between the clocks", () => {
+    const row = formatClockRow("13:20:00", "+", 1_000, "2026-11-05");
+    expect(row).toBe("+ 00:00:01 2026-11-05 13:20:00");
+    expect(parseClockRow(row)).toMatchObject({
+      time: "13:20:00",
+      day: "2026-11-05",
+      duration: { sigil: "+", ms: 1_000 }
+    });
+  });
+
+  it("reads the parts independently", () => {
     expect(parseClockRow("+ 00:04:12 09:14:22")).toMatchObject({
       time: "09:14:22",
+      day: null,
       duration: { sigil: "+", ms: 252_000 }
     });
-    expect(parseClockRow("09:14:22")).toMatchObject({ time: "09:14:22", duration: null });
+    expect(parseClockRow("09:14:22")).toMatchObject({
+      time: "09:14:22",
+      day: null,
+      duration: null
+    });
+    expect(parseClockRow("2026-11-05 13:20:00")).toMatchObject({
+      time: "13:20:00",
+      day: "2026-11-05",
+      duration: null
+    });
     expect(parseClockRow("+ 00:04:12")).toMatchObject({
       time: null,
+      day: null,
       duration: { sigil: "+", ms: 252_000 }
     });
+  });
+
+  it("keeps an undated row readable, with no day inferred", () => {
+    // Every row written before the day was recorded is still a record.
+    expect(parseClockRow("+ 00:04:12 09:14:22")?.day).toBeNull();
+    expect(parseClockRow("- 00:00:00")?.day).toBeNull();
+  });
+
+  it("does not accept a day without a moment", () => {
+    // A date alone would invite a surface to infer the wall-clock moment.
+    expect(parseClockRow("2026-11-05")).toBeNull();
+    expect(parseClockRow("+ 00:04:12 2026-11-05")).toBeNull();
+    expect(parseClockRow("+ 00:04:12 2026-11-05 ")).toBeNull();
+  });
+
+  it("accepts only the canonical dashed day, in one place", () => {
+    expect(parseClockRow("+ 00:04:12 2026.11.05 09:14:22")).toBeNull();
+    expect(parseClockRow("+ 00:04:12 09:14:22 2026-11-05")).toBeNull();
+    expect(parseClockRow("+ 00:04:12 2026-11-05 09:14:22 prose")).toBeNull();
   });
 
   it("does not read the old moment-first order", () => {
@@ -68,6 +109,12 @@ describe("clock rows", () => {
 
     expect(row?.time).toBe("09:14:00");
     expect(row?.durationSpan).toEqual({ from: 2, to: 12 });
+
+    // A dated row's span still stops at the duration, so the day is untouched.
+    expect(parseClockRow("+ 00:04:12 2026-11-05 09:14:22")?.durationSpan).toEqual({
+      from: 0,
+      to: 10
+    });
 
     // A duration-only row has a span too; the leading indent is outside it and
     // the rewrite preserves it.

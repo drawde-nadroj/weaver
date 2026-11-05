@@ -2,8 +2,10 @@
  * The entry: the unit a day note is made of.
  *
  * An entry is a marker line `{ B.D.N }`, prose, then at most one clock row
- * `+ 00:04:31 09:14:22` — how long it took, then the moment it was written. `B`
- * is the branch id (a depth-1 entry's position among depth-1 entries, carried
+ * `+ 00:04:31 2026-11-05 09:14:22` — how long it took, the day it was written,
+ * then the moment. The written day is the entry's own; a row from before it
+ * existed has no day, and nothing supplies one from the note's name. `B` is the
+ * branch id (a depth-1 entry's position among depth-1 entries, carried
  * unchanged by everything beneath it), `D` the dimension, `N` the day sequence
  * (assigned once, only appended). `N` is identity, `B` is address: `N` never
  * moves, and `B` changes only when a root is deleted, never on insert.
@@ -46,6 +48,12 @@ export interface Entry {
   branch: number;
   /** The moment, normalised `HH:MM:SS`; null when the entry has no clock row. */
   time: string | null;
+  /**
+   * The day the entry was written, canonical `YYYY-MM-DD`, read from its clock
+   * row; null when the row carries no written day. Never inferred from the
+   * note's filename or the entry's parent.
+   */
+  day: string | null;
   /** Absolute offset just past the marker, where a title may sit. */
   markerEnd: number;
   /** `-` is a draft; `+`, `=` and an absent duration are settled. */
@@ -282,6 +290,7 @@ export function parseEntries(source: string): EntryIndex {
       n: hit.n,
       branch,
       time: clock?.time ?? null,
+      day: clock?.day ?? null,
       markerEnd: hit.markerEnd,
       // `+` alone is settled: `-` is being written and `=` is paused, and both
       // are still open. Every `state === "draft"` check in the tree now reads

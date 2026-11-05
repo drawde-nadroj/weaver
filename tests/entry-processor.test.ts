@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { MarkdownPostProcessorContext } from "obsidian";
 
 import { createCloseProcessor } from "../src/reading/close-processor";
-import { dayKey } from "../src/core/day";
 import { createEntryProcessor } from "../src/reading/entry-processor";
 import { ShimElement } from "../test-support/dom";
 
@@ -232,24 +231,115 @@ describe("the entry processor", () => {
       opened.push([target, source]);
     })(root as never, context(PATH));
 
-    const todayName = dayKey(new Date()).replace(/-/g, ".");
     const link = root.querySelector(".weaver-entry-daylink");
     expect(link?.hasClass("weaver-frame-label")).toBe(true);
-    // The link names today, not the note's own day.
-    expect(link?.textContent).toBe(`[[${todayName}]]`);
+    // The entry's day is the date in the note, independent of the viewing date.
+    expect(link?.textContent).toBe("[[2026.10.26]]");
     // It is a child of the frame, not of the shrink-wrapped head.
     expect(link?.parentElement?.hasClass("weaver-frame")).toBe(true);
 
     link?.click();
-    expect(opened).toEqual([[todayName, PATH]]);
+    expect(opened).toEqual([["2026.10.26", PATH]]);
   });
 
-  it("draws no day link on today's note or a note that is not a day", () => {
-    const todayPath = `Chronomancer/${dayKey(new Date()).replace(/-/g, ".")}.md`;
+  it.each(["2026.10.26", "2026-10-26", "2040.01.01"])("uses the recorded day %s in Reading view", (name) => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    createEntryProcessor()(root as never, context(`Chronomancer/${name}.md`));
+    expect(root.querySelector(".weaver-entry-daylink")?.textContent).toBe(`[[${name}]]`);
+  });
 
-    for (const path of [todayPath, "Chronomancer/notes.md"]) {
+  it.each([
+    ["2026.11.02", "2026.11.05"],
+    ["2026-11-02", "2026-11-05"]
+  ])("prefers the clock row's day in a %s note", (name, expected) => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
+
+    createEntryProcessor()(root as never, context(`Chronomancer/${name}.md`));
+
+    expect(root.querySelector(".weaver-entry-daylink")?.textContent).toBe(`[[${expected}]]`);
+  });
+
+  it("keeps mixed historical and newly dated entries on their own days", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "old prose");
+    paragraph(root, "+ 00:01:00 10:00:00");
+    paragraph(root, "{ 2.1.4 }");
+    paragraph(root, "new prose");
+    paragraph(root, "+ 00:02:00 2026-11-05 10:00:00");
+
+    createEntryProcessor()(root as never, context("Chronomancer/2026.11.02.md"));
+
+    expect(root.querySelectorAll(".weaver-entry-daylink").map((link) => link.textContent)).toEqual([
+      "[[2026.11.02]]",
+      "[[2026.11.05]]"
+    ]);
+  });
+
+  it.each([
+    "+ 00:04:12 2026-11-05 13:27:43",
+    "= 00:04:12 2026-11-05 13:27:43",
+    "2026-11-05 13:27:43"
+  ])("moves a contained clock onto the rail without repeating its date: %s", (clock) => {
+    const root = container();
+    paragraph(root, `{ 2.1.3 }\nprose\n${clock}`);
+
+    createEntryProcessor()(root as never, context("Chronomancer/2026.11.02.md"));
+
+    expect(root.querySelector(".weaver-entry-daylink")?.textContent).toBe("[[2026.11.05]]");
+    expect(root.querySelector(".weaver-entry-prose")?.textContent).toBe("prose");
+    expect(root.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
+  });
+
+  it("extracts a paused row after a soft break without damaging prose markup", () => {
+    const root = container();
+    const p = paragraph(root, "{ 2.1.3 }");
+    p.createEl("br");
+    p.appendChild(document.createTextNode("\n") as unknown as ShimElement);
+    p.createEl("strong").setText("prose");
+    p.createEl("br");
+    p.appendChild(document.createTextNode("\n= 00:04:12 2026-11-05 13:27:43") as unknown as ShimElement);
+    createEntryProcessor()(root as never, context(PATH));
+    expect(root.querySelector(".weaver-entry-prose")?.textContent).toBe("prose");
+    expect(root.querySelector(".weaver-entry-prose strong")?.textContent).toBe("prose");
+    expect(root.querySelector(".weaver-entry-prose br")).toBeNull();
+    expect(root.querySelector(".weaver-duration-clock")?.textContent).toBe("= 00:04:12");
+    expect(root.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
+  });
+
+  it("reads a section's recorded day without waiting for its clock paragraph", () => {
+    const source = "{ 2.1.3 }\nprose\n+ 00:04:12 2026-11-05 13:27:43";
+    const root = container();
+    paragraph(root, source);
+    createEntryProcessor()(root as never, {
+      ...context("Chronomancer/2026.11.02.md"),
+      getSectionInfo: () => ({ text: source, lineStart: 0, lineEnd: 2 })
+    });
+
+    expect(root.querySelector(".weaver-entry-daylink")?.textContent).toBe("[[2026.11.05]]");
+  });
+
+  it("keeps the date out of the clock row", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
+
+    createEntryProcessor()(root as never, context(PATH));
+
+    const row = root.querySelector(".weaver-duration");
+    expect(row?.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
+    // The date labels the top-right corner only; the row stays time.
+    expect(row?.textContent).not.toContain("2026-11-05");
+  });
+
+  it("draws no day link on a note that is not a day", () => {
+    for (const path of ["Chronomancer/notes.md", ""]) {
       const root = container();
       paragraph(root, "{ 2.1.3 }");
+      paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
       createEntryProcessor()(root as never, context(path));
       expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
     }

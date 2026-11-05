@@ -11,17 +11,19 @@
  *
  * The marker's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
- * the marker stays in the DOM untouched, links and emphasis included. On a note
- * whose filename is a day other than today's, a link to today's daily note is
- * appended to the frame and positioned at its top-right corner; today's note
- * carries none, because it would link back to itself. The clock row's two halves
+ * the marker stays in the DOM untouched, links and emphasis included. A link to
+ * the entry's recorded day is appended at the frame's top-right corner: the day
+ * its clock row holds, else the day-note filename, so a historical undated row
+ * still names the note's day and a newly dated row names its own. The label
+ * never reads the wall clock, and the clock row's two halves stay time-only —
+ * the date is drawn once, at the top-right. The clock row's halves
  * are digit and punctuation runs, exactly as in the editor.
  */
 
 import type { MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName, dayNameLike } from "../core/day";
+import { entryDayName, dayKeyFromName } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseEntries, parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
@@ -37,11 +39,35 @@ const WHISPER_CLASS = "weaver-entry-whisper";
 const TEXT_NODE = 3;
 
 /**
+ * Moves a clock at the end of the marker's paragraph out of the prose. Markdown
+ * keeps paused (`=`) and moment-only rows in that paragraph rather than a list
+ * section; leaving the raw row there would repeat its date and lose the rail.
+ * Only the trailing clock and its separator leave; earlier markup stays intact.
+ */
+function takeClockTail(paragraph: HTMLElement): ClockRow | null {
+  const tail = paragraph.lastChild;
+  if (tail?.nodeType !== TEXT_NODE) return null;
+  const text = (tail.textContent ?? "").trimEnd();
+  const start = text.lastIndexOf("\n") + 1;
+  const clock = parseClockRow(text.slice(start).trim());
+  if (clock === null) return null;
+  const remainder = text.slice(0, start).replace(/\r?\n$/, "");
+  if (remainder !== "") tail.textContent = remainder;
+  else {
+    tail.remove();
+    const separator = paragraph.lastChild;
+    if (separator?.nodeType === 1 && (separator as Element).tagName === "BR") separator.remove();
+  }
+  return clock;
+}
+
+/**
  * The clock row, in Reading view: the duration at the left corner, the moment at
  * the right, each carrying its own background so the rail is cut twice and shows
  * between them. The parser accepts only the canonical shape, so this re-renders
  * the file's own text: the digits stay white and the colons take the dimension's
- * colour.
+ * colour. A recorded day is not drawn here — it labels the frame's top-right
+ * corner once, never the bottom row.
  */
 function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTMLElement {
   const root = document.createElement("div");
@@ -85,11 +111,9 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
     const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
-    const fileDay = dayKeyFromName(basename);
-    const today = new Date();
-    const showDayLink = fileDay !== null && fileDay !== dayKey(today);
-    // The link goes to today, not to the note it is painted on.
-    const dayLinkTarget = dayNameLike(today, basename);
+    // A non-day note has no daily note to open and no filename to fall back to,
+    // so it generates no link; the day is computed per entry below.
+    const dayNote = dayKeyFromName(basename) !== null;
     const open = openDayLink ?? (() => {});
 
     // Obsidian renders each Markdown block separately. A canonical + or - clock
@@ -133,6 +157,15 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
       if (prefix === null) continue;
       depth = prefix.d;
 
+      // The entry this section holds, when the source can be read: its own
+      // recorded day is the day the label names, even if it was written into an
+      // older note. Without section context the same day is found below, in the
+      // marker paragraph's contained lines or in the clock paragraph beside it.
+      const sourceEntry = section === null ? undefined : sourceIndex?.entries.find((entry) =>
+        entry.n === prefix.n && entry.line >= section.lineStart && entry.line <= section.lineEnd
+      );
+      let entryDay: string | null = sourceEntry?.day ?? null;
+
       const head = document.createElement("div");
       // The marker row is the frame's top rail: its own background cuts the rail
       // behind it, so the box reads as running into the row that names it.
@@ -168,17 +201,15 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         }
       }
 
+      const containedClock = takeClockTail(paragraph);
+      entryDay = containedClock?.day ?? entryDay;
+
       const frame = document.createElement("div");
       frame.className = "weaver-frame is-static";
       frame.setAttribute("style", dimensionColorVars(prefix.d));
       frame.setAttribute("data-weaver-d", String(prefix.d));
       paragraph.replaceWith(frame);
       frame.appendChild(head);
-
-      // The top-right label on a note that is not today's. It is a child of the
-      // frame, not of the shrink-wrapped head, so the head stays exactly the
-      // marker's own characters.
-      if (showDayLink) frame.appendChild(dayLinkElement(dayLinkTarget, sourcePath, open));
 
       if ((paragraph.textContent ?? "").trim() !== "") {
         const inline = document.createElement("p");
@@ -187,6 +218,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         while (paragraph.firstChild !== null) inline.appendChild(paragraph.firstChild);
         frame.appendChild(inline);
       }
+      if (containedClock !== null) frame.appendChild(clockElement(containedClock, prefix.d, true));
 
       let sibling = frame.nextElementSibling;
       while (sibling !== null) {
@@ -209,6 +241,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
 
         const parsed = parseClockRow((sibling.textContent ?? "").trim());
         if (parsed !== null) {
+          entryDay = parsed.day ?? entryDay;
           frame.appendChild(clockElement(parsed, prefix.d, true));
           sibling.remove();
           break;
@@ -222,13 +255,23 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
 
       // The clock's own section is suppressed independently, so block rendering
       // order and virtualized section boundaries cannot leave a bullet behind.
-      const sourceEntry = section === null ? undefined : sourceIndex?.entries.find((entry) =>
-        entry.n === prefix.n && entry.line >= section.lineStart && entry.line <= section.lineEnd
-      );
       if (sourceEntry?.clockLine !== null && sourceEntry?.clockLine !== undefined &&
           sourceEntry.clockLine > (section?.lineEnd ?? -1)) {
         const sourceClock = parseClockRow(sourceIndex?.lines[sourceEntry.clockLine]?.trim() ?? "");
-        if (sourceClock !== null) frame.appendChild(clockElement(sourceClock, prefix.d, true));
+        if (sourceClock !== null) {
+          entryDay = sourceClock.day ?? entryDay;
+          frame.appendChild(clockElement(sourceClock, prefix.d, true));
+        }
+      }
+
+      // The entry-day label is a child of the frame, not of the shrink-wrapped
+      // head, so the head stays exactly the marker's own characters. It is
+      // inserted once the day is known — the recorded day if the clock row holds
+      // one, else the note's filename, and nothing on a non-day note — and kept
+      // directly after the head so the clock row remains the frame's last child.
+      const dayLinkTarget = dayNote ? entryDayName(entryDay, basename) : null;
+      if (dayLinkTarget !== null) {
+        frame.insertBefore(dayLinkElement(dayLinkTarget, sourcePath, open), head.nextSibling);
       }
     }
   };

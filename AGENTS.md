@@ -1,7 +1,7 @@
 # Weaver — agent notes
 
 Weaver is an Obsidian plugin (TypeScript, esbuild, Vitest) whose day note is a
-linear list of entries: `{ B.D.N }`, prose, `[+-=] HH:MM:SS HH:MM:SS`.
+linear list of entries: `{ B.D.N }`, prose, `[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`.
 
 **The map is `SYSTEM-DESIGN.md`.** Every mechanism sentence in it names the code
 that implements it as `path#symbol`, and `npm run docs:check` fails when that
@@ -67,13 +67,13 @@ re-read: the hash exists to make that impossible, not to be bypassed.
   text in a note, and nothing but the model writes them.
 - **One surface per intent.** The navigator is the only navigation.
 - **The frame:** the marker row is the top-left rail label; the clock row labels the
-  bottom edge at both corners — the duration left, the moment right. On a note whose
-  filename day is not today's, a link to today's daily note is the top-right label, cut into the
-  rail like the other corners; today's note carries none. The rails pass through
-  those rows' centres and are cut behind their labels; rows are found by
+  bottom edge at both corners — the duration left, the moment right. New clock
+  rows record creation date and time once: `[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`.
+  The creation-day link is the top-right label; undated historical entries use the filename day.
+  The rails pass through those rows' centres and are cut behind their labels; rows are found by
   `data-weaver-n`, not DOM position; the extent is `frameSpan`. No entry fact is
-  rendered twice, and the day is not drawn into the entry's text: the filename is the
-  day and the note's header shows it.
+  rendered twice: the date labels the top-right and time the bottom-right.
+  The filename is the note's day, not necessarily a new entry's creation day.
 - **Mobile is not a fork.** One implementation; platform differences are geometry,
   row height, and — for a whisper — the address: a phone does not call a loopback
   endpoint it cannot reach.

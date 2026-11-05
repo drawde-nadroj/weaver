@@ -4,8 +4,8 @@ import {
   dayFrontmatter,
   dayKey,
   dayKeyFromName,
-  dayNameLike,
-  dayNotePath
+  dayNotePath,
+  entryDayName
 } from "../src/core/day";
 import { ensureDayNote, resolveDayNote } from "../src/entries/day-note";
 import { DEFAULT_SETTINGS } from "../src/settings";
@@ -40,10 +40,24 @@ describe("day keys", () => {
     expect(dayKeyFromName("Meeting notes")).toBeNull();
   });
 
-  it("names today in the note's own filename style", () => {
-    expect(dayNameLike(AT_1637, "2026.10.27")).toBe("2024.01.02");
-    expect(dayNameLike(AT_1637, "2026-10-27")).toBe("2024-01-02");
-    expect(dayNameLike(AT_1637, "Meeting notes")).toBe("2024-01-02");
+});
+
+describe("entryDayName", () => {
+  it("prefers the entry's own recorded day to the filename", () => {
+    // A row written today into an older day note keeps today's date.
+    expect(entryDayName("2026-11-05", "2026.11.02")).toBe("2026.11.05");
+    expect(entryDayName("2026-11-05", "2026-11-02")).toBe("2026-11-05");
+  });
+
+  it("falls back to the note's day for a historical undated row", () => {
+    expect(entryDayName(null, "2026.11.02")).toBe("2026.11.02");
+    expect(entryDayName(null, "2026-11-02")).toBe("2026-11-02");
+  });
+
+  it("names no day on a note whose filename is not a day", () => {
+    expect(entryDayName(null, "Meeting notes")).toBeNull();
+    // An explicit day still formats; the surfaces keep the non-day-note gate.
+    expect(entryDayName("2026-11-05", "Meeting notes")).toBe("2026-11-05");
   });
 });
 

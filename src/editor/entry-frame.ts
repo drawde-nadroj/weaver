@@ -24,11 +24,9 @@
  * painted twice, and the frame survives its ends scrolling out of the render
  * range because a row that is not rendered falls back to the line block's centre.
  *
- * On a note whose filename is a day other than today's, a link to today's daily
- * note labels the top-right corner. It is drawn by the entry decoration in the
- * marker row — never by this layer, which paints no text at all — and its own
- * background cuts the top rail like the other three labels. Today's note carries
- * none: the link would point back at itself.
+ * The entry's creation day labels the top-right corner, taken from its clock row
+ * or the filename for an undated historical entry. The decoration draws it — never this layer,
+ * which paints no text — and its background cuts the rail like the other labels.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";

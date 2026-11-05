@@ -118,18 +118,17 @@ Every surface must answer three questions; one that cannot is not a surface.
   order.
 - A half the row does not carry is not drawn: the frame labels only what the note
   holds, never an invented `00:00:00`.
-- The day is not drawn into an entry's text. The filename *is* the day and the
-  note's own header shows it permanently. On a note whose filename day is not
-  today's, a link to today's daily note labels the top-right corner: `ui/day-link.ts`
-  builds it, the marker row's decoration positions it absolutely in Live Preview, and
-  the static frame does the same in Reading view. It names the current date, not the
-  note's own day, and its background cuts the top rail. It is invisible until the
-  caret is inside that entry (marker through clock row), the pointer hovers over
+- New entries record creation date and time in their clock row; historical
+  undated entries inherit the filename day. The top-right corner links to that
+  creation day in the note's date style: `ui/day-link.ts` builds it, the marker
+  row positions it absolutely in Live Preview, and the static frame does the same
+  in Reading view. Opening or resuming an entry never redates it. It is
+  invisible until the caret is inside that entry (marker through clock row), the pointer hovers over
   its frame, or the link receives keyboard focus. Hovering another frame can reveal
   a second link without hiding the caret's link; leaving hides that second link.
   Reading view has no caret, so it reveals the link on hover or focus within the
-  frame. Revealing changes no geometry. Today's note and Source mode carry none.
-- The frame's labels — marker, the date link on another day, stopwatch and moment —
+  frame. Revealing changes no geometry. Source mode and non-day notes carry none.
+- The frame's labels — marker, entry-day link, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
   weight.
@@ -219,6 +218,9 @@ needs one to enclose, and the browser needs no measurement at all to draw it.
 The marker's own soft break is removed too, so the first prose line starts
 directly below the top label with only the 8 px clearance its background needs.
 Later author-written breaks and inline markup remain intact.
+A paused or moment-only clock can remain inside the marker's Markdown paragraph;
+it is extracted onto the bottom rail too, so the creation date is never repeated
+inside the prose.
 
 The frame's edges are the rails, so the first and last children *hang half a line
 over them*: `align-self` shrink-wraps each one to its own text, and a negative
@@ -243,9 +245,9 @@ Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
 Inline markup inside the prose is untouched, and only the marker's own characters
 leave the marker paragraph — a title typed after the clock, with its links and
-emphasis, stays in the DOM exactly as Obsidian made it. On a note that is not
-today's, a link to today's daily note is appended to the static frame and positioned
-at its top-right corner; it is a child of the frame, not of the shrink-wrapped head.
+emphasis, stays in the DOM exactly as Obsidian made it. The entry's recorded-day
+link is appended to the static frame and positioned at its top-right corner; it
+is a child of the frame, not of the shrink-wrapped head.
 
 ### The navigator
 

@@ -1,12 +1,12 @@
 /**
- * The link to the current day's note at the top right of a frame: `[[YYYY.MM.DD]]`.
+ * The entry-day link at the top right of a frame: `[[YYYY.MM.DD]]`.
  *
- * It is generated, not in the file, because it is a way back to today rather than
- * one of the note's entries. On a note that is not today's it names the *current*
- * date, not the note's own day. The `weaver-frame-label` class is what cuts the top
- * rail behind it, so it reads as the fourth corner label rather than a second
- * rendering of the marker row. Both surfaces build the same element here, so the
- * live preview and the reading view cannot drift apart.
+ * The entry's clock row records its day when one was written; a historical
+ * undated row inherits the day-note filename, and the label is written in that
+ * filename's own dotted or dashed style. This generated label names that
+ * recorded day, never the date of viewing. The `weaver-frame-label` background
+ * cuts the top rail behind it. Both surfaces build the same element here, so
+ * Live Preview and Reading view agree.
  *
  * The element is a span with `role="link"`, not an anchor: the surfaces own the
  * navigation — `openLinkText` — and an anchor would let Obsidian's own handler

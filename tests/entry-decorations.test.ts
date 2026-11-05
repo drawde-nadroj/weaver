@@ -35,9 +35,10 @@ function collect(
   state: EditorState,
   session = new EntrySession(),
   path = PATH,
-  openDayLink?: (target: string, sourcePath: string) => void
+  openDayLink?: (target: string, sourcePath: string) => void,
+  now = NOW
 ): Found[] {
-  const set = entryDecorationSet(state, session, path, NOW, openDayLink);
+  const set = entryDecorationSet(state, session, path, now, openDayLink);
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -74,6 +75,13 @@ function clockWidget(found: Found[]): DurationWidget | undefined {
 /** The one non-block widget: the day link. */
 function dayLinkWidget(found: Found[]): Found | undefined {
   return found.find(
+    (range) => range.spec.widget !== undefined && !(range.spec.widget instanceof DurationWidget)
+  );
+}
+
+/** Every day link, in document order, for a note holding several entries. */
+function dayLinkWidgets(found: Found[]): Found[] {
+  return found.filter(
     (range) => range.spec.widget !== undefined && !(range.spec.widget instanceof DurationWidget)
   );
 }
@@ -229,7 +237,7 @@ describe("the entry decorations", () => {
     widget.destroy();
   });
 
-  it("puts the daily-note link at the top-right on a note that is not today's", () => {
+  it("labels a past entry with its recorded day, not the day of viewing", () => {
     const link = dayLinkWidget(collect(stateAt()));
     const dom = link?.spec.widget?.toDOM?.() as
       | (ShimNode & { click: () => void })
@@ -239,7 +247,7 @@ describe("the entry decorations", () => {
     // not a second line.
     expect(link?.spec.block).toBeUndefined();
     expect(link?.from).toBe(DOC.indexOf("\n"));
-    expect(dom?.textContent).toBe("[[2026-10-27]]");
+    expect(dom?.textContent).toBe("[[2026-10-26]]");
   });
 
   it("opens the daily note from the day link", () => {
@@ -252,7 +260,7 @@ describe("the entry decorations", () => {
     const dom = link?.spec.widget?.toDOM?.() as { click: () => void } | undefined;
 
     dom?.click();
-    expect(opened).toEqual([["2026-10-27", PATH]]);
+    expect(opened).toEqual([["2026-10-26", PATH]]);
   });
 
   it("reveals only the entry containing the selection head, including its rails", () => {
@@ -276,16 +284,85 @@ describe("the entry decorations", () => {
     expect(revealed(doc.length)).toEqual([]);
   });
 
-  it("shows no day link on today's note, a non-day note, or in source mode", () => {
-    expect(
-      dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/2026-10-27.md"))
-    ).toBeUndefined();
+  it("shows the entry day on today's note too", () => {
+    const link = dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/2026-10-27.md"));
+    expect(link?.spec.widget?.toDOM?.().textContent).toBe("[[2026-10-27]]");
+  });
+
+  it.each([
+    ["2026.11.02", "2026.11.05"],
+    ["2026-11-02", "2026-11-05"]
+  ])("uses the day written into the clock row in %s, not the filename", (name, expected) => {
+    // A row written on 5 November inside a note named for 2 November keeps its
+    // own day, in the note's own dotted or dashed style.
+    const doc = ["{ 1.2.1 }", "prose here", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
+    const link = dayLinkWidget(
+      collect(stateAt(doc.indexOf("prose"), doc), new EntrySession(), `Chronomancer/${name}.md`)
+    );
+
+    expect(link?.spec.widget?.toDOM?.().textContent).toBe(`[[${expected}]]`);
+  });
+
+  it("keeps a historical undated row on the note's day beside a newly dated one", () => {
+    const doc = [
+      "{ 1.2.1 }",
+      "old prose",
+      "+ 00:01:00 10:00:00",
+      "",
+      "{ 1.2.2 }",
+      "new prose",
+      "+ 00:02:00 2026-11-05 10:00:00"
+    ].join("\n");
+    const links = dayLinkWidgets(
+      collect(stateAt(doc.indexOf("old prose"), doc), new EntrySession(), "Chronomancer/2026.11.02.md")
+    );
+
+    expect(links.map((link) => link.spec.widget?.toDOM?.().textContent)).toEqual([
+      "[[2026.11.02]]",
+      "[[2026.11.05]]"
+    ]);
+  });
+
+  it("never draws the date twice into the clock widget", () => {
+    const doc = ["{ 1.2.1 }", "prose here", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
+    const found = collect(stateAt(doc.indexOf("prose"), doc));
+    const widget = clockWidget(found);
+    const root = widget?.toDOM();
+
+    // The date labels the top-right corner only; the bottom row stays time.
+    expect(widget?.input.time).toBe("10:00:00");
+    expect(root?.textContent).not.toContain("2026-11-05");
+    widget?.destroy();
+  });
+
+  it("keeps entry dates stable across midnight and preserves filename style", () => {
+    for (const name of ["2026-10-26", "2026.10.26"]) {
+      for (const now of [NOW, NOW + 86_400_000 * 10]) {
+        const link = dayLinkWidget(collect(stateAt(), new EntrySession(), `Chronomancer/${name}.md`, undefined, now));
+        expect(link?.spec.widget?.toDOM?.().textContent).toBe(`[[${name}]]`);
+      }
+    }
+  });
+
+  it("shows no day link on a non-day note or in source mode", () => {
     expect(
       dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/notes.md"))
     ).toBeUndefined();
 
     const source = stateAt(DOC.indexOf("prose"), DOC, false);
     expect(dayLinkWidget(collect(source))).toBeUndefined();
+  });
+
+  it("keeps the non-day-note gate even when a row records its day", () => {
+    const doc = ["{ 1.2.1 }", "prose here", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
+    const found = collect(
+      stateAt(doc.indexOf("prose"), doc),
+      new EntrySession(),
+      "Chronomancer/notes.md"
+    );
+
+    // A note that is not a day has no day note to open, recorded row or not.
+    expect(dayLinkWidget(found)).toBeUndefined();
   });
 
   it("keeps the day link off a marker row that also carries prose", () => {

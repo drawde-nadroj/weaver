@@ -24,9 +24,48 @@ describe("parseEntries", () => {
     expect(entry?.b).toBe(2);
     expect(entry?.n).toBe(3);
     expect(entry?.time).toBe("13:27:43");
+    // The row predates the written day, so the entry has none — and none is
+    // invented from the note's name.
+    expect(entry?.day).toBeNull();
     expect(entry?.state).toBe("settled");
     expect(entry?.duration).toEqual({ sigil: "+", ms: 252_000 });
     expect(entry?.clockLine).toBe(2);
+  });
+
+  it("reads the entry's own day from its clock row, not from the note", () => {
+    const source = ["{ 1.1.1 }", "written elsewhere", "+ 00:04:12 2026-11-05 13:27:43"].join("\n");
+    const entry = parseEntries(source).entries[0];
+
+    expect(entry?.day).toBe("2026-11-05");
+    expect(entry?.time).toBe("13:27:43");
+  });
+
+  it("dates a child by its own row, independently of its parent", () => {
+    // A child added to an older note after midnight is dated the day it was
+    // written, not the day the note or its parent belongs to.
+    const source = [
+      "{ 1.1.1 }",
+      "old parent",
+      "+ 00:04:12 2026-11-04 23:58:00",
+      "",
+      "{ 1.2.2 }",
+      "new child",
+      "- 00:00:00 2026-11-05 00:01:00"
+    ].join("\n");
+    const [parent, child] = parseEntries(source).entries;
+
+    expect(parent?.day).toBe("2026-11-04");
+    expect(child?.day).toBe("2026-11-05");
+  });
+
+  it("keeps a dated row as the clock row, not prose", () => {
+    const source = ["{ 1.1.1 }", "prose", "2026-11-05 13:27:43"].join("\n");
+    const entry = parseEntries(source).entries[0];
+
+    expect(entry?.clockLine).toBe(2);
+    expect(entry?.day).toBe("2026-11-05");
+    expect(entry?.duration).toBeNull();
+    expect(entry?.title).toBe("prose");
   });
 
   it("accepts a bare marker and a two-field moment", () => {

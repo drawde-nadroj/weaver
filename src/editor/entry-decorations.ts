@@ -16,11 +16,11 @@
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
  *
- * On a note whose filename is a day other than today's, the marker row carries a
- * third piece of markup: the link to today's daily note at the top-right corner.
- * It is generated because it points at the current day rather than at anything in
- * the entry, and the frame layer paints no text at all. Today's note carries none:
- * the link would point back at the note it is painted on.
+ * The marker row's third piece of markup is the entry-day link at the top-right
+ * corner. The entry's own clock row supplies its day when one was recorded, and
+ * a historical undated row inherits the day-note filename; the clock row also
+ * supplies the entry's time. Neither changes just because the note is read on
+ * another day, and the date is not drawn a second time into the clock widget.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -33,7 +33,7 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { dayKey, dayKeyFromName, dayNameLike } from "../core/day";
+import { entryDayName, dayKeyFromName } from "../core/day";
 import type { EntrySession } from "../entries/session";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
@@ -69,7 +69,7 @@ function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string):
 }
 
 /**
- * The link to today's daily note at the top-right corner: part of the marker row,
+ * The entry-day link at the top-right corner: part of the marker row,
  * positioned absolutely so it never joins the text flow or moves a character.
  *
  * `ignoreEvent` keeps a click from also placing the caret: the link is the
@@ -126,25 +126,21 @@ export function entryDecorationSet(
 
   const ranges: Range<Decoration>[] = [];
 
-  // The link belongs to the frame, and a frame is a Live Preview thing: source
-  // mode is the file's own text. A note whose filename is not a day has no daily
-  // note to point at, and today's note would link back to itself.
+  // A day note is the only surface that can label an entry: without a day
+  // filename there is no note to open and no fallback for an undated row. The
+  // label for one entry is its recorded day, else that filename — computed per
+  // entry, so a newly dated row in an older note names its own day. The wall
+  // clock is only for elapsed duration, never for dating an entry read later.
   const basename = basenameOf(path);
-  const fileDay = dayKeyFromName(basename);
-  const today = new Date(now);
-  const showDayLink =
-    state.field(editorLivePreviewField, false) === true &&
-    fileDay !== null &&
-    fileDay !== dayKey(today);
-  // The corner link is a way back to today, not a restatement of the note's own
-  // day: on a past note it reads today's date and opens today's daily note.
-  const dayLinkTarget = dayNameLike(today, basename);
+  const dayNote = dayKeyFromName(basename) !== null;
+  const showDayLinks = state.field(editorLivePreviewField, false) === true && dayNote;
 
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
+    const dayLinkTarget = showDayLinks ? entryDayName(entry.day, basename) : null;
     // The legacy inline-title row carries prose beside the marker, so an
     // absolute label at its right would sit on top of the writer's first line.
     const inlineTitle =
@@ -175,7 +171,7 @@ export function entryDecorationSet(
 
     // The top-right corner's label: generated, absolutely positioned, and the
     // only text on this row that the file does not hold.
-    if (showDayLink && !inlineTitle) {
+    if (dayLinkTarget !== null && !inlineTitle) {
       ranges.push({
         from: head.to,
         to: head.to,

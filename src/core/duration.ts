@@ -2,7 +2,9 @@
  * The clock row of an entry, and the clocks it is written with.
  *
  * The row is the entry's last line and carries its two clocks: how long it took,
- * then the moment it was written. One format for both directions, `HH:MM:SS`, so
+ * then the moment it was written, with the day it was written on between them
+ * (`+ 00:04:12 2026-11-05 09:14:22`) so an entry keeps its own creation date
+ * even in a note named for another one. One format for both clocks, `HH:MM:SS`, so
  * a time of day and a duration are the same shape at the same width — which is
  * what lets them sit at opposite ends of one rail. The algebra behind it — and
  * the inverse, reading a clock string back — lives in `duration.bend`, where
@@ -38,13 +40,23 @@ export function formatDurationLine(sigil: DurationSigil, ms: number): string {
 
 /** The duration half's sigil, then air, then its clock, at the start of a row. */
 const DURATION_HALF = /^([=+-])[ \t]+([^ \t]+)(?=[ \t]|$)/;
+/** A day after the duration: canonical dashed `YYYY-MM-DD`, then air or the end. */
+const DAY = /^(\d{4}-\d{2}-\d{2})(?=[ \t]|$)/;
 /** A moment after the duration: `HH:MM` or `HH:MM:SS`, then air or the end. */
 const MOMENT = /^(\d{1,2}:\d{2}(?::\d{2})?)(?=[ \t]|$)/;
 
-/** The two halves of a clock row: the duration, then the moment beside it. */
+/**
+ * The parts of a clock row: the duration, the day it was written, then the
+ * moment beside it.
+ */
 export interface ClockRow {
   /** Normalised `HH:MM:SS`; null when the row carries only a duration. */
   time: string | null;
+  /**
+   * The entry's own day, canonical `YYYY-MM-DD`, as written between the
+   * duration and the moment; null when the row predates a written day.
+   */
+  day: string | null;
   /** The duration half; null when the row carries only a moment. */
   duration: { sigil: DurationSigil; ms: number } | null;
   /**
@@ -64,12 +76,14 @@ function normalizeClock(time: string): string {
 }
 
 /**
- * A clock row: a duration, a moment, or both, and nothing else.
+ * A clock row: a duration, a day and a moment, and nothing else.
  *
- * Either half may be absent — a draft has no settled duration, a hand-written
+ * Either clock may be absent — a draft has no settled duration, a hand-written
  * entry may carry only a moment — so `null` back means the row is prose, not
- * that half of it was wrong. The duration half's span is reported so a rewrite
- * of it can leave every other character of the row alone.
+ * that a part of it was wrong. A day is only readable beside a moment: a date
+ * on its own would let a surface infer a wall-clock moment the row never
+ * carried, so `+ 00:04:12 2026-11-05` is prose. The duration half's span is
+ * reported so a rewrite of it can leave every other character of the row alone.
  *
  * Minutes and seconds are 0–59, so `formatClock`'s own output always reads back.
  * The duration's separator is required, so a prose line that starts with a plus
@@ -98,7 +112,17 @@ export function parseClockRow(text: string): ClockRow | null {
   }
 
   let time: string | null = null;
+  let day: string | null = null;
   if (cursor < row.length) {
+    const written = DAY.exec(row.slice(cursor));
+    if (written !== null) {
+      day = written[1] ?? null;
+      cursor += written[0].length;
+      while (cursor < row.length && (row[cursor] === " " || row[cursor] === "\t")) cursor += 1;
+      // A day without a moment is not a clock row: nothing writes one.
+      if (cursor >= row.length) return null;
+    }
+
     const moment = MOMENT.exec(row.slice(cursor));
     if (moment === null) return null;
     if (row.slice(cursor + moment[0].length).trim() !== "") return null;
@@ -106,12 +130,23 @@ export function parseClockRow(text: string): ClockRow | null {
   }
 
   if (time === null && parsedDuration === null) return null;
-  return { time, duration: parsedDuration, durationSpan };
+  return { time, day, duration: parsedDuration, durationSpan };
 }
 
-/** The whole clock row, e.g. `+ 00:04:12 09:14:22`, or a half alone. */
-export function formatClockRow(time: string | null, sigil: DurationSigil, ms: number): string {
+/**
+ * The whole clock row, e.g. `+ 00:04:12 2026-11-05 09:14:22`, or a part alone.
+ *
+ * `day` is the entry's own creation day, `YYYY-MM-DD`; a row with no moment
+ * carries no day either, because a date is read only beside a moment.
+ */
+export function formatClockRow(
+  time: string | null,
+  sigil: DurationSigil,
+  ms: number,
+  day: string | null
+): string {
   const clock = formatDurationLine(sigil, ms);
-  return time === null ? clock : `${clock} ${time}`;
+  if (time === null) return clock;
+  return day === null ? `${clock} ${time}` : `${clock} ${day} ${time}`;
 }
 

@@ -2,7 +2,7 @@
 
 Weaver is an Obsidian plugin where a day note is a linear list of **entries**. An
 entry is a marker line `{ B.D.N }`, its prose, and one clock row
-`[+-=] HH:MM:SS HH:MM:SS`:
+`[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`. Older entries can omit the date:
 
 ```markdown
 { 1.1.1 }
@@ -42,7 +42,7 @@ pixel. The manual checks they need are at the end of this file.
 
 1. **Start** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
    added at the tip of today's note with an empty prose line and a clock row of
-   `HH:MM:SS - 00:00:00`.
+   `- 00:00:00 YYYY-MM-DD HH:MM:SS`, using the actual local creation date and time.
 2. **Write.** The first keystroke starts the stopwatch; the rendered duration ticks
    while the file still says `- 00:00:00`.
 3. **Stop writing** — move the caret away, click out of the note, scroll with the
@@ -142,14 +142,16 @@ the rail runs through the middle of the row and is cut behind it, so the file's
 own text is what names the box.
 
 **Clock row** — the entry's last line: an optional duration `[+-=] HH:MM:SS`,
-then an optional moment `HH:MM:SS`. Either half may be absent, so a hand-written
-`09:14:22` and a stray `+ 00:04:12` are both clock rows. When both are there the
-row reads as one line, `+ 00:04:12 09:14:22`: the duration at the left corner of
-the frame's bottom edge, the moment at the right. Both halves read alike — white
-digits around dimension-coloured colons, the same grammar as the marker, and at the
-note's own weight. A half that is absent labels no corner, so the frame never shows a value the file does not hold. The moment is
-written once, when the entry is created, and never moves; settling rewrites only
-the duration half and leaves the moment's characters alone. Minutes and seconds are `0–59`; hours are unbounded. One sigil decides
+then an optional moment. New entries record the moment as `YYYY-MM-DD HH:MM:SS`,
+for example `+ 00:04:12 2026-11-05 09:14:22`. Root and child entries retain the
+actual local creation date, even when created inside an older note. Historical
+rows with just `HH:MM:SS` remain valid: their date is the day-note filename, with
+no bulk rewrite. A hand-written `09:14:22` and a stray `+ 00:04:12` are still clock rows.
+The frame shows the date once at the top-right, and the time once at the
+bottom-right, opposite the duration. White digits and dimension-coloured colons
+match the marker. A half that is absent labels no corner. Creation date and time
+are written once; pausing and settling replace only the duration, preserving the
+moment's characters. Minutes and seconds are `0–59`; duration hours are unbounded. One sigil decides
 what the entry is: `-` is open and being written, `=` is open and paused, and `+`
 alone is settled. A settled entry is final — nothing rewrites it, not a pause, not
 a settle, not a session that wandered in. The duration half is the only mutable
@@ -414,13 +416,11 @@ card open.
   left corner, the moment at the right, with the rail visible between them, and
   both labels read as white digits around dimension-coloured colons. The stopwatch
   carries a real space after its sigil, exactly as the file writes it. Marker,
-  moment and stopwatch all read at the note's own weight — no bold. On a note whose
-  filename day is not today's, the top-right corner carries `[[today]]`: a link to
-  the current day's daily note, cut into the rail like the other three labels. The
-  link is how you get back to today; it is not the note's own day. Today's note
-  carries none; the filename is the day. Both rails are cut behind their labels,
-  with a short stub left beside each corner — `16 px` on the left, `10 px` on the
-  right — so the box reads as running into its own text, and no glyph or label
+  moment and stopwatch all read at the note's own weight — no bold. The top-right
+  corner carries a link to the entry's creation day, recorded in its clock row;
+  older undated entries use the filename day. Caret, hover or keyboard focus reveals it; hovering
+  another frame can reveal a second link. Both rails are cut behind their labels,
+  with `16 px + 0.45em` of air on each side so the corners stay curved and no glyph or label
   background is clipped at the row's bottom. Scroll to the middle of a long entry:
   the box stays whole with its last line still off-screen. Two neighbouring boxes
   never overlap — 8 px of clear space, at least, between one entry's clock centre
@@ -437,16 +437,16 @@ card open.
 - Frames, Reading view: the same boxes, one per entry, with the prose inside and no
   second indent; a nested entry's frame starts one indent step further right; the
   marker hangs half a line over the top rail and the clock half a line over the
-  bottom one, both centred on their rails, with the frame's air halved to `0.45em`
-  either side.
+  bottom one, both centred on their rails, with the same `16 px + 0.45em` side
+  clearance as Live Preview. No leftover marker break adds a blank prose row.
 - Frames, phone: the box reaches the pane's edge, and the duration and the moment
-  read on one line at the bottom two corners; on a past day the date link sits at
-  the top-right without covering the marker.
-- Frames, another day: open a note whose filename day is not today's. Every frame
-  carries today's `[[YYYY.MM.DD]]` at the top-right, its background cutting the top
-  rail, and the link opens today's daily note. Today's note carries none, and Source
-  mode carries none. Add an entry to the past note: its frame shows the current
-  date, not the note's date.
+  read on one line at the bottom two corners; the entry-day link sits at the
+  top-right without covering the marker.
+- Frames, entry dates: open an older day note and reveal its date link with the
+  caret or hover. An old undated entry reads that note's day; create a child there
+  now and its date is today's actual creation day, recorded beside its time.
+  Both use the note's dotted or dashed filename style. Reading view agrees,
+  Source mode carries no generated link, and reopening later changes neither date.
 - Whisper, warm: with *Whisper settled entries* on and oMLX answering, write about
   forty dictated words, pause two seconds, press `⏎`. The `~` rows appear above the
   prose in the same undo as `+` — one `⌘Z` removes both — neutral where the prose is

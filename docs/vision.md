@@ -34,7 +34,7 @@ never to write prose.
 | **D** | The dimension: how deep the thought sits inside its branch. `1` is the top of a day. | A rank, a score, an order. |
 | **B** | The branch id: a depth-1 entry's position among depth-1 entries, carried unchanged all the way down its subtree. Repaired only when a root is deleted. | Identity. It moves. |
 | **N** | The day sequence: assigned once, only ever appended. | A sort key you can rewrite. |
-| **Clock row** | The entry's last line: the duration `[+-=] HH:MM:SS`, then the moment `HH:MM:SS` it was written. Either half may be absent. | Prose, a heading, a timestamp in frontmatter. |
+| **Clock row** | The entry's last line: duration `[+-=] HH:MM:SS`, then creation moment `YYYY-MM-DD HH:MM:SS`. Either half may be absent; older undated moments inherit the filename day. | Prose, a heading, a timestamp in frontmatter. |
 | **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its moment. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
 | **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Settle** | `⏎` on an open entry: the duration becomes `+`, once, and the clock stops. Nothing else moves. | Saving, syncing, submitting. |
@@ -96,8 +96,10 @@ Two consequences follow, and both are implemented as such:
   the writer's own input and on nothing else — the vault reloading a note starts
   nothing — and it stops at every interruption of writing: a caret move, a blur, a
   wheel, a finger, another leaf, a card opening.
-- **The day is never written into an entry.** The filename carries it and the note's
-  own header shows it; rewriting yesterday's file every day is not acceptable.
+- **Creation date and time are written once.** New entries record both in their
+  clock row, even when added to an older note. Undated historical entries inherit
+  the filename day. Reading, resuming, pausing and settling never redate an entry,
+  and opening yesterday's file never rewrites it.
 
 ## Progression
 
