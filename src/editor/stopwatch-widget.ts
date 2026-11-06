@@ -10,7 +10,7 @@
  * twice and stays visible in the gap between them.
  *
  * Each half is three white digit spans around two dimension-coloured colons — the
- * same grammar the marker and the date label are drawn in, so the whole frame
+ * same grammar the address and the date label are drawn in, so the whole frame
  * reads as one type. The sigil is followed by a real space, exactly as the file
  * writes it. The day link does not live here: the date labels the top-right
  * corner and is drawn by the decoration.

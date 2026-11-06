@@ -80,7 +80,7 @@ describe("the entry processor", () => {
       getSectionInfo: () => ({ text: source, lineStart: start, lineEnd: end })
     });
     const process = createEntryProcessor(() => []);
-    // Sections can arrive in either order, including a list before its marker.
+    // Sections can arrive in either order, including a list before its address.
     process(clockSection as never, sectionContext(2, 2));
     process(root as never, sectionContext(0, 1));
     const frame = root.querySelector(".weaver-frame");
@@ -99,7 +99,7 @@ describe("the entry processor", () => {
   });
   const PATH = "Chronomancer/2026.10.26.md";
 
-  it("removes the marker's soft break without losing prose markup or later breaks", () => {
+  it("removes the address's soft break without losing prose markup or later breaks", () => {
     const root = container();
     const p = paragraph(root, "{ 2.1.3 }");
     p.createEl("br");
@@ -114,14 +114,14 @@ describe("the entry processor", () => {
     expect(prose?.textContent).toBe("first prose\nsecond line");
   });
 
-  it("removes only the marker newline when soft breaks are rendered as text", () => {
+  it("removes only the address newline when soft breaks are rendered as text", () => {
     const root = container();
     paragraph(root, "{ 2.1.3 }\n\nfirst prose");
     createEntryProcessor(() => [])(root as never, context(PATH));
     expect(root.querySelector(".weaver-entry-prose")?.textContent).toBe("\nfirst prose");
   });
 
-  it("turns a marker paragraph into the head, with the punctuation coloured", () => {
+  it("turns an address paragraph into the head, with the punctuation coloured", () => {
     const root = container();
     paragraph(root, "{ 2.1.3 }");
 
@@ -136,7 +136,7 @@ describe("the entry processor", () => {
       "3"
     ]);
     expect(head?.querySelector(".weaver-dcn-ink")?.textContent).toBe("{ ");
-    // The marker row is the top rail's label, in the file's own characters.
+    // The address row is the top rail's label, in the file's own characters.
     expect(head?.hasClass("weaver-frame-label")).toBe(true);
     expect(head?.textContent).toBe("{ 2.1.3 }");
   });
@@ -210,7 +210,7 @@ describe("the entry processor", () => {
     const frame = root.querySelector(".weaver-frame");
     expect(frame?.hasClass("is-static")).toBe(true);
     expect(frame?.getAttr("style")).toBe("--weaver-dcolor:#ef4444;--weaver-d:1");
-    // The first child is the marker row, the last the clock row: each is the
+    // The first child is the address row, the last the clock row: each is the
     // label of the rail it sits on, so each cuts that rail behind itself.
     expect(frame?.firstChild?.hasClass("weaver-entry-head")).toBe(true);
     expect(frame?.firstChild?.hasClass("weaver-frame-label")).toBe(true);
@@ -222,19 +222,19 @@ describe("the entry processor", () => {
     // right, with the rail itself left visible between them.
     expect(row?.querySelector(".weaver-duration-moment")?.hasClass("weaver-frame-label")).toBe(true);
     expect(row?.querySelector(".weaver-duration-clock")?.hasClass("weaver-frame-label")).toBe(true);
-    // The prose is the interior; the marker and clock paragraphs are gone.
+    // The prose is the interior; the address and clock paragraphs are gone.
     expect(frame?.querySelectorAll(".weaver-entry-prose").length).toBe(1);
     expect(frame?.querySelectorAll("p").length).toBe(1);
     expect(root.querySelectorAll(".weaver-entry-prose").length).toBe(1);
   });
 
-  it("keeps a title typed after the marker as the first prose line", () => {
+  it("keeps a title typed after the address as the first prose line", () => {
     const root = container();
     paragraph(root, "{ 2.1.3 } a title");
 
     createEntryProcessor(() => [])(root as never, context(PATH));
 
-    // The label is the canonical marker, never the title: a rail cannot ellipsize
+    // The label is the canonical address, never the title: a rail cannot ellipsize
     // away a line of the entry.
     expect(root.querySelector(".weaver-entry-head")?.textContent).toBe("{ 2.1.3 }");
     expect(root.querySelector(".weaver-entry-prose")?.textContent?.trim()).toBe("a title");

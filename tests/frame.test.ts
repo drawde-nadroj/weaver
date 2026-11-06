@@ -10,7 +10,7 @@ import {
 } from "../src/core/frame";
 
 const COLUMN: FrameColumn = { left: 100, right: 500 };
-/** Corner 10 + stub 14 + label pad 8: where the marker's ink starts inside its rail. */
+/** Corner 10 + stub 14 + label pad 8: where the address's ink starts inside its rail. */
 const GUTTER = 32;
 
 function box(textLeft: number | null, column: FrameColumn = COLUMN) {
@@ -40,7 +40,7 @@ describe("frameColumn", () => {
 });
 
 describe("frameBox", () => {
-  it("puts the left rail one label inset outside the marker's ink", () => {
+  it("puts the left rail one label inset outside the address's ink", () => {
     const frame = box(160);
 
     expect(frame.drawn).toBe(true);
@@ -87,9 +87,9 @@ function span(firstRail: number, lastRail: number, nextRail: number | null = nul
 
 /**
  * Every number here was measured off a live screenshot of a 32 px entry: the
- * marker's ink ran 40..63 (centre 51.5), the clock's 177..199 (centre 188), and
- * the next entry's marker 235..258 (centre 246.5). In that build the top rail sat
- * at 23 — five pixels above the marker's own line — and the bottom rail at 200,
+ * address's ink ran 40..63 (centre 51.5), the clock's 177..199 (centre 188), and
+ * the next entry's address 235..258 (centre 246.5). In that build the top rail sat
+ * at 23 — five pixels above the address's own line — and the bottom rail at 200,
  * through the clock's descenders.
  */
 describe("frameSpan", () => {
@@ -107,7 +107,7 @@ describe("frameSpan", () => {
     expect(frame.top).toBe(51.5);
     expect(frame.bottom).toBe(188);
     // 58.5 px of clear space between one entry's clock centre and the next
-    // marker's — the gap Reading view's margin is built to match.
+    // address's — the gap Reading view's margin is built to match.
     expect(246.5 - frame.bottom).toBeGreaterThanOrEqual(AIR);
   });
 

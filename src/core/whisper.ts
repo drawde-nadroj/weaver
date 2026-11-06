@@ -31,8 +31,8 @@ export interface WhisperItem {
 /** What a whisper is written about: the entry, and the ancestors it reads after. */
 export interface WhisperInput {
   /** `{ B.D.N }`, for the prompt only. */
-  marker: string;
-  /** The entry's prose, lines joined by `\n`, no marker, no clock, no whisper. */
+  address: string;
+  /** The entry's prose, lines joined by `\n`, no address, no clock, no whisper. */
   prose: string;
   /** Root first, parent last. `title` is prose; `whisper` is the ancestor's name if it has one. */
   ancestors: { title: string; whisper: string | null }[];
@@ -125,7 +125,7 @@ export function formatWhisperLine(item: WhisperItem): string {
  * written against text it did not read, which is the same cost as a stale cache
  * entry.
  *
- * The marker, the clock row and every whisper are excluded, so the key answers
+ * The address, the clock row and every whisper are excluded, so the key answers
  * exactly one question — *is the text I read still the text that is there?* — and
  * a write that adds a sibling's whisper, or the sigil changing `-`→`+`, never
  * invalidates it.
@@ -199,7 +199,7 @@ export function validateWhisper(
     }
 
     // The address is not a name: `{ 3.1.3 }` written back names nothing.
-    if (type === "name" && input.marker.includes(text.replace(/[{}]/g, "").trim())) {
+    if (type === "name" && input.address.includes(text.replace(/[{}]/g, "").trim())) {
       return { ok: false, reason: "names the address" };
     }
     if (WHISPER_NEGATION.test(text)) return { ok: false, reason: "negation" };
@@ -248,7 +248,7 @@ Answer with one JSON object and nothing else, no prose around it. "type" is "nam
 /** One entry of the day, as the thread question sees it. */
 export interface WhisperDayEntry {
   /** `{ B.D.N }`, for the skeleton. */
-  marker: string;
+  address: string;
   /** The name the entry carries — its whisper name, or a short title. */
   name: string;
 }
@@ -287,13 +287,13 @@ export function whisperThreadPrompt(
   day: readonly WhisperDayEntry[],
   own: WhisperDayEntry
 ): { system: string; user: string } {
-  const skeleton = day.map((each) => `  ${each.marker} ${each.name}`).join("\n");
+  const skeleton = day.map((each) => `  ${each.address} ${each.name}`).join("\n");
   const user = [
     "the day, in order:",
     skeleton,
     "",
     "the entry to place:",
-    `  ${own.marker} ${own.name}`
+    `  ${own.address} ${own.name}`
   ].join("\n");
 
   return { system: THREAD_PROMPT, user };
@@ -333,7 +333,7 @@ export function validateThread(
 
   const lower = text.toLowerCase();
   const others = day.filter(
-    (each) => each.marker !== own.marker && each.name !== "" && each.name !== own.name
+    (each) => each.address !== own.address && each.name !== "" && each.name !== own.name
   );
   if (!others.some((each) => lower.includes(each.name.trim().toLowerCase()))) {
     return { ok: false, reason: "cites nothing" };
@@ -349,7 +349,7 @@ export function validateThread(
  * `ancestors, nearest last:` heading would invite the model to fill it.
  */
 export function whisperPrompt(input: WhisperInput): { system: string; user: string } {
-  const lines = [input.marker];
+  const lines = [input.address];
 
   if (input.ancestors.length > 0) {
     // A name when one exists, and otherwise the title cut to its first clause:

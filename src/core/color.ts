@@ -115,7 +115,7 @@ export function dimensionColor(d: number): string {
   return color;
 }
 
-/** The two custom properties a line or marker carries: colour and depth. */
+/** The two custom properties a line or address carries: colour and depth. */
 export function dimensionColorVars(d: number): string {
   const level = Number.isFinite(d) ? Math.max(1, Math.round(d)) : 1;
   return `--weaver-dcolor:${dimensionColor(level)};--weaver-d:${level}`;

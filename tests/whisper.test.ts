@@ -15,7 +15,7 @@ import headings from "./fixtures/whisper-headings.json";
 const PROSE = "made a version of pi with durable execution in go";
 
 const INPUT: WhisperInput = {
-  marker: "{ 5.1.8 }",
+  address: "{ 5.1.8 }",
   prose: PROSE,
   ancestors: []
 };
@@ -151,7 +151,7 @@ describe("validateWhisper", () => {
 
   it("rejects a copy of the entry's opening", () => {
     const input: WhisperInput = {
-      marker: "{ 1.1.1 }",
+      address: "{ 1.1.1 }",
       prose: "the first sentence of it\nand then more",
       ancestors: []
     };
@@ -185,7 +185,7 @@ describe("whisperKey", () => {
     const index = parseEntries(source);
     const entry = index.entries[0];
     return whisperKey({
-      marker: "{ 5.1.8 }",
+      address: "{ 5.1.8 }",
       prose: (entry?.proseLines ?? []).map((line) => index.lines[line]).join("\n"),
       ancestors
     });
@@ -220,7 +220,7 @@ describe("whisperKey", () => {
 describe("whisperPrompt", () => {
   it("leaves the ancestors block out when there are none", () => {
     const { user } = whisperPrompt(INPUT);
-    expect(user).toBe(`${INPUT.marker}\nnote:\n${PROSE}`);
+    expect(user).toBe(`${INPUT.address}\nnote:\n${PROSE}`);
   });
 
   it("lists the branch as names already taken, nearest last", () => {
@@ -308,7 +308,7 @@ describe("the writer's own register", () => {
     const accepted = headings.filter(
       (text) =>
         validateWhisper([{ type: "name", text }], {
-          marker: "{ 1.1.1 }",
+          address: "{ 1.1.1 }",
           prose: "the writer's own line for this day",
           ancestors: []
         }).ok

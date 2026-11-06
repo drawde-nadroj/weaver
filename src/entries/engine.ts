@@ -34,7 +34,7 @@ import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
   findEntryAtOffset,
-  formatMarker,
+  formatAddress,
   parseEntries,
   type Entry,
   type EntryIndex
@@ -977,7 +977,7 @@ export class EntryEngine {
   }
 
   /**
-   * The model's view of one entry: its prose, its marker, and the ancestors
+   * The model's view of one entry: its prose, its address, and the ancestors
    * above it, root first.
    *
    * `null` when there is nothing to read. An ancestor contributes its own first
@@ -1008,7 +1008,7 @@ export class EntryEngine {
     }
 
     return {
-      marker: formatMarker(entry.b, entry.d, entry.n),
+      address: formatAddress(entry.b, entry.d, entry.n),
       prose: entry.proseLines.map((line) => index.lines[line] ?? "").join("\n"),
       ancestors
     };
@@ -1069,7 +1069,7 @@ export class EntryEngine {
         entry.state === "settled" &&
         entry.whisper.length === 0 &&
         entry.proseLines.length > 0 &&
-        (index.lines[entry.line] ?? "").slice(entry.markerEnd - entry.from).trim() === ""
+        (index.lines[entry.line] ?? "").slice(entry.addressEnd - entry.from).trim() === ""
     );
 
     new Notice(NOTICE_WHISPERING);
@@ -1126,7 +1126,7 @@ export class EntryEngine {
       if (target.whisper.some((row) => row.type === "thread")) continue;
 
       const own = skeleton.find(
-        (each) => each.marker === formatMarker(target.b, target.d, target.n)
+        (each) => each.address === formatAddress(target.b, target.d, target.n)
       );
       // The first entry of the day has no earlier entry to cite.
       if (own === undefined || skeleton.indexOf(own) === 0) continue;
@@ -1220,7 +1220,7 @@ export class EntryEngine {
     return index.entries
       .filter((entry) => entry.state === "settled" && entry.proseLines.length > 0)
       .map((entry) => ({
-        marker: formatMarker(entry.b, entry.d, entry.n),
+        address: formatAddress(entry.b, entry.d, entry.n),
         name:
           names.get(index.entries.indexOf(entry)) ??
           entry.whisper[0]?.text ??

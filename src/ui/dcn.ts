@@ -4,8 +4,8 @@
  * dimension's.
  *
  * Shared by the navigator, the Live Preview frames and the Reading-view frame —
- * one grammar, every surface. The marker's hyphen is punctuation like every other
- * separator, because on a framed surface the whole marker is the top rail's label
+ * one grammar, every surface. The address's hyphen is punctuation like every other
+ * separator, because on a framed surface the whole address is the top rail's label
  * and its background cuts the rail; there is no character that belongs to the box
  * instead of the text.
  */
@@ -24,11 +24,11 @@ export interface Slice {
 }
 
 /**
- * The runs a marker is drawn in: digits white, punctuation coloured. Pure, so the
+ * The runs an address is drawn in: digits white, punctuation coloured. Pure, so the
  * editor's decoration set and the Reading view build the same runs from the same
  * rule.
  */
-export function markerSlices(text: string): Slice[] {
+export function addressSlices(text: string): Slice[] {
   return text
     .split(/(\d+)/)
     .filter((part) => part !== "")
@@ -37,7 +37,7 @@ export function markerSlices(text: string): Slice[] {
 
 /** Splits `B.D.N` into digit runs and separators inside `parent`. */
 export function appendDigitRuns(parent: HTMLElement, text: string): void {
-  for (const slice of markerSlices(text)) {
+  for (const slice of addressSlices(text)) {
     const span = document.createElement("span");
     span.className = slice.cls;
     span.textContent = slice.text;

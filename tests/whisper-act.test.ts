@@ -40,7 +40,7 @@ const WHISPER: WhisperItem[] = [{ type: "name", text: "a thing, written" }];
 const ANSWER = JSON.stringify({ whisper: WHISPER });
 
 /** The input the engine builds for the fixture entry, as the key is taken over it. */
-const INPUT = { marker: "{ 1.1.1 }", prose: "wrote a thing about it", ancestors: [] };
+const INPUT = { address: "{ 1.1.1 }", prose: "wrote a thing about it", ancestors: [] };
 
 /** A model that answers by job: a reading, or a placement in the day. */
 class Fixed implements WhisperModel {

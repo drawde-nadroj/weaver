@@ -28,7 +28,7 @@
 import { formatLocalTimestamp } from "./alignments";
 import { formatClock, pad2 } from "./clock";
 import { dayKey } from "./day";
-import { formatMarker, type Entry, type EntryIndex } from "./entries";
+import { formatAddress, type Entry, type EntryIndex } from "./entries";
 import type { PortalInstant } from "./portals";
 
 /** The first committed input of a thread root, frozen at the instant it arrived. */
@@ -474,8 +474,8 @@ export function moveThreadSelection(view: ThreadView, direction: ThreadMove): Th
 /** The accessible name of a branch action: what it branches from, and from where. */
 export function branchLabel(parent: ThoughtRef): string {
   const excerpt = excerptOf(parent.prose);
-  const marker = formatMarker(parent.b, parent.d, parent.n);
-  return `Branch under ${excerpt === "" ? marker : excerpt} · ${marker}`;
+  const address = formatAddress(parent.b, parent.d, parent.n);
+  return `Branch under ${excerpt === "" ? address : excerpt} · ${address}`;
 }
 
 /** The local hour and minute of a recorded opening, `HH:MM`. */

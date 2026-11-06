@@ -69,7 +69,7 @@ export const NOTICE_WHISPER_UNREACHABLE = "No whisper endpoint is reachable from
 
 /** What a whole-day whisper pass had to work with, and what became of it. */
 export interface WhisperPass {
-  /** Settled entries that were candidates: no whisper, no name typed after the marker, and prose to read. */
+  /** Settled entries that were candidates: no whisper, no name typed after the address, and prose to read. */
   targets: number;
   /** How many of them got their whisper in this pass. */
   written: number;
@@ -162,7 +162,7 @@ export function noticeCloseCodeBlock(action: string): string {
   return `Weaver: close the code block before ${action}. ${NOTICE_NOTHING_WRITTEN}`;
 }
 
-/** The refusal for a note that still carries the old marker's clock. */
+/** The refusal for a note that still carries the old address's clock. */
 export function noticeLegacyFormat(action: string): string {
   return `Weaver: this note still uses the old entry format; migrate it before ${action}. ${NOTICE_NOTHING_WRITTEN}`;
 }

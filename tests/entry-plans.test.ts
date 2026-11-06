@@ -476,7 +476,7 @@ describe("planDuration", () => {
     expect(planDuration(source, index, entry, "+", 60_000)).toBeNull();
   });
 
-  it("plans nothing for a note that still carries the old marker", () => {
+  it("plans nothing for a note that still carries the old address", () => {
     // The old duration line still parses as a clock row, so without the flag the
     // plan would rewrite one field of a note the migration has not touched.
     const source = ["{ 1.1.1 } - 10:00:00", "prose", "- 00:00:01"].join("\n");
@@ -557,7 +557,7 @@ describe("settling and descending", () => {
 describe("planWhisper", () => {
   const SOURCE = [
     "{ 1.1.1 }",
-    "the marker row's own words",
+    "the address row's own words",
     "+ 00:01:00 10:00:00"
   ].join("\n");
 
@@ -578,15 +578,15 @@ describe("planWhisper", () => {
         "{ 1.1.1 }",
         "~ a pricing decision",
         "~ next: read it once more",
-        "the marker row's own words",
+        "the address row's own words",
         "+ 00:01:00 10:00:00"
       ].join("\n")
     );
     // One insertion: the selection is the empty range past the new rows.
     expect(plan.changes.length).toBe(1);
     expect(plan.changes[0]?.from).toBe(plan.changes[0]?.to);
-    expect(plan.selection.from).toBe(SOURCE.indexOf("the marker row's own words") + "~ a pricing decision\n~ next: read it once more\n".length);
-    expect(parseEntries(next).entries[0]?.title).toBe("the marker row's own words");
+    expect(plan.selection.from).toBe(SOURCE.indexOf("the address row's own words") + "~ a pricing decision\n~ next: read it once more\n".length);
+    expect(parseEntries(next).entries[0]?.title).toBe("the address row's own words");
   });
 
   it("lands above a prose line that sits after a blank one", () => {
@@ -618,7 +618,7 @@ describe("planWhisper", () => {
     expect(planWhisper(source, index, entry, [{ type: "name", text: "another" }])).toBeNull();
   });
 
-  it("refuses a marker row the writer already named", () => {
+  it("refuses an address row the writer already named", () => {
     const index = parseEntries(SOURCE);
     const entry = index.entries[0];
     if (entry === undefined) throw new Error("expected an entry");
@@ -629,7 +629,7 @@ describe("planWhisper", () => {
     if (titledEntry === undefined) throw new Error("expected an entry");
     expect(planWhisper(titled, titledIndex, titledEntry, [{ type: "name", text: "x" }])).toBeNull();
 
-    // The same entry without a name on the marker row is writable.
+    // The same entry without a name on the address row is writable.
     expect(planWhisper(SOURCE, index, entry, [{ type: "name", text: "x" }])).not.toBeNull();
   });
 

@@ -19,7 +19,7 @@ body {
 
 /* ── The entry ─────────────────────────────────────────────────────────── */
 
-/* One font, the note's. The marker, the stopwatch and the close mark used to
+/* One font, the note's. The address, the stopwatch and the close mark used to
  * ask for `--font-monospace` while the prose did not, which made one entry read
  * as two typefaces. Everything Weaver writes now inherits `--font-text`; clocks
  * stay aligned by tabular figures instead of by a monospace face. */
@@ -33,7 +33,7 @@ body {
 
 /* The indent: an entry at level 3 starts two steps further right than one at
  * level 1. Obsidian sets `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }`,
- * which is three classes, so a single class never won and the marker and the
+ * which is three classes, so a single class never won and the address and the
  * prose sat at the pane's left edge at every level while the clock row — a block
  * widget, not a `.cm-line` — indented alone. Four classes, so the padding is
  * declared rather than competed for. */
@@ -64,7 +64,7 @@ body {
   line-height: var(--weaver-entry-line-height);
 }
 
-/* Digits take the note's own text colour; the punctuation — the marker's braces
+/* Digits take the note's own text colour; the punctuation — the address's braces
  * and dots, the stopwatch's sigil and its two colons — carries the dimension's
  * colour, which is what makes a depth legible at a glance. */
 .weaver-dcn-num,
@@ -121,7 +121,7 @@ body {
  * also draws — the same line height, the same air, the same indent — so crossing
  * the row with the caret moves nothing. The classes carry no colour of their own:
  * a raw line keeps the dimension's colour, so clicking one does not flash it back
- * to plain text. A raw marker line is `.weaver-entry-head` too; a raw clock row is
+ * to plain text. A raw address line is `.weaver-entry-head` too; a raw clock row is
  * not `.weaver-duration` (the widget is gone), so it needs the colour, the air and
  * the indent named again. Obsidian's `.markdown-source-view.mod-cm6 .cm-line`
  * sets `padding: 0` at three classes, so this selector carries four: equal
@@ -139,13 +139,13 @@ body {
 
 /* Two ways to start an entry, and the settings toggle picks one.
  *
- * Default: the marker, the prose and the clock row all take the indent, and the
- * frame's left edge is placed a fixed air left of the marker — so the boxes step
+ * Default: the address, the prose and the clock row all take the indent, and the
+ * frame's left edge is placed a fixed air left of the address — so the boxes step
  * right with the nesting.
  *
- * `weaver-frame-fixed`: the marker and the clock row stay in the left margin and
- * only the prose moves right. The frame's left edge follows the marker, so every
- * box starts in the same place and the markers and the times form one column each
+ * `weaver-frame-fixed`: the address and the clock row stay in the left margin and
+ * only the prose moves right. The frame's left edge follows the address, so every
+ * box starts in the same place and the addresses and the times form one column each
  * down the note. Five classes for the line rules, so they beat the four-class
  * indent above rather than tying with it. */
 body.weaver-frame-fixed .weaver-duration,
@@ -171,10 +171,10 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   );
 }
 
-/* The vertical rhythm between Threads and between branches. A marker row carries
+/* The vertical rhythm between Threads and between branches. An address row carries
  * one of these classes when the gap belongs above it: a Thread-start is a depth-1
  * entry that follows another Thread, and a branch-start is a branch whose
- * predecessor is another branch. Padding on the marker row moves the row, its
+ * predecessor is another branch. Padding on the address row moves the row, its
  * prose and its frame down together; the frame measures the label's ink, so the
  * top rail stays on the glyphs and no character moves inside the row. Four
  * classes, for the same reason the indent carries four: Obsidian's `.cm-line`
@@ -194,7 +194,7 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
  * note and a scroll costs no measurement. Every box is `pointer-events: none`,
  * so editing, selection and touch are exactly what they were.
  *
- * The file's own text labels the box: the marker row is the top rail's label,
+ * The file's own text labels the box: the address row is the top rail's label,
  * the duration row the bottom rail's, and each rail runs through the centre of
  * the row it names. Nothing is hidden and nothing is painted twice: the label's
  * own background is what cuts the rail, so no second rendering of the row is
@@ -445,9 +445,9 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
 }
 
 /* The entry-day link is the top-right corner's label on a day note.
- * It is out of the text flow — the marker row's own line never moves for it — and
+ * It is out of the text flow — the address row's own line never moves for it — and
  * its `weaver-frame-label` background cuts the top rail like the other corners.
- * The live preview positions it inside the marker line, so that line is the
+ * The live preview positions it inside the address line, so that line is the
  * containing block; the reading view positions it inside the static frame. */
 .weaver-entry-daylink {
   color: color-mix(in oklab, var(--weaver-dcolor, var(--text-normal)) 75%, transparent);
@@ -472,9 +472,9 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
   transform: translateY(-50%);
 }
 
-/* The marker row's top padding makes the row taller without moving its
+/* The address row's top padding makes the row taller without moving its
  * containing block: `top: 50%` still splits the whole padding box, so the date
- * link would ride half the new air above the rail. Return it to the marker's
+ * link would ride half the new air above the rail. Return it to the address's
  * centre. Legacy inline titles keep their own raised position. */
 .markdown-source-view.mod-cm6
   .cm-line.weaver-entry-head.weaver-thread-start:not(.weaver-entry-inline)
@@ -519,7 +519,7 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
   /* Rail labels hang beyond this wrapper; only the editor overlay clips effects. */
   overflow: visible;
   /* The frame's edges are the label centres. The measured Live Preview gap
-   * between one entry's clock centre and the next marker centre is 58 px at
+   * between one entry's clock centre and the next address centre is 58 px at
    * 32 px type; 1.8em reproduces it, and adjacent labels sit on opposite sides
    * of the frame, so they do not collide. */
   margin: 1.8em -16px 1.8em calc(var(--weaver-frame-indent) - 16px);
@@ -540,7 +540,7 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
 }
 
 /* The same two gaps in Reading view, added to the frame's own top margin. The
- * marker row is inside the frame here, so the air belongs to the frame rather
+ * address row is inside the frame here, so the air belongs to the frame rather
  * than to a line: the class is on `.weaver-frame`, written by the processor. */
 .markdown-rendered .weaver-frame.is-static.weaver-thread-start {
   margin-top: calc(1.8em + var(--weaver-thread-space));

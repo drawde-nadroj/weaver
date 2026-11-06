@@ -238,7 +238,7 @@ describe("when the clock may start", () => {
 });
 
 describe("capturing an entry's beginning", () => {
-  // A newly started entry: a marker, a blank prose line, and a duration-only
+  // A newly started entry: an address, a blank prose line, and a duration-only
   // clock row. This shape is the durable "awaiting first input" state.
   const AWAIT = ["{ 1.1.1 }", "", "- 00:00:00"].join("\n");
   const CARET = AWAIT.indexOf("- 00:00:00") - 1;
@@ -997,7 +997,7 @@ describe("the descent command", () => {
   });
 
   it("refuses outside every entry, and writes nothing", async () => {
-    // The caret sits on the blank line above the note's first marker, so no
+    // The caret sits on the blank line above the note's first address, so no
     // entry's subtree holds it.
     const source = ["", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
     const file = createFile(DAY, source);

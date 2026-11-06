@@ -84,7 +84,7 @@ a paragraph:
 | evidence vs derived reading | which bytes are authored, and which are computed from them? | the generated half of `SYSTEM-DESIGN.md` is derived from the tree; frontmatter is recounted from the note by `recountDay`, and the fixture test requires its own frontmatter to be the recount |
 | a structural node (a part) vs a text segment (a span) | what is a thing, and what is the text that names it? | a module is a structural node; a claim is a span of prose bound to one declaration's hash, so the prose and the thing it describes are checked against each other |
 | a census that counts each unit once | what is counted, and once per what? | every module and every export is counted once in the index; the doc-comment rule is a census that fails on a unit with nothing said about it |
-| authored versus composed | which document is written, and which is assembled? | `SYSTEM-DESIGN.md` has an authored half and a generated half, separated by markers; `design-md.mjs --verify` fails when they disagree |
+| authored versus composed | which document is written, and which is assembled? | `SYSTEM-DESIGN.md` has an authored half and a generated half, separated by addresses; `design-md.mjs --verify` fails when they disagree |
 
 What was rejected is the derived layer that duplicates the record. A plane, a
 census and a separate reading store are all views of text that is already in the

@@ -3,7 +3,7 @@
 Three surfaces, and one rule: **the note is the record, the navigator is the
 navigation, the settings are the look.** Everything else was removed — the status
 strip, the Tapestry, the shuttle, the weave row, the draft blocks, the in-page
-markers, the entry palette, the travel card and the travel rectangle each
+addresses, the entry palette, the travel card and the travel rectangle each
 duplicated one of these. The navigator is the one surface that moves the caret, and
 it writes only what `⏎`, `n` and `x` write.
 
@@ -57,21 +57,21 @@ Every surface must answer three questions; one that cannot is not a surface.
 
 ### The entry, in the editor
 
-- One font: the note's. The marker, the stopwatch and the close mark used to ask
+- One font: the note's. The address, the stopwatch and the close mark used to ask
   for `--font-monospace` while the prose did not, so one entry read as two
   typefaces. Everything Weaver writes now inherits `--font-text`, and clocks stay
   aligned by `font-variant-numeric: tabular-nums` instead of by a monospace face.
-- The marker line and the prose lines carry `--weaver-dcolor` and `--weaver-d`, so
+- The address line and the prose lines carry `--weaver-dcolor` and `--weaver-d`, so
   the stylesheet needs no per-level rule: colour and indent are one `calc()`.
 - That `calc()` is stated at four classes —
   `.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head` and the same for the
   prose — because Obsidian's `.markdown-source-view.mod-cm6 .cm-line { padding: 0 }`
-  is three classes. At one class the indent never painted: the marker and the prose
+  is three classes. At one class the indent never painted: the address and the prose
   sat at the pane's left edge at every level while the clock row, a block widget and
   not a `.cm-line`, indented alone, so the time drifted right of the text it
   belonged to. Measured at an 8 px step: level 1 at 52 px, level 2 at 60 px, level 3
-  at 68 px, marker, prose and stopwatch agreeing at every level.
-- The marker keeps its text. Only its runs are marked up: digits are
+  at 68 px, address, prose and stopwatch agreeing at every level.
+- The address keeps its text. Only its runs are marked up: digits are
   `.weaver-dcn-num` (the note's own text colour), punctuation `.weaver-dcn-ink`
   (the dimension's colour). The line therefore stays typable.
 - The clock row is a block widget while the selection is elsewhere, and raw text
@@ -110,7 +110,7 @@ Every surface must answer three questions; one that cannot is not a surface.
   twice. Adopting an element releases the previous writer before subscribing.
 - Each half is three digit spans around two `.weaver-duration-ink` colons: digits in
   the note's own text colour, colons in the dimension's. `appendClockRuns` builds
-  both halves from one grammar, the same one the marker uses, so the moment reads
+  both halves from one grammar, the same one the address uses, so the moment reads
   exactly like the stopwatch beside it.
 - The widget is one flex row with two labels: the duration at the left corner and
   the moment at the right, each `.weaver-frame-label` with its own background. The
@@ -146,32 +146,32 @@ Every surface must answer three questions; one that cannot is not a surface.
   input has not chosen yet — and a captured same-day entry and a historical
   undated entry have none either, including no hidden keyboard stop.
   `core/day.ts` makes that shared decision in `entryDayLinkTarget`;
-  `ui/day-link.ts` builds the link. The marker row positions it absolutely in
+  `ui/day-link.ts` builds the link. The address row positions it absolutely in
   Live Preview, and the static frame does the same in Reading view. Caret,
   hover and focus never change visibility; keyboard focus retains its outline.
   The link changes no text geometry. Opening or resuming an entry never redates it.
   Source mode and non-day notes carry no generated link.
-- The frame's labels — marker, entry-day link, stopwatch and moment —
+- The frame's labels — address, entry-day link, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
   weight.
 - Where a frame starts is a setting. *Frame follows the indent* (on by default) gives
-  the marker, the prose and the clock row the same indent, and because the frame's left
-  edge sits a fixed air left of the marker, the boxes step right with the nesting. Off,
-  only the prose is indented: the marker and the clock row stay in the left margin, the
-  frame's edge follows them, and markers and times form one column each down the note.
+  the address, the prose and the clock row the same indent, and because the frame's left
+  edge sits a fixed air left of the address, the boxes step right with the nesting. Off,
+  only the prose is indented: the address and the clock row stay in the left margin, the
+  frame's edge follows them, and addresses and times form one column each down the note.
   The body class is `weaver-frame-fixed`. Measured at a 12 px step, level 3: on, the
-  marker, prose, raw row and clock widget all at `24 px`; off, the marker, raw row and
+  address, prose, raw row and clock widget all at `24 px`; off, the address, raw row and
   clock widget at `0` with only the prose at `24 px`.
 - Two spacing settings sit beside it. *Space below each Thread* is air above every
   depth-1 entry after the note's first Thread, so a Thread's subtree does not run into
   the next. *Space between branches* is air above each branch whose predecessor is also
   a branch, so the first branch stays close to its root and later siblings separate.
-  `weaver-thread-start` and `weaver-branch-start` carry the decision: on the marker row
+  `weaver-thread-start` and `weaver-branch-start` carry the decision: on the address row
   in Live Preview and on the static frame in Reading view. Both default to zero, and
   both are the same number on desk and phone.
-- The marker's characters are the top rail's label, punctuation and all: one
-  `.weaver-frame-label` mark over the whole marker, whose background covers the rail
+- The address's characters are the top rail's label, punctuation and all: one
+  `.weaver-frame-label` mark over the whole address, whose background covers the rail
   behind it. No character of the label belongs to the box instead of the text.
 
 ### The frame, around every entry
@@ -181,17 +181,17 @@ lines in a container, so the box is **drawn over the note**: one absolutely
 positioned layer inside `.cm-scroller`, one box per entry, in document coordinates.
 
 - The layer draws the border and the live highlight, and no text at all. The label
-  is the entry's own: the marker row sits on the box's top rail, its clock row on
+  is the entry's own: the address row sits on the box's top rail, its clock row on
   the bottom edge — duration at the left corner, moment at the right. Each appears
   once, from the file, and is never dimmed, hidden or duplicated. The one generated
-  label is the day link on another day; the entry decoration draws it in the marker
+  label is the day link on another day; the entry decoration draws it in the address
   row, not this layer, so it stays clickable above the text.
 - Both rails run through the *middle* of the row that labels them, and the label's
   own background — `.weaver-frame-label`, note-background fill plus an 8 px shadow —
   paints over the rail behind it. That is the whole mechanism: no second rendering of
   the row, no masked rail, no character moved. The rails keep a short stub beside
   each corner, which is what makes the box read as a frame rather than a box.
-- The box spans the text column with `16 px + 0.45em` outside the marker's ink
+- The box spans the text column with `16 px + 0.45em` outside the address's ink
   on the left and past the text column's right edge, matching Reading view —
   the stub the rail leaves there. A box that hugged its text could not put the duration
   at one bottom corner and the moment at the other without a second rendering of the
@@ -202,7 +202,7 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   content and a scroll costs no measurement; only a reflow or a resize schedules
   one, and the schedule is one `requestAnimationFrame` however many updates ask.
 - The rows are found by their own `data-weaver-n` stamp — written by the decoration
-  that makes the marker line and by the clock widget itself — never by a DOM
+  that makes the address line and by the clock widget itself — never by a DOM
   position. Asking CodeMirror for the position of the widget's element named the
   wrong line, so the clock was measured as something else. A row that has scrolled
   out of the render range falls back to its line block, whose centre is still the
@@ -211,7 +211,7 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   closer than 8 px to its bottom rail. There is no trimming — a rail is a label's
   centre or it is nothing — so a box is never drawn at a height that cuts its own
   clock. When the rails touch or cross, there is no interior and no box.
-- A marker row that also carries prose (the inline-title case, `{ B.D.N } a title`)
+- An address row that also carries prose (the inline-title case, `{ B.D.N } a title`)
   keeps its rail *above* the row, by 12 px, or the rail would cut the entry's own
   first line. `.weaver-entry-inline` raises any different-day label above the
   row too, without joining the text flow.
@@ -226,7 +226,7 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - An ordinary live entry's border carries a highlight travelling counter-clockwise
   once every three seconds, stopped under `prefers-reduced-motion`. A captured
   live portal instead uses an eight-second multicolour pulse. Paused or settled
-  portals use the ordinary static frame; prose and marker colours still follow dimension.
+  portals use the ordinary static frame; prose and address colours still follow dimension.
 - One effect at a time, chosen by precedence in `src/editor/frame-effects.ts`. While
   a whisper request for an entry has been pending for 200 ms, that box shows the
   reading effect *instead of* the travel: one ring leaves the box's centre, dies at
@@ -330,20 +330,20 @@ above every leaf regardless of which one is showing.
 
 ### The entry, in Reading view
 
-The same shape, from a post processor: a `<p>` starting with a marker becomes the
-frame's first child — the file's own marker characters, split into digit runs — each
+The same shape, from a post processor: a `<p>` starting with an address becomes the
+frame's first child — the file's own address characters, split into digit runs — each
 following sibling becomes `.weaver-entry-prose` inside the frame. Obsidian can
 render a signed clock as a separate list block; the processor reads its exact
 source row, places the clock at the frame's bottom edge, and hides that separate
 section without changing the note. The wrapper is a real element because a box
 needs one to enclose, and the browser needs no measurement at all to draw it.
-The marker's own soft break is removed too, so the first prose line starts
+The address's own soft break is removed too, so the first prose line starts
 directly below the top label with only the 8 px clearance its background needs.
 Later author-written breaks and inline markup remain intact.
-A paused or moment-only clock can remain inside the marker's Markdown paragraph;
+A paused or moment-only clock can remain inside the address's Markdown paragraph;
 it is extracted onto the bottom rail too, so the creation date is never repeated
 inside the prose.
-An unprocessed next marker ends the current frame too: processing two entry
+An unprocessed next address ends the current frame too: processing two entry
 paragraphs in one render batch cannot accidentally nest their frames.
 
 The frame's edges are the rails, so the first and last children *hang half a line
@@ -352,7 +352,7 @@ over them*: `align-self` shrink-wraps each one to its own text, and a negative
 centre on the edge. Neither gets padding — a label must never move a character — so
 the rail is cut by the label's own background and its 8 px shadow. The 1.8em vertical
 margin is the measured Live Preview gap between one entry's clock centre and the next
-marker centre, 58 px at 32 px type. A duration paragraph with no entry above it is
+address centre, 58 px at 32 px type. A duration paragraph with no entry above it is
 never labelled: it has no rail to cut.
 
 The frame adds 16 px of horizontal air outside the existing `0.45em` inset:
@@ -367,8 +367,8 @@ margin is `-16px`, cancelling the extra air without following the dimension.
 
 Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
-Inline markup inside the prose is untouched, and only the marker's own characters
-leave the marker paragraph — a title typed after the clock, with its links and
+Inline markup inside the prose is untouched, and only the address's own characters
+leave the address paragraph — a title typed after the clock, with its links and
 emphasis, stays in the DOM exactly as Obsidian made it. A different-day entry's
 creation-day link is appended to the static frame at its top-right corner; it
 is a child of the frame, not of the shrink-wrapped head.
@@ -440,8 +440,8 @@ with the caret's entry selected.
 
 | Surface | Desktop | Phone |
 | --- | --- | --- |
-| Entry | the marker row is the frame's top rail label, digits in the text colour, punctuation coloured; a whisper row is neutral at the entry's indent | same, with `--weaver-indent-step-mobile`, and the same neutral whisper |
-| Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; the date link at the top-right on another day; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
+| Entry | the address row is the frame's top rail label, digits in the text colour, punctuation coloured; a whisper row is neutral at the entry's indent | same, with `--weaver-indent-step-mobile`, and the same neutral whisper |
+| Frame | rails through the address and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; the date link at the top-right on another day; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
 | Clock row | flex widget, ticks while live, the duration at the bottom-left corner and the moment at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | `j`/`k`/`↑`/`↓`, `⏎`, `⇧⏎`, `n`, `t`, `c`, `Delete`, `⌘[`, `⌘]`, `Esc` | tap a row to select it, its action buttons to act, `Delete` twice to remove |
@@ -463,19 +463,20 @@ the first prose line is the title, the rest is the entry
 16:10:00 + 00:04:12
 ```
 
-- Marker: `{ B.D.N }`, matched as a prefix. `{1.2.3}` reads the same. A marker in
-  frontmatter or a fenced block is text. In a frame it is the box's top rail label.
+- Dimensional Address: `{ B.D.N }`, matched as a prefix. `{1.2.3}` reads the same. A
+  Dimensional Address in frontmatter or a fenced block is text. In a frame it is
+  the box's top rail label.
 - `B` is the branch id: a depth-1 entry's `B` is its position among depth-1 entries,
   and everything under it carries that same `B` all the way down. An insert inherits
   it; deleting a root renumbers the survivors, in the same undoable transaction.
-- Prose: everything after the marker up to the next marker or clock row, trimmed of
+- Prose: everything after the address up to the next address or clock row, trimmed of
   blank lines at both ends.
 - Clock row: the entry's last line, an optional duration `[+-=] HH:MM:SS` then an
   optional moment `HH:MM:SS`. Either half may be absent. `-` is open and being
   written, `=` is open and paused, `+` alone is settled. Minutes and seconds are
   `0–59`, hours unbounded, and the duration half is the only mutable part of an
   entry. A settled entry is never rewritten; the moment keeps its own characters.
-- Legacy: a marker that still carries `- HH:MM:SS` sets `legacyFormat`; every plan
+- Legacy: an address that still carries `- HH:MM:SS` sets `legacyFormat`; every plan
   refuses the note and the plugin says to migrate it.
 - Frontmatter: `date`, `travels`, `depth`, `duration`. Written only when a value
   changes.

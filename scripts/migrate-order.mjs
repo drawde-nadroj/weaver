@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Reorders a day note's markers and clock row onto the current grammar.
+ * Reorders a day note's addresses and clock row onto the current grammar.
  *
  *   node scripts/migrate-order.mjs --expect dbn --dry-run <file…>
  *   node scripts/migrate-order.mjs --expect dbn --verify [--from <copy|dir>] <file…>
  *   node scripts/migrate-order.mjs --expect dbn <file…>
  *
- * The old marker was `{ D.B.N }` and the old clock row `HH:MM:SS [+-=] HH:MM:SS`.
+ * The old address was `{ D.B.N }` and the old clock row `HH:MM:SS [+-=] HH:MM:SS`.
  * The current one is `{ B.D.N }` and `[+-=] HH:MM:SS HH:MM:SS`: branch first,
  * dimension second; duration first, moment second. This pass swaps the fields and
  * nothing else — it does not repair a drifted branch id. Run
@@ -25,8 +25,8 @@ import { basename, join } from "node:path";
 
 const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
 const FENCE = /^( {0,3})(`{3,}|~{3,})/;
-/** The marker prefix, old order: D, then B, then N. */
-const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/;
+/** The address prefix, old order: D, then B, then N. */
+const ADDRESS = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/;
 /** An old clock row with both halves: moment first, duration second. */
 const OLD_BOTH =
   /^([ \t]*)(\d{1,2}:\d{2}(?::\d{2})?)([ \t]+)([+\-=])([ \t]+)(\d{1,}:[0-5]\d:[0-5]\d)([ \t]*)$/;
@@ -76,18 +76,18 @@ function migrate(source) {
   const lines = source.split("\n");
   const { block, body } = splitFrontmatter(lines);
   const skip = fenceState(body);
-  let markers = 0;
+  let addresses = 0;
   let rows = 0;
 
   for (let index = 0; index < body.length; index += 1) {
     if (skip.has(index)) continue;
     const line = body[index] ?? "";
 
-    const marker = MARKER.exec(line);
-    if (marker !== null) {
-      markers += 1;
-      const [, d, b, n] = marker;
-      body[index] = `{ ${b}.${d}.${n} }${line.slice(marker[0].length)}`;
+    const address = ADDRESS.exec(line);
+    if (address !== null) {
+      addresses += 1;
+      const [, d, b, n] = address;
+      body[index] = `{ ${b}.${d}.${n} }${line.slice(address[0].length)}`;
       continue;
     }
 
@@ -98,7 +98,7 @@ function migrate(source) {
   }
 
   const text = [...(block ?? []), ...body].join("\n");
-  return { source: text, markers, rows };
+  return { source: text, addresses, rows };
 }
 
 function frontmatterValue(source, key) {
@@ -150,24 +150,24 @@ function verify(source, original, file) {
     }
   }
 
-  let markers = 0;
+  let addresses = 0;
   let oldRows = 0;
   let newRows = 0;
   for (let index = 0; index < body.length; index += 1) {
     if (skip.has(index)) continue;
     const line = body[index] ?? "";
-    if (!MARKER.test(line)) {
+    if (!ADDRESS.test(line)) {
       if (OLD_BOTH.test(line)) oldRows += 1;
       else if (NEW_BOTH.test(line)) newRows += 1;
       continue;
     }
-    markers += 1;
+    addresses += 1;
     if (!/^\{ \d+\.\d+\.\d+ \}/.test(line)) {
-      problems.push(`line ${index + 1}: malformed marker: ${line}`);
+      problems.push(`line ${index + 1}: malformed address: ${line}`);
     }
   }
 
-  if (markers === 0) problems.push("no markers found");
+  if (addresses === 0) problems.push("no addresses found");
   if (oldRows > 0) problems.push(`${oldRows} moment-first clock row(s) left`);
 
   if (problems.length > 0) console.error(`${file}: ${problems.join("; ")}`);
@@ -222,12 +222,12 @@ for (const file of files) {
         ? null
         : readFileSync(isDirectory(fromPath) ? join(fromPath, basename(file)) : fromPath, "utf8");
     if (!verify(source, original, file)) failed = true;
-    else console.log(`${file}: ok, ${markers} marker(s), ${newRows} clock row(s)`);
+    else console.log(`${file}: ok, ${addresses} address(es), ${newRows} clock row(s)`);
     continue;
   }
 
   writeFileSync(file, result.source);
-  console.log(`${file}: ${result.markers} marker(s), ${result.rows} row(s)`);
+  console.log(`${file}: ${result.addresses} address(es), ${result.rows} row(s)`);
 }
 
 process.exit(failed ? 1 : 0);

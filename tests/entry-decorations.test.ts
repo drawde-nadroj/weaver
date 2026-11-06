@@ -99,13 +99,13 @@ describe("the entry decorations", () => {
     expect(prose?.spec.attributes?.style).toBe("--weaver-dcolor:#f97316;--weaver-d:2");
   });
 
-  it("keeps the marker's digits white and its punctuation coloured", () => {
+  it("keeps the address's digits white and its punctuation coloured", () => {
     const found = collect(stateAt());
     const digits = found.filter((range) => range.spec.class === "weaver-dcn-num");
     const ink = found.filter((range) => range.spec.class === "weaver-dcn-ink");
 
     expect(digits.map((range) => range.text)).toEqual(["1", "2", "1"]);
-    // The braces and the dots are punctuation: the whole marker is the top
+    // The braces and the dots are punctuation: the whole address is the top
     // rail's label, so no character of it belongs to the box instead.
     expect(ink.map((range) => range.text).join("|")).toBe("{ |.|.| }");
   });
@@ -117,15 +117,15 @@ describe("the entry decorations", () => {
     );
 
     // No `--weaver-dcolor` and no `data-weaver-n`: the stylesheet's colour rule is
-    // the whole provenance, and the frame finds the marker row only.
+    // the whole provenance, and the frame finds the address row only.
     expect(whisper?.from).toBe(doc.indexOf("~ a pricing decision"));
     expect(whisper?.spec.attributes).toBeUndefined();
   });
 
-  it("labels the marker row as the top rail's label", () => {
+  it("labels the address row as the top rail's label", () => {
     const label = collect(stateAt()).find((range) => range.spec.class === "weaver-frame-label");
 
-    // One mark over the file's own marker: the rail is cut behind these
+    // One mark over the file's own address: the rail is cut behind these
     // characters, and no character is added, moved or hidden.
     expect(label?.text).toBe("{ 1.2.1 }");
   });
@@ -182,12 +182,12 @@ describe("the entry decorations", () => {
     expect(label?.text).toBe("+ 00:01:00 10:00:00");
   });
 
-  it("keeps the marker's own text on the line whatever the caret does", () => {
+  it("keeps the address's own text on the line whatever the caret does", () => {
     const headClass = (state: EditorState): string =>
       collect(state).find((range) => range.spec.class?.startsWith("weaver-entry-head"))?.spec
         .class ?? "";
 
-    // Caret in the prose and caret on the marker row: one class, because nothing
+    // Caret in the prose and caret on the address row: one class, because nothing
     // swaps the line's text for a drawn label any more.
     expect(headClass(stateAt())).toBe("weaver-entry-head");
     expect(headClass(stateAt(2))).toBe("weaver-entry-head");
@@ -311,7 +311,7 @@ describe("the entry decorations", () => {
       | (ShimNode & { click: () => void })
       | undefined;
 
-    // Non-block, at the end of the marker row: the widget is the corner label,
+    // Non-block, at the end of the address row: the widget is the corner label,
     // not a second line.
     expect(link?.spec.block).toBeUndefined();
     expect(link?.from).toBe(DOC.indexOf("\n"));

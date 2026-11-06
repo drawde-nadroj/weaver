@@ -15,7 +15,7 @@ is a thought the note will lose.
 Since 0.5.0 the loop is **start → write → stop → settle → deeper**: writing has its
 own beginning and its own end, and neither is a keystroke away from the other. It
 happens in one place — the note. A day note is a linear list of entries, each one a
-marker line, its prose, and its duration. Nothing else writes: every write of a day
+address line, its prose, and its duration. Nothing else writes: every write of a day
 note goes through one writer, which is the open editor when there is one and the
 vault otherwise, never both.
 
@@ -29,8 +29,8 @@ destination, descend, jump — and never to write prose.
 
 | Term | Means | Is not |
 | --- | --- | --- |
-| **Entry** | One unit of a day note: a marker line, its prose, and at most one clock row. | A Markdown heading, a block, a file. |
-| **Marker** | `{ B.D.N }`, the first line of an entry. Plain text. | Frontmatter, a heading, a link. |
+| **Entry** | One unit of a day note: an address line, its prose, and at most one clock row. | A Markdown heading, a block, a file. |
+| **Dimensional Address** | `{ B.D.N }` — branch, dimension, sequence — the first line of an entry. Plain text. Called `address` in code. | Frontmatter, a heading, a link. |
 | **D** | The dimension: how deep the thought sits inside its branch. `1` is the top of a day. | A rank, a score, an order. |
 | **B** | The branch id: a depth-1 entry's position among depth-1 entries, carried unchanged all the way down its subtree. Repaired only when a root is deleted. | Identity. It moves. |
 | **N** | The day sequence: assigned once, only ever appended. | A sort key you can rewrite. |
@@ -39,7 +39,7 @@ destination, descend, jump — and never to write prose.
 | **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Thread** | A depth-1 entry and everything under it. `Thread` is capitalised in product copy; the stored `B`/`D`/`N` never change with it. | A file, a tag, a separate store. |
 | **Branch** | A thought below a Thread's root: one dimension deeper than its parent, inside the same Thread and the same note. | A new Thread, a second root. |
-| **Save** | `⏎` in the composer: one transaction writes marker, prose and a finished `+` row, once. The stored entry's own `Settle` is the same act inside a note. | Saving, syncing, submitting. |
+| **Save** | `⏎` in the composer: one transaction writes address, prose and a finished `+` row, once. The stored entry's own `Settle` is the same act inside a note. | Saving, syncing, submitting. |
 | **Realm** | A folder, a writing history and a remembered workspace: one place a thought can be written. `Main` is the one the Daily Notes plugin defines. | A tag, a vault, a filter. |
 | **Opening** | A minute a schedule offers, `[04:33:00, 04:34:00)`. Writing that *begins* inside it was written through it; a minute nobody entered is gone. | A lock, a permission, a gate. |
 | **Composer** | The one bottom surface a thought is written in from anywhere. It holds one unsaved draft, speaks the note's own frame and colour, and writes nothing until it is saved. | A modal, a second editor, a note. |
@@ -61,7 +61,7 @@ appears in copy — depth reads `1D`…`nD`.
 | Weave | `⌘⇧⏎` — *Weave a Thread* | One composer, above the workspace, holding one draft. No note changes. Works inside an editor, in Reading view, or from nowhere. | Session |
 | Write | The first committed character in the composer, or the first text in an awaiting draft | The draft's beginning — its day, its moment — once, and a clock that counts only writing time; inside a note, the beginning is written into the row in the same transaction. | Evidence and session |
 | Settle | `⏎` on an open entry | `-` or `=` becomes `+`, once, and the clock stops. Nothing else moves. | Evidence |
-| Settle a Thread | `⏎` in the composer | Marker, prose and a `+` row with the draft's own day, moment and duration, in one transaction; the composer then rests on what it wrote. | Evidence |
+| Settle a Thread | `⏎` in the composer | Address, prose and a `+` row with the draft's own day, moment and duration, in one transaction; the composer then rests on what it wrote. | Evidence |
 | Branch | `N` in the composer, or `⇧⏎` in the navigator | A child one dimension deeper, in its parent's note, with the caret in its prose. | Evidence |
 | Descend | `⏎` again, on a settled entry, or *Branch from this thought* from the palette or toolbar | A child opens one dimension deeper with the caret in its prose. | Evidence |
 | Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
@@ -83,7 +83,7 @@ The boundary rule is one test: **if the plugin vanished, the notes must still me
 something.**
 
 Evidence is what a reader of the vault would find and understand without the
-plugin: marker lines, prose, clock rows, `✓` close lines, whisper rows, and the
+plugin: address lines, prose, clock rows, `✓` close lines, whisper rows, and the
 frontmatter fields `date`, `travels`, `depth`, `duration` and `weaver-alignments`.
 Evidence is written by a command, first committed text, `⏎`, leaving the note,
 and — once, after the writing ended — the model. Invitation history records actual
@@ -137,12 +137,12 @@ requirement: an open day is open, not a gap to be repaired.
 | Kind | Rendered form | When |
 | --- | --- | --- |
 | Note | `[[<note>]]` | The whole entry matters. |
-| Entry | `[[<note>\|<alias>]]` plus the clock below it | A specific thought. A marker is plain text, so it cannot be a link target. |
+| Entry | `[[<note>\|<alias>]]` plus the clock below it | A specific thought. An address is plain text, so it cannot be a link target. |
 | Passage | `[[<note>#^<id>\|<short alias>]]` | A passage. The `^id` is appended to the end of the referenced line. |
 
-Because entry markers are plain text, Obsidian's outline, folding and
+Because entry addresses are plain text, Obsidian's outline, folding and
 `[[#heading]]` links no longer address an entry. That is the accepted cost of
-markers: the trade is that depth 7 is exactly as cheap and as stable as depth 1,
+addresses: the trade is that depth 7 is exactly as cheap and as stable as depth 1,
 and that no palette re-spreads when a deeper level appears. The navigator is the
 navigation that replaces the outline.
 
@@ -172,5 +172,5 @@ navigation that replaces the outline.
 
 - Product word for the unit: **entry**. For its depth: **dimension**.
 - No hash-plus-number notation in copy: `1D`…`nD` only.
-- New surfaces take note vocabulary — entry, marker, duration, branch, stop, settle, navigator, whisper.
+- New surfaces take note vocabulary — entry, address, duration, branch, stop, settle, navigator, whisper.
 - New surfaces do not take filing vocabulary — inbox, queue, folder, archive.

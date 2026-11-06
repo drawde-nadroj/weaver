@@ -17,7 +17,7 @@
  * - **Editing is untouched.** The layer is `pointer-events: none`.
  *
  * The file's own rows are the box's rails, and each rail runs through the centre
- * of the row that labels it: the marker row is the top-left label, the clock row
+ * of the row that labels it: the address row is the top-left label, the clock row
  * the bottom edge — its duration at the left corner, its moment at the right —
  * and each label's own background cuts the rail behind it, so the box reads as
  * running into the text that names it. Nothing is at `opacity: 0`, nothing is
@@ -43,7 +43,7 @@ import { FRAME_EFFECTS, frameEffect } from "./frame-effects";
 const MIN_AIR = 8;
 /** Air below the last prose row when an entry has no clock row. */
 const NO_CLOCK_PAD = 8;
-/** Air above a marker row when that row also carries prose (the legacy title case). */
+/** Air above an address row when that row also carries prose (the legacy title case). */
 const INLINE_TITLE_PAD = 12;
 
 /** What the layer may ask the plugin: settings, the session, the model, and a fallback path. */
@@ -289,7 +289,7 @@ class EntryFrames {
     // paints; a row that has scrolled away falls back to its line block's centre,
     // which is still the label's centre.
     const spans = index.entries.map((entry) => {
-      // A marker row that also carries prose is the legacy title case: the rail
+      // An address row that also carries prose is the legacy title case: the rail
       // goes above the row, or it would cut the entry's own first line.
       const inlineTitle =
         entry.firstProseLine !== null && entry.firstProseLine === entry.line;

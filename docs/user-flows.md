@@ -22,7 +22,7 @@ there is nothing to do.
 Writes: nothing until `⏎`. The draft — its text, its beginning, its timing, its
 selection, the openings it qualified for — is device-local and stored under
 `weaver:capture:v1` so a reload does not lose it. Undo: the save is one
-transaction, so one undo removes the marker, the prose and the clock row together.
+transaction, so one undo removes the address, the prose and the clock row together.
 
 ## Flow: save a Thread
 
@@ -30,7 +30,7 @@ transaction, so one undo removes the marker, the prose and the clock row togethe
    and the openings if there were any.
 2. `Saving…`, with the submitted prose read-only. Nothing in the note was visible
    before this, so there is no empty entry to finish.
-3. A success renders the saved prose with the recorded marker, duration and moment,
+3. A success renders the saved prose with the recorded address, duration and moment,
    selects it, and focuses that selection — so the structural motions work at once.
    A distinct second `⏎` — even one pressed while it was still saving — closes the
    surface, and the note holds exactly one entry either way.
@@ -46,7 +46,7 @@ a file that was never opened.
 Refused, with the text kept: a Realm that is gone or unreadable, a parent that is no
 longer in its note, a note whose frontmatter or code block is unclosed, a note in
 the old entry format, and prose that would break out of its own block (an unclosed
-fence, another marker line, a clock-shaped line). A record that cannot be *added*
+fence, another address line, a clock-shaped line). A record that cannot be *added*
 never refuses the thought: the entry is written and the evidence is dropped.
 Unconfirmed — an exception rather than a refusal — becomes *Check save*, which reads
 the note and either accepts it, offers one more `⏎`, or says the note changed in a
@@ -131,7 +131,7 @@ count from there.
    the parent's `B` — a branch carries one branch id — and takes the next `N`. The
    place the caret left is recorded in the visit history.
 
-Writes: the duration (one transaction), then the child's marker and clock row (a
+Writes: the duration (one transaction), then the child's address and clock row (a
 second, single change: an insert renumbers nothing). Each is undoable on its own.
 The duration written is the last second on screen: `⏎` never refreshes the clock,
 so settling cannot move a visible digit. The child's own clock row reads
@@ -182,7 +182,7 @@ writer's own edit is the only thing that removes one.
 6. ***Whisper the day.*** One pass over **the day note on screen** — today's when no
    day note is open, because a past day's note is the same shape and its settled
    entries are the same entries: every settled entry that has no whisper, no name
-   typed after its marker, and prose to read is asked about, in document order, each
+   typed after its address, and prose to read is asked about, in document order, each
    child after its parent's new name. A note whose filename carries no day is not a
    day note, so the pass falls back to today rather than write into it. All of it
    lands in one transaction, one undo.
@@ -201,7 +201,7 @@ Refused silently, with nothing written and no notice: an answer that breaks the
 register (a row past its word limit, a question mark outside `ask:`, an `ask:` row
 that does not ask, the antithesis, an em dash, a second `~`, the entry's own opening
 line, its address, a line an ancestor already carries), a note whose frontmatter or
-code block is unclosed, a marker row the writer already named, and an entry that
+code block is unclosed, an address row the writer already named, and an entry that
 already has a whisper.
 
 Because `Whisper the day` is a command the writer chose, it reports what it actually
@@ -274,13 +274,13 @@ Writes: the mark and, when a value changed, the frontmatter. Undo: one step.
 
 Refused when the day already carries a mark (`this day is already closed`), when
 the frontmatter is unclosed, when a code block is unclosed, or when the note still
-uses the old marker format (`migrate it before closing the day`). The first
+uses the old address format (`migrate it before closing the day`). The first
 decision stands.
 
 ## Flow: read a day back
 
 Nothing is written. The note itself is the view: each entry in its frame, the
-marker centred on the top rail and the clock row on the bottom edge — duration at
+address centred on the top rail and the clock row on the bottom edge — duration at
 the left corner, moment at the right — with both rails cut behind their labels, digits
 in the text colour and punctuation in the dimension's colour, durations as they were
 settled. On any note that is not today's, a link to today's daily note cuts the top

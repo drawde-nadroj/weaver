@@ -2,7 +2,7 @@
  * The frame around one entry: a box, and nothing else.
  *
  * The layer that uses this draws a border and the live highlight. It draws no
- * text: the entry's own first row — the marker line — is the box's top-left
+ * text: the entry's own first row — the address line — is the box's top-left
  * label, and its own clock row is the bottom edge, labelling the bottom-left
  * corner with the duration and the bottom-right with the moment. Every label is
  * read once, from the file, in the place a label would sit. Nothing is hidden
@@ -11,7 +11,7 @@
  * Both rails run through the centre of the row that labels them, and the label's
  * own background cuts the rail behind it, so the box reads as running into its
  * own text rather than enclosing it. The box therefore spans from one label inset
- * outside the marker's ink to the right edge of the text column: a box that hugged
+ * outside the address's ink to the right edge of the text column: a box that hugged
  * its text could not put the duration at one bottom corner and the moment at the
  * other without a second rendering of the row.
  *
@@ -192,7 +192,7 @@ export function floatingComposerBox(input: ComposerBoxInput): ComposerBox {
 
 /** The three rails: this entry's two, and where the next entry's top one sits. */
 export interface FrameSpanInput {
-  /** The top rail: the centre of the entry's marker row. */
+  /** The top rail: the centre of the entry's address row. */
   firstRail: number;
   /** The bottom rail: the centre of its clock row, or below its last prose row. */
   lastRail: number;
@@ -214,7 +214,7 @@ export interface FrameSpan {
  *
  * The rails are the label lines, so there is no padding to add and no cap to
  * apply. The old version derived both ends from the text's edges and padded them,
- * which put the top rail 5 px above the marker's own row and the bottom rail 5 px
+ * which put the top rail 5 px above the address's own row and the bottom rail 5 px
  * below the clock's — so the labels sat inside the box instead of on it, and the
  * clock row was clipped by the rail under it.
  *

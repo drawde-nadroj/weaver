@@ -1,7 +1,7 @@
 /**
  * The entry: the unit a day note is made of.
  *
- * An entry is a marker line `{ B.D.N }`, prose, then at most one clock row
+ * An entry is an address line `{ B.D.N }`, prose, then at most one clock row
  * `+ 00:04:31 2026-11-05 09:14:22` — how long it took, the day it was written,
  * then the moment. The written day is the entry's own; a row from before it
  * existed has no day, and nothing supplies one from the note's name. `B` is the
@@ -10,10 +10,10 @@
  * (assigned once, only appended). `N` is identity, `B` is address: `N` never
  * moves, and `B` changes only when a root is deleted, never on insert.
  *
- * The marker is matched as a **prefix**, so a title written on it becomes the
+ * The address is matched as a **prefix**, so a title written on it becomes the
  * first prose line instead of breaking the entry. The clock row is the entry's
  * last line, which is what lets the duration and the moment label the frame's
- * bottom rail at its two corners. Markers inside frontmatter or a fenced code
+ * bottom rail at its two corners. Addresses inside frontmatter or a fenced code
  * block are text.
  *
  * `proseLines` is trimmed at both ends: a blank line between the prose and the
@@ -32,13 +32,13 @@ import { parseClockRow, type DurationSigil } from "./duration";
 import type { TextChange } from "./insert";
 import { parseWhisperLine, type WhisperItem } from "./whisper";
 
-/** One entry: its marker, prose, clocks, and the offsets every surface reads. */
+/** One entry: its address, prose, clocks, and the offsets every surface reads. */
 export interface Entry {
-  /** Zero-based index of the marker line. */
+  /** Zero-based index of the address line. */
   line: number;
-  /** Absolute offset of the marker line's start. */
+  /** Absolute offset of the address line's start. */
   from: number;
-  /** Absolute offset of the marker line's end, excluding its newline. */
+  /** Absolute offset of the address line's end, excluding its newline. */
   to: number;
   d: number;
   b: number;
@@ -54,8 +54,8 @@ export interface Entry {
    * note's filename or the entry's parent.
    */
   day: string | null;
-  /** Absolute offset just past the marker, where a title may sit. */
-  markerEnd: number;
+  /** Absolute offset just past the address, where a title may sit. */
+  addressEnd: number;
   /** `-` is a draft; `+`, `=` and an absent duration are settled. */
   state: "draft" | "settled";
   /** The clock row's duration half; null for a row without one, or no row. */
@@ -89,7 +89,7 @@ export interface EntryIndex {
   codeFences: CodeFence[];
   unclosedFence: boolean;
   unclosedFrontmatter: boolean;
-  /** True when a marker still carries its old `- HH:MM:SS` clock. */
+  /** True when an address still carries its old `- HH:MM:SS` clock. */
   legacyFormat: boolean;
   frontmatterEnd: number | null;
   lines: string[];
@@ -97,36 +97,36 @@ export interface EntryIndex {
 }
 
 /** `{ 1.2.3 }`, matched as a prefix; whatever follows it is the entry's first prose. */
-const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
+const ADDRESS = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
 
 /**
- * The shape a marker carried before the clock row: `{ 1.2.3 } - 13:27:43`.
+ * The shape an address carried before the clock row: `{ 1.2.3 } - 13:27:43`.
  *
  * It is never parsed. A note that still holds one is refused rather than read,
  * because the row would otherwise become an entry whose first prose line is its
  * own clock — a silent mistranslation, not an error.
  */
-const LEGACY_MARKER =
+const LEGACY_ADDRESS =
   /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}[ \t]*-[ \t]*\d{1,2}:\d{2}(?::\d{2})?/;
 
-/** What a marker line carries, and how much of the text it occupies. */
-export interface MarkerPrefix {
+/** What an address line carries, and how much of the text it occupies. */
+export interface AddressPrefix {
   b: number;
   d: number;
   n: number;
-  /** Length of the marker text, in characters. */
+  /** Length of the address text, in characters. */
   length: number;
 }
 
 /**
- * Reads a marker at the start of `text`, or returns null.
+ * Reads an address at the start of `text`, or returns null.
  *
- * The marker is a prefix, so `{ 1.2.3 } a title` is one entry whose title is
+ * The address is a prefix, so `{ 1.2.3 } a title` is one entry whose title is
  * `a title` — and the same is true of a hand-written line that opens with an
  * address and nothing else.
  */
-export function parseMarkerPrefix(text: string): MarkerPrefix | null {
-  const match = MARKER.exec(text);
+export function parseAddressPrefix(text: string): AddressPrefix | null {
+  const match = ADDRESS.exec(text);
   if (match === null) return null;
 
   return {
@@ -151,13 +151,13 @@ function findClockRow(
   return null;
 }
 
-interface MarkerHit {
+interface AddressHit {
   line: number;
   d: number;
   b: number;
   n: number;
-  markerEnd: number;
-  /** Where the prose starts when it is on the marker line: past the spaces. */
+  addressEnd: number;
+  /** Where the prose starts when it is on the address line: past the spaces. */
   proseStart: number;
   inline: boolean;
 }
@@ -188,24 +188,24 @@ export function parseEntries(source: string): EntryIndex {
   index.unclosedFence = fences.unclosed;
   index.frontmatterEnd = frontmatter.kind === "closed" ? frontmatter.end : null;
 
-  const hits: MarkerHit[] = [];
+  const hits: AddressHit[] = [];
   for (let line = frontmatter.end + 1; line < lines.length; line += 1) {
     if (fences.inside.has(line)) continue;
 
     const raw = lines[line] ?? "";
-    const prefix = parseMarkerPrefix(raw);
+    const prefix = parseAddressPrefix(raw);
     if (prefix === null) continue;
 
     const start = lineStarts[line] ?? 0;
     const remainder = raw.slice(prefix.length);
     const inline = remainder.trim() !== "";
-    if (LEGACY_MARKER.test(raw)) index.legacyFormat = true;
+    if (LEGACY_ADDRESS.test(raw)) index.legacyFormat = true;
     hits.push({
       line,
       d: prefix.d,
       b: prefix.b,
       n: prefix.n,
-      markerEnd: start + prefix.length,
+      addressEnd: start + prefix.length,
       proseStart: start + prefix.length + (inline ? remainder.length - remainder.trimStart().length : 0),
       inline
     });
@@ -216,11 +216,11 @@ export function parseEntries(source: string): EntryIndex {
   let roots = 0;
 
   for (let position = 0; position < hits.length; position += 1) {
-    const hit = hits[position] as MarkerHit;
+    const hit = hits[position] as AddressHit;
     const raw = lines[hit.line] ?? "";
     const start = lineStarts[hit.line] ?? 0;
 
-    const limit = position + 1 < hits.length ? (hits[position + 1] as MarkerHit).line : lines.length;
+    const limit = position + 1 < hits.length ? (hits[position + 1] as AddressHit).line : lines.length;
     const clockLine = findClockRow(lines, hit.line, limit, fences.inside);
 
     let lo = hit.inline ? hit.line : hit.line + 1;
@@ -249,8 +249,8 @@ export function parseEntries(source: string): EntryIndex {
     const proseFrom = hit.inline
       ? hit.proseStart
       : (firstProseLine !== null
-        ? (lineStarts[firstProseLine] ?? hit.markerEnd)
-        : (lineStarts[Math.min(hit.line + 1, lines.length - 1)] ?? hit.markerEnd));
+        ? (lineStarts[firstProseLine] ?? hit.addressEnd)
+        : (lineStarts[Math.min(hit.line + 1, lines.length - 1)] ?? hit.addressEnd));
 
     const proseTo =
       lastProseLine === null
@@ -261,7 +261,7 @@ export function parseEntries(source: string): EntryIndex {
       firstProseLine === null
         ? ""
         : hit.inline && firstProseLine === hit.line
-          ? raw.slice(hit.markerEnd - start).trim()
+          ? raw.slice(hit.addressEnd - start).trim()
           : (lines[firstProseLine] ?? "").trim();
 
     const clock = clockLine === null ? null : parseClockRow(lines[clockLine] ?? "");
@@ -291,7 +291,7 @@ export function parseEntries(source: string): EntryIndex {
       branch,
       time: clock?.time ?? null,
       day: clock?.day ?? null,
-      markerEnd: hit.markerEnd,
+      addressEnd: hit.addressEnd,
       // `+` alone is settled: `-` is being written and `=` is paused, and both
       // are still open. Every `state === "draft"` check in the tree now reads
       // as "open".
@@ -397,7 +397,7 @@ export function nextBranch(index: EntryIndex): number {
 }
 
 /** `{ 1.2.3 }`: branch, dimension, sequence; one space inside each brace. */
-export function formatMarker(b: number, d: number, n: number): string {
+export function formatAddress(b: number, d: number, n: number): string {
   return `{ ${b}.${d}.${n} }`;
 }
 
@@ -406,7 +406,7 @@ export function formatMarker(b: number, d: number, n: number): string {
  *
  * A root's `B` is its 1-based position among roots, and a deeper entry's `B` is
  * its root's — so deleting a root is the only thing that can unsettle a branch,
- * and one pass over the note rewrites exactly the markers that drifted.
+ * and one pass over the note rewrites exactly the addresses that drifted.
  */
 export function repairBranches(index: EntryIndex): TextChange[] {
   const changes: TextChange[] = [];
@@ -414,7 +414,7 @@ export function repairBranches(index: EntryIndex): TextChange[] {
   for (const entry of index.entries) {
     if (entry.b === entry.branch) continue;
 
-    const span = MARKER.exec(index.lines[entry.line] ?? "")?.indices?.[1];
+    const span = ADDRESS.exec(index.lines[entry.line] ?? "")?.indices?.[1];
     if (span === undefined) continue;
 
     const start = index.lineStarts[entry.line] ?? 0;

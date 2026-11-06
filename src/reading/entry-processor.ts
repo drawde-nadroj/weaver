@@ -1,17 +1,17 @@
 /**
  * Reading view: the same entry the editor draws, in the same frame.
  *
- * The marker paragraph becomes the frame's first child and the clock paragraph
+ * The address paragraph becomes the frame's first child and the clock paragraph
  * its last; the prose between them is the frame's interior. The wrapper is a real
  * element because a box needs one to enclose — and because the file's own text is
- * what labels it: the marker row is the top rail's label, and the clock row is the
+ * what labels it: the address row is the top rail's label, and the clock row is the
  * bottom edge, its duration at the left corner and its moment at the right. The
  * rails run through the middle of those rows and are cut behind them by the
  * labels' own backgrounds, so the box reads as running into its own text.
  *
- * The marker's own characters are kept, split into digit runs so the digits stay
+ * The address's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
- * the marker stays in the DOM untouched, links and emphasis included. A persistent
+ * the address stays in the DOM untouched, links and emphasis included. A persistent
  * top-right link labels a recorded creation day only when it differs from the
  * day-note filename. Awaiting and historical undated entries carry no date link.
  * The label never reads the wall clock, and the clock row's two halves stay
@@ -23,7 +23,7 @@ import { MarkdownRenderChild, type MarkdownPostProcessor } from "obsidian";
 import { dimensionColorVars } from "../core/color";
 import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
-import { parseEntries, parseMarkerPrefix } from "../core/entries";
+import { parseEntries, parseAddressPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
 import { formatClock as wallClock } from "../core/clock";
 import type { EntryClock } from "../entries/clock";
@@ -40,7 +40,7 @@ const WHISPER_CLASS = "weaver-entry-whisper";
 const TEXT_NODE = 3;
 
 /**
- * Moves a clock at the end of the marker's paragraph out of the prose. Markdown
+ * Moves a clock at the end of the address's paragraph out of the prose. Markdown
  * keeps paused (`=`) and moment-only rows in that paragraph rather than a list
  * section; leaving the raw row there would repeat its date and lose the rail.
  * Only the trailing clock and its separator leave; earlier markup stays intact.
@@ -137,7 +137,7 @@ export function createEntryProcessor(
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
     const open = openDayLink ?? (() => {});
-    // Only the fallback path uses these: with a source index every marker can ask
+    // Only the fallback path uses these: with a source index every address can ask
     // the note itself whether a Thread or a branch came before it. The path reset
     // keeps one document's last Thread from spacing the next document's first.
     let fallbackPath: string | null = null;
@@ -173,7 +173,7 @@ export function createEntryProcessor(
       }
     }
 
-    // The nearest marker above a duration is simply the last one met, because
+    // The nearest address above a duration is simply the last one met, because
     // paragraphs arrive in document order.
     let depth: number | null = null;
 
@@ -186,20 +186,20 @@ export function createEntryProcessor(
       const clock = parseClockRow(text.trim());
       if (clock !== null) {
         // A clock row on its own, with no frame to sit on — a stray line, or one
-        // separated from its marker by something that is not a paragraph — is
+        // separated from its address by something that is not a paragraph — is
         // drawn as the plain block it always was.
         paragraph.replaceWith(renderClock(clock, depth));
         continue;
       }
 
-      const prefix = parseMarkerPrefix(text);
+      const prefix = parseAddressPrefix(text);
       if (prefix === null) continue;
       depth = prefix.d;
 
       // The entry this section holds, when the source can be read: its own
       // recorded day is the day the label names, even if it was written into an
       // older note. Without section context the same day is found below, in the
-      // marker paragraph's contained lines or in the clock paragraph beside it.
+      // address paragraph's contained lines or in the clock paragraph beside it.
       const sourceEntry = section === null ? undefined : sourceIndex?.entries.find((entry) =>
         entry.n === prefix.n && entry.line >= section.lineStart && entry.line <= section.lineEnd
       );
@@ -209,7 +209,7 @@ export function createEntryProcessor(
       // branch-start is a branch whose predecessor is another branch, so the
       // first branch stays close to its Thread's root. Reading the source index
       // makes this independent of section render order; the fallback remembers
-      // the previous marker for a note whose source cannot be read.
+      // the previous address for a note whose source cannot be read.
       const sourcePosition =
         sourceEntry === undefined || sourceIndex === null
           ? -1
@@ -230,7 +230,7 @@ export function createEntryProcessor(
       previousDepth = prefix.d;
 
       const head = document.createElement("div");
-      // The marker row is the frame's top rail: its own background cuts the rail
+      // The address row is the frame's top rail: its own background cuts the rail
       // behind it, so the box reads as running into the row that names it.
       head.className = "weaver-entry-head weaver-frame-label";
       head.setAttribute("style", dimensionColorVars(prefix.d));
@@ -239,7 +239,7 @@ export function createEntryProcessor(
 
       appendDigitRuns(head, text.slice(0, prefix.length));
 
-      // Only the marker characters leave the paragraph; a title written after
+      // Only the address characters leave the paragraph; a title written after
       // the clock, with its links and emphasis, stays exactly as Obsidian made
       // it — as the entry's first prose line, inside the frame. It is never
       // folded into the rail's label, where it would be ellipsized away.
@@ -248,7 +248,7 @@ export function createEntryProcessor(
       if (first !== null && first.nodeType === TEXT_NODE && firstText.startsWith(text.slice(0, prefix.length))) {
         const remainder = firstText.slice(prefix.length);
         first.textContent = remainder;
-        // The marker's own soft break is not a blank prose line. Remove exactly
+        // The address's own soft break is not a blank prose line. Remove exactly
         // that separator, retaining any later author-written breaks and markup.
         const separator = first.nextSibling;
         if (remainder.trim() === "" && separator !== null &&
@@ -293,9 +293,9 @@ export function createEntryProcessor(
         if (sibling.tagName !== "P") break;
         if (sibling.classList.contains(HEAD_CLASS)) break;
         if (sibling.classList.contains("weaver-frame")) break;
-        // The next marker may not have been decorated yet in this render batch.
+        // The next address may not have been decorated yet in this render batch.
         // Its paragraph owns another frame; consuming it would nest sibling entries.
-        if (parseMarkerPrefix(sibling.textContent ?? "") !== null) break;
+        if (parseAddressPrefix(sibling.textContent ?? "") !== null) break;
 
         // A whisper row is the model's reading, not the writer's prose: the class
         // overrides the colour, and `--weaver-d` stays, because the comment's rule
@@ -334,7 +334,7 @@ export function createEntryProcessor(
       }
 
       // The entry-day label is a child of the frame, not of the shrink-wrapped
-      // head, so the head stays exactly the marker's own characters. It is
+      // head, so the head stays exactly the address's own characters. It is
       // inserted only for a different recorded day, and kept directly after the
       // head so the clock row remains the frame's last child.
       const dayLinkTarget = entryDayLinkTarget(entryDay, sourcePath, contexts());

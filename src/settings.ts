@@ -69,12 +69,12 @@ export interface WeaverSettings {
   mobileIndentStep: number;
   indentMaxLevel: number;
   portEmphasisColors: boolean;
-  /** Draw a frame around every entry: the rails run through the middle of the marker and clock rows, cut behind those labels. */
+  /** Draw a frame around every entry: the rails run through the middle of the address and clock rows, cut behind those labels. */
   entryFrames: boolean;
   /**
    * Start a frame at the entry's own indent. On, a nested entry's frame begins
    * further right, so nesting reads as a staircase; off, every frame begins in the
-   * left margin and only the prose carries the indent, so the markers and the
+   * left margin and only the prose carries the indent, so the addresses and the
    * times line up down the note.
    */
   frameFollowsIndent: boolean;

@@ -15,7 +15,7 @@ import {
 } from "../src/model/whisper-runner";
 
 const INPUT: WhisperInput = {
-  marker: "{ 1.1.1 }",
+  address: "{ 1.1.1 }",
   prose: "made a version of pi with durable execution in go",
   ancestors: []
 };

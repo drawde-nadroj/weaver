@@ -21,7 +21,7 @@ import {
   childrenOf,
   endOfSubtree,
   entryBySeq,
-  formatMarker,
+  formatAddress,
   nextBranch,
   nextSeq,
   parseEntries,
@@ -116,13 +116,13 @@ export function planChildEntry(
 ): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
 
-  const marker = formatMarker(parent.b, parent.d + 1, nextSeq(index));
+  const address = formatAddress(parent.b, parent.d + 1, nextSeq(index));
   const clock = formatClockRow(null, "-", 0, null);
 
   const at = childAnchor(index, parent);
-  const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${clock}`;
+  const text = `${NEWLINE}${NEWLINE}${address}${NEWLINE}${NEWLINE}${clock}`;
 
-  const caret = at + NEWLINE.length * 2 + marker.length + 1;
+  const caret = at + NEWLINE.length * 2 + address.length + 1;
   return { changes: [{ from: at, to: at, text }], selection: { from: caret, to: caret } };
 }
 
@@ -145,7 +145,7 @@ function sameBlock(left: Entry, right: Entry): boolean {
   return (
     left.from === right.from &&
     left.to === right.to &&
-    left.markerEnd === right.markerEnd &&
+    left.addressEnd === right.addressEnd &&
     left.b === right.b &&
     left.d === right.d &&
     left.n === right.n &&
@@ -171,7 +171,7 @@ function sameBlock(left: Entry, right: Entry): boolean {
  * it, including a historical moment with no day, because a moment is a fact and
  * not a default. Settled (`+`) entries and entries with no duration are final.
  * A note this cannot read whole — unclosed frontmatter, an unclosed fence, the
- * old marker — returns null, as does an `entry` that no longer describes the
+ * old address — returns null, as does an `entry` that no longer describes the
  * current parse. The selection sits in the prose, so a caller can keep the
  * caret where the text was typed.
  */
@@ -228,7 +228,7 @@ function formatPortalOpening(portal: PortalInstant): string {
  *
  * Unlike an entry begun in the note, a captured thought is already finished: the
  * composer held it, timed it and froze its beginning. So the block is written
- * settled in one transaction — the marker, the prose, and a `+` clock row
+ * settled in one transaction — the address, the prose, and a `+` clock row
  * carrying the duration and the moment — rather than being created empty and
  * filled by later writes. Nothing was ever visible in the note before this plan,
  * so there is no half-written entry for a later step to finish.
@@ -239,7 +239,7 @@ function formatPortalOpening(portal: PortalInstant): string {
  * is renumbered.
  *
  * The planned block is parsed back before anything is returned. A paste can leave
- * a fence open, or end the prose with a line that reads as a marker or as a clock
+ * a fence open, or end the prose with a line that reads as an address or as a clock
  * row, and either would make the record describe an entry that is not the one
  * planned here — so the written note must parse into exactly the allocated
  * entry, at the intended parent and depth, with the exact prose and clock.
@@ -276,19 +276,19 @@ export function planCaptureEntry(
   const n = nextSeq(index);
   const b = parent === null ? nextBranch(index) : parent.b;
   const d = parent === null ? 1 : parent.d + 1;
-  const marker = formatMarker(b, d, n);
+  const address = formatAddress(b, d, n);
   const clock = formatClockRow(request.beginning.time, "+", request.durationMs, request.beginning.day);
-  const block = `${marker}${NEWLINE}${NEWLINE}${request.text}${NEWLINE}${clock}`;
+  const block = `${address}${NEWLINE}${NEWLINE}${request.text}${NEWLINE}${clock}`;
 
   const at = parent === null ? null : childAnchor(index, parent);
   const body =
     at === null
-      ? planAppendLine(source, block, marker.length + NEWLINE.length * 2 + request.text.length)
+      ? planAppendLine(source, block, address.length + NEWLINE.length * 2 + request.text.length)
       : {
           changes: [{ from: at, to: at, text: `${NEWLINE}${NEWLINE}${block}` }],
           selection: {
-            from: at + NEWLINE.length * 2 + marker.length + NEWLINE.length * 2 + request.text.length,
-            to: at + NEWLINE.length * 2 + marker.length + NEWLINE.length * 2 + request.text.length
+            from: at + NEWLINE.length * 2 + address.length + NEWLINE.length * 2 + request.text.length,
+            to: at + NEWLINE.length * 2 + address.length + NEWLINE.length * 2 + request.text.length
           }
         };
 
@@ -307,7 +307,7 @@ export function planCaptureEntry(
     entry.parent === null ? null : (validated.entries[entry.parent]?.n ?? null);
   if (actualParent !== expectedParent) return null;
 
-  // The prose has to be the bytes that were typed, between the marker and the row.
+  // The prose has to be the bytes that were typed, between the address and the row.
   const expectedProse = `${NEWLINE}${NEWLINE}${request.text}${NEWLINE}`;
   if (written.slice(entry.to, entry.clockFrom) !== expectedProse) return null;
   const clockLine = entry.clockLine;
@@ -335,7 +335,7 @@ export function planCaptureEntry(
  * Removes an entry and everything under it: the exact inverse of the block
  * `planChildEntry` writes.
  *
- * The block runs from the marker to the end of its subtree, the blank separator
+ * The block runs from the address to the end of its subtree, the blank separator
  * lines below it go with it, and every surviving branch whose branch id shifted
  * is rewritten in the same plan, so one undo restores the whole subtree and the
  * addressing. The caret lands where the block was.
@@ -372,7 +372,7 @@ export function planDeleteEntry(
 
   const changes: TextChange[] = [{ from, to, text: "" }];
   // The survivors' branch ids are computed on the deleted text — where every
-  // marker below the block sits — and shifted back into the document as it is.
+  // address below the block sits — and shifted back into the document as it is.
   const shift = to - from;
   const remaining = parseEntries(source.slice(0, from) + source.slice(to));
   for (const change of repairBranches(remaining)) {
@@ -406,7 +406,7 @@ export function planDeleteEntry(
  * `durationSpan` is copied byte for byte. The selection is reported at the
  * prose, because the caller keeps the live selection: rewriting a duration must
  * not move the caret. A note that
- * still carries the old marker is refused whole — its old duration line parses
+ * still carries the old address is refused whole — its old duration line parses
  * as a clock row, so a field-level rewrite would be the one write that slipped
  * through the migration.
  */
@@ -447,7 +447,7 @@ export function planDuration(
  * every case where it would be a guess: a note it cannot read whole, an answer
  * with no rows or more than three, an entry that already has one — written once,
  * never rewritten — an entry with nothing to read, an entry with no clock row to
- * sit above, and an entry the writer named on the marker row himself. It does
+ * sit above, and an entry the writer named on the address row himself. It does
  * not look at `entry.state`: settle runs while the entry is still `draft`, so
  * the callers decide who may be whispered.
  *
@@ -465,7 +465,7 @@ export function planWhisper(
   if (whisper.length === 0 || whisper.length > WHISPER_MAX_LINES) return null;
   if (entry.whisperLines.length > 0) return null;
   if (entry.firstProseLine === null || entry.clockLine === null) return null;
-  if ((index.lines[entry.line] ?? "").slice(entry.markerEnd - entry.from).trim() !== "") return null;
+  if ((index.lines[entry.line] ?? "").slice(entry.addressEnd - entry.from).trim() !== "") return null;
 
   const at = index.lineStarts[entry.firstProseLine] ?? 0;
   const text = `${whisper.map(formatWhisperLine).join(NEWLINE)}${NEWLINE}`;

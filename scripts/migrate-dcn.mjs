@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Migrates a day note from hashes to entry markers, and branches the markers of
+ * Migrates a day note from hashes to entry addresses, and branches the addresses of
  * a note that already has them.
  *
  *   node scripts/migrate-dcn.mjs --dry-run <file…>
@@ -10,16 +10,16 @@
  *
  * The old grammar: the hash run is `D`, the text after it carries an optional
  * leading clock (sometimes after a `{ N }` that only repeats the hash count), and
- * the body is every line up to the next heading. The new grammar: one marker
+ * the body is every line up to the next heading. The new grammar: one address
  * line, the title on its own line, the body verbatim, and `+ 00:00:00`.
  *
  * `D` is the hash count, `B` the branch id (a root's 1-based position among
  * roots, carried unchanged by everything under it), `N` the rank by clock across
  * the file (ties by document order). A file whose lines already start with a
- * marker is left untouched by the first pass.
+ * address is left untouched by the first pass.
  *
  * `--branches` is the second pass, for a note already written in the old
- * per-parent numbering: it rewrites only the `B` field of markers, onto the
+ * per-parent numbering: it rewrites only the `B` field of addresses, onto the
  * branch id, and leaves every other byte alone.
  *
  * Plain Node, no dependencies.
@@ -31,9 +31,9 @@ import { basename } from "node:path";
 const HASH = /^(#{1,6})[ \t]+(.*)$/;
 /** A line that lost its newline in front of a heading still holds its heading. */
 const REPAIR = /^([^\w\s#]{0,8})(#{1,6}[ \t]+\d{1,2}:\d{2}(?::\d{2})?.*)$/;
-const MARKER = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/;
-/** The same marker with the `B` field's span marked, for the `--branches` pass. */
-const MARKER_SPAN = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
+const ADDRESS = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/;
+/** The same address with the `B` field's span marked, for the `--branches` pass. */
+const ADDRESS_SPAN = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}/d;
 const BRACE = /^\{\s*\d{1,3}\s*\}(?:[ \t]*-[ \t]*)?/;
 const CLOCK = /^(\d{1,2}:\d{2}(?::\d{2})?)\b/;
 const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
@@ -225,7 +225,7 @@ function migrate(source, path) {
   const lines = source.split("\n");
   const { block, body } = splitFrontmatter(lines);
 
-  if (body.some((line) => MARKER.test(line))) {
+  if (body.some((line) => ADDRESS.test(line))) {
     return { source, entries: [], skipped: true };
   }
 
@@ -281,13 +281,13 @@ function frontmatterValue(source, key) {
 }
 
 /**
- * The markers of a note, with each one's `B` span, in document order.
+ * The addresses of a note, with each one's `B` span, in document order.
  *
  * Frontmatter and fenced code are skipped exactly as the parser in
- * `src/core/entries.ts` skips them, so a marker the plugin does not read is a
- * marker this pass does not touch.
+ * `src/core/entries.ts` skips them, so an address the plugin does not read is a
+ * address this pass does not touch.
  */
-function markerLines(lines) {
+function addressLines(lines) {
   const { block, body } = splitFrontmatter(lines);
   const offset = block === null ? 0 : block.length;
   const marked = [];
@@ -308,7 +308,7 @@ function markerLines(lines) {
       return;
     }
 
-    const match = MARKER_SPAN.exec(line);
+    const match = ADDRESS_SPAN.exec(line);
     if (match === null) return;
 
     marked.push({
@@ -322,37 +322,37 @@ function markerLines(lines) {
   return marked;
 }
 
-/** Every marker's branch id, and whether it is a root, from the `d` stack. */
-function branchMarkers(marked) {
+/** Every address's branch id, and whether it is a root, from the `d` stack. */
+function branchAddresses(marked) {
   const stack = [];
   let roots = 0;
 
-  for (const marker of marked) {
-    while (stack.length > 0 && stack[stack.length - 1].d >= marker.d) stack.pop();
+  for (const address of marked) {
+    while (stack.length > 0 && stack[stack.length - 1].d >= address.d) stack.pop();
 
-    marker.root = stack.length === 0;
-    marker.branch = marker.root ? ++roots : stack[stack.length - 1].branch;
-    stack.push(marker);
+    address.root = stack.length === 0;
+    address.branch = address.root ? ++roots : stack[stack.length - 1].branch;
+    stack.push(address);
   }
 
   return marked;
 }
 
 /**
- * `--branches`: walks the markers and rewrites only the `B` field, onto the
+ * `--branches`: walks the addresses and rewrites only the `B` field, onto the
  * branch id. Roots already hold theirs, so the pass is a no-op on a
  * note that has been branched once.
  */
 function branchPass(source) {
   const lines = source.split("\n");
-  const marked = branchMarkers(markerLines(lines));
+  const marked = branchAddresses(addressLines(lines));
   let changed = false;
 
-  for (const marker of marked) {
-    if (marker.b === marker.branch) continue;
-    const line = lines[marker.line];
-    lines[marker.line] =
-      line.slice(0, marker.span[0]) + String(marker.branch) + line.slice(marker.span[1]);
+  for (const address of marked) {
+    if (address.b === address.branch) continue;
+    const line = lines[address.line];
+    lines[address.line] =
+      line.slice(0, address.span[0]) + String(address.branch) + line.slice(address.span[1]);
     changed = true;
   }
 
@@ -361,7 +361,7 @@ function branchPass(source) {
 
 /**
  * The `--branches` checks: same lines, same `D` and `N`, every `B` equal to its
- * branch id, and no non-marker byte touched. A root's `B` may move: the pass
+ * branch id, and no non-address byte touched. A root's `B` may move: the pass
  * repairs a root that was not its own position among roots.
  */
 function verifyBranches(before, after) {
@@ -373,10 +373,10 @@ function verifyBranches(before, after) {
     problems.push(`line count changed from ${beforeLines.length} to ${afterLines.length}`);
   }
 
-  const was = new Map(markerLines(beforeLines).map((marker) => [marker.line, marker]));
-  const now = new Map(markerLines(afterLines).map((marker) => [marker.line, marker]));
+  const was = new Map(addressLines(beforeLines).map((address) => [address.line, address]));
+  const now = new Map(addressLines(afterLines).map((address) => [address.line, address]));
 
-  if (was.size !== now.size) problems.push(`${now.size} marker(s) for ${was.size} before`);
+  if (was.size !== now.size) problems.push(`${now.size} address(es) for ${was.size} before`);
 
   const limit = Math.min(beforeLines.length, afterLines.length);
   for (let line = 0; line < limit; line += 1) {
@@ -384,24 +384,24 @@ function verifyBranches(before, after) {
     const current = now.get(line);
 
     if (previous === undefined && current === undefined) {
-      if (beforeLines[line] !== afterLines[line]) problems.push(`line ${line + 1} changed outside a marker`);
+      if (beforeLines[line] !== afterLines[line]) problems.push(`line ${line + 1} changed outside an address`);
       continue;
     }
     if (previous === undefined || current === undefined) {
-      problems.push(`line ${line + 1} became or stopped being a marker`);
+      problems.push(`line ${line + 1} became or stopped being an address`);
       continue;
     }
 
-    const before = MARKER.exec(beforeLines[line] ?? "");
-    const after = MARKER.exec(afterLines[line] ?? "");
+    const before = ADDRESS.exec(beforeLines[line] ?? "");
+    const after = ADDRESS.exec(afterLines[line] ?? "");
     if (before?.[2] !== after?.[2]) problems.push(`line ${line + 1}: D changed`);
     if (before?.[3] !== after?.[3]) problems.push(`line ${line + 1}: N changed`);
   }
 
-  const branched = branchMarkers(markerLines(afterLines));
-  for (const marker of branched) {
-    if (marker.b !== marker.branch) {
-      problems.push(`line ${marker.line + 1}: B is ${marker.b}, branch is ${marker.branch}`);
+  const branched = branchAddresses(addressLines(afterLines));
+  for (const address of branched) {
+    if (address.b !== address.branch) {
+      problems.push(`line ${address.line + 1}: B is ${address.b}, branch is ${address.branch}`);
       continue;
     }
 
@@ -410,13 +410,13 @@ function verifyBranches(before, after) {
   return problems;
 }
 
-/** The first pass's checks: markers, durations, stats and survivor lines. */
+/** The first pass's checks: addresses, durations, stats and survivor lines. */
 function verify(source, original) {
   const problems = [];
   const lines = source.split("\n");
   const { body } = splitFrontmatter(lines);
 
-  const markers = body.filter((line) => MARKER.test(line));
+  const addresses = body.filter((line) => ADDRESS.test(line));
   const durations = body.filter((line) => DURATION.test(line));
   const hashes = body.filter((line) => line.startsWith("#"));
 
@@ -425,22 +425,22 @@ function verify(source, original) {
   const travels = frontmatterValue(source, "travels");
   const depth = frontmatterValue(source, "depth");
 
-  if (travels !== String(markers.length)) {
-    problems.push(`travels is ${String(travels)}, marker count is ${markers.length}`);
+  if (travels !== String(addresses.length)) {
+    problems.push(`travels is ${String(travels)}, address count is ${addresses.length}`);
   }
-  if (durations.length !== markers.length) {
-    problems.push(`${durations.length} duration line(s) for ${markers.length} markers`);
+  if (durations.length !== addresses.length) {
+    problems.push(`${durations.length} duration line(s) for ${addresses.length} addresses`);
   }
 
-  const deepest = markers.reduce((most, line) => {
-    const match = MARKER.exec(line);
+  const deepest = addresses.reduce((most, line) => {
+    const match = ADDRESS.exec(line);
     return Math.max(most, Number(match?.[2] ?? 0));
   }, 0);
   if (depth !== String(deepest)) problems.push(`depth is ${String(depth)}, deepest D is ${deepest}`);
 
-  for (const line of markers) {
+  for (const line of addresses) {
     if (!/^\{ \d+\.\d+\.\d+ \} - \d{2}:\d{2}:\d{2}$/.test(line)) {
-      problems.push(`malformed marker: ${line}`);
+      problems.push(`malformed address: ${line}`);
     }
   }
 
@@ -513,7 +513,7 @@ for (const file of files) {
     }
 
     writeFileSync(file, result.source);
-    console.log(`${file}: ${result.count} markers branched`);
+    console.log(`${file}: ${result.count} addresses branched`);
     continue;
   }
 

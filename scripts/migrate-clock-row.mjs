@@ -1,32 +1,32 @@
 #!/usr/bin/env node
 /**
- * Migrates a day note from the marker's own clock to the clock row.
+ * Migrates a day note from the address's own clock to the clock row.
  *
  *   node scripts/migrate-clock-row.mjs --dry-run <file…>
  *   node scripts/migrate-clock-row.mjs --verify [--from <original>] <file…>
  *   node scripts/migrate-clock-row.mjs <file…>
  *
- * The old grammar put the moment on the marker:
+ * The old grammar put the moment on the address:
  *
  *   { 2.1.3 } - 13:27:43
  *   the prose
  *   + 00:04:12
  *
- * The new grammar gives the marker its own line and puts the duration and the
+ * The new grammar gives the address its own line and puts the duration and the
  * moment together on the entry's last line:
  *
  *   { 2.1.3 }
  *   the prose
  *   + 00:04:12 13:27:43
  *
- * A title written after the old clock moves to the line below the marker, where
+ * A title written after the old clock moves to the line below the address, where
  * the parser already reads it. An entry with no duration line gains `+ 00:00:00`
  * (it was settled: nothing was running). Every other byte is left alone —
  * frontmatter, fenced code, prose, blank lines and the close mark are copied
  * verbatim, which is what `--verify` checks against `--from`.
  *
  * One pass, and the plugin refuses a note this script has not touched: the new
- * marker accepts anything after it, so an unmigrated note would parse as an
+ * address accepts anything after it, so an unmigrated note would parse as an
  * entry whose prose begins with its own clock. Plain Node, no dependencies.
  */
 
@@ -36,8 +36,8 @@ const DELIMITER = /^(---|\.\.\.)[ \t]*$/;
 const FENCE = /^( {0,3})(`{3,}|~{3,})/;
 /** `{ B.D.N } - HH:MM:SS` with an optional title after it. */
 const LEGACY = /^\{[ \t]*(\d{1,3})\.(\d{1,3})\.(\d{1,6})[ \t]*\}[ \t]*-[ \t]*(\d{1,2}:\d{2}(?::\d{2})?)(.*)$/;
-/** Any marker, old or new: the boundary between two entries. */
-const MARKER = /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}/;
+/** Any address, old or new: the boundary between two entries. */
+const ADDRESS = /^\{[ \t]*\d{1,3}\.\d{1,3}\.\d{1,6}[ \t]*\}/;
 /** A clock row's duration half, as the old duration line always was. */
 const DURATION = /^([+\-=])[ \t]+(\d{2,}:[0-5]\d:[0-5]\d)[ \t]*$/;
 /** The day's close mark: a decision, not the entry's prose. */
@@ -96,7 +96,7 @@ function oldEntries(body, skip) {
   body.forEach((line, index) => {
     if (skip.has(index)) return;
 
-    if (MARKER.test(line)) {
+    if (ADDRESS.test(line)) {
       if (current !== null) {
         current.end = index;
         entries.push(current);
@@ -192,7 +192,7 @@ function survivingLines(source) {
     .map((line) => line.trimEnd());
 }
 
-/** The first clock row between a marker and the next one, or null. */
+/** The first clock row between an address and the next one, or null. */
 function clockRowOf(body, start, end, skip) {
   for (let index = start + 1; index < end; index += 1) {
     if (skip.has(index)) continue;
@@ -208,35 +208,35 @@ function verify(source, original) {
   const { body } = splitFrontmatter(lines);
   const skip = fenceState(body);
 
-  let markers = 0;
+  let addresses = 0;
   for (let index = 0; index < body.length; index += 1) {
     if (skip.has(index)) continue;
     const line = body[index] ?? "";
-    if (!MARKER.test(line)) continue;
-    markers += 1;
+    if (!ADDRESS.test(line)) continue;
+    addresses += 1;
 
     if (LEGACY.test(line)) {
-      problems.push(`line ${index + 1}: the old marker survived`);
+      problems.push(`line ${index + 1}: the old address survived`);
       continue;
     }
     if (!/^\{ \d+\.\d+\.\d+ \}$/.test(line)) {
-      problems.push(`line ${index + 1}: malformed marker: ${line}`);
+      problems.push(`line ${index + 1}: malformed address: ${line}`);
       continue;
     }
 
     let end = body.length;
     for (let next = index + 1; next < body.length; next += 1) {
-      if (!skip.has(next) && MARKER.test(body[next] ?? "")) {
+      if (!skip.has(next) && ADDRESS.test(body[next] ?? "")) {
         end = next;
         break;
       }
     }
     if (clockRowOf(body, index, end, skip) === null) {
-      problems.push(`line ${index + 1}: marker has no clock row`);
+      problems.push(`line ${index + 1}: address has no clock row`);
     }
   }
 
-  if (markers === 0) problems.push("no markers found");
+  if (addresses === 0) problems.push("no addresses found");
 
   if (original !== null) {
     const wanted = survivingLines(original);

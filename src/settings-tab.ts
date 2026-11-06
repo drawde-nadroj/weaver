@@ -651,7 +651,7 @@ export class WeaverSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Frame each entry")
-      .setDesc("Draw a rounded frame around every entry: the marker row is its top rail label, and its clock row labels the bottom edge with the duration at the left and the moment at the right.")
+      .setDesc("Draw a rounded frame around every entry: the address row is its top rail label, and its clock row labels the bottom edge with the duration at the left and the moment at the right.")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.entryFrames).onChange((value) => {
           this.plugin.settings.entryFrames = value;
@@ -661,7 +661,7 @@ export class WeaverSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Frame follows the indent")
-      .setDesc("On, a nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note.")
+      .setDesc("On, a nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the addresses and the times line up down the note.")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.frameFollowsIndent).onChange((value) => {
           this.plugin.settings.frameFollowsIndent = value;

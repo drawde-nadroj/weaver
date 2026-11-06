@@ -1,8 +1,9 @@
 # Weaver
 
 Weaver is an Obsidian plugin where a day note is a linear list of **entries**. An
-entry is a marker line `{ B.D.N }`, its prose, and one clock row
-`[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`. Older entries can omit the date:
+entry is an address line carrying its **Dimensional Address** `{ B.D.N }`, its
+prose, and one clock row `[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`. Older entries can
+omit the date:
 
 ```markdown
 { 1.1.1 }
@@ -17,9 +18,10 @@ the thought this one opened, one dimension deeper
 
 `B` is the branch id — a depth-1 entry's position among depth-1 entries, carried
 unchanged all the way down — `D` the dimension, and `N` the day sequence (assigned
-once, only appended). `N` is identity, `B` is address, and the duration
-half is the only mutable field. Colour is a pure function of `D`, so nothing is
-recalculated when a deeper entry appears: depth 7 looks the same before and after.
+once, only appended). `N` is identity, `{ B.D.N }` is the Dimensional Address, and
+the duration half is the only mutable field. Colour is a pure function of `D`, so
+nothing is recalculated when a deeper entry appears: depth 7 looks the same before
+and after.
 
 The note and one navigator are the whole surface. Writing happens in the note;
 nothing is written until a command or a keystroke says so, and every write of a day
@@ -47,7 +49,7 @@ pixel. The manual checks they need are at the end of this file.
    day and moment it was written, and a duration that counts only while you are
    writing in the composer. Letters inside it are prose — `n` and `t` are only
    shortcuts once the thought has been saved.
-3. **Save** with `⏎`. One transaction writes the marker, the prose and a
+3. **Save** with `⏎`. One transaction writes the address, the prose and a
    finished clock row into the daily note for the day the thought *began* — which
    may be yesterday if you started before midnight — and `Saving…` becomes
    `Saved`. A distinct second `⏎` closes, but only after the note has confirmed
@@ -205,14 +207,14 @@ failed navigation changes neither the history nor the screen. A notes list readi
 
 ## Record formats
 
-**Marker line** — `{ B.D.N }`, matched as a prefix, so a title typed after it
-becomes the first prose line. Whitespace inside the braces is optional:
-`{1.2.3}` reads the same. A marker inside frontmatter or a fenced code block is
-text. `B` is the branch id: a depth-1 entry's position among depth-1 entries,
-carried unchanged all the way down its subtree, and repaired only when a root is
-deleted. On a framed surface the marker's characters are the box's top rail label:
-the rail runs through the middle of the row and is cut behind it, so the file's
-own text is what names the box.
+**Address line** — the entry's Dimensional Address, `{ B.D.N }`, matched as a
+prefix, so a title typed after it becomes the first prose line. Whitespace inside
+the braces is optional: `{1.2.3}` reads the same. A Dimensional Address inside
+frontmatter or a fenced code block is text. `B` is the branch id: a depth-1 entry's
+position among depth-1 entries, carried unchanged all the way down its subtree, and
+repaired only when a root is deleted. On a framed surface the Dimensional Address's
+characters are the box's top rail label: the rail runs through the middle of the
+row and is cut behind it, so the file's own text is what names the box.
 
 **Clock row** — the entry's last line: an optional duration `[+-=] HH:MM:SS`,
 then an optional moment. New entries begin with duration only; their first committed
@@ -223,7 +225,7 @@ Historical rows with just `HH:MM:SS` remain valid: their date is the day-note fi
 no bulk rewrite. A hand-written `09:14:22` and a stray `+ 00:04:12` are still clock rows.
 The frame shows the date once at the top-right, and the time once at the
 bottom-right, opposite the duration. White digits and dimension-coloured colons
-match the marker. Awaiting drafts show wall time without claiming a recorded day;
+match the address. Awaiting drafts show wall time without claiming a recorded day;
 an untouched settled row remains momentless. Beginning date and time are written
 once; pausing and settling replace only the duration, preserving the
 moment's characters. Minutes and seconds are `0–59`; duration hours are unbounded. One sigil decides
@@ -232,7 +234,7 @@ alone is settled. A settled entry is final — nothing rewrites it, not a pause,
 a settle, not a session that wandered in. The duration half is the only mutable
 field of an entry.
 
-A marker that still carries its old `- HH:MM:SS` clock is refused, not read: the
+An address that still carries its old `- HH:MM:SS` clock is refused, not read: the
 new prefix would otherwise take the clock for the first prose line. The migration
 below moves it.
 
@@ -289,8 +291,8 @@ before its title.
 | Look | Indent step (mobile) | 12px | Same, on phones. |
 | Look | Indent maximum level | 8 | Levels beyond this stop indenting. |
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
-| Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the duration labels the bottom-left corner, the moment the bottom-right, each running through the middle of the row and cut behind its label. |
-| Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note. |
+| Look | Frame each entry | on | Draw a rounded box around every entry: the address row is its top rail, and the clock row its bottom edge — the duration labels the bottom-left corner, the moment the bottom-right, each running through the middle of the row and cut behind its label. |
+| Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the addresses and the times line up down the note. |
 | Look | Space below each Thread | 0px | Air above every depth-1 entry after the note's first Thread, so one Thread's subtree does not run into the next. Zero keeps the old rhythm. |
 | Look | Space between branches | 0px | Air above each branch whose predecessor is also a branch. The first branch stays close to its Thread's root, and deeper siblings get room. Zero keeps the old rhythm. |
 | Whisper | Whisper settled entries | off | Write one to three `~` rows above a settled entry: the model's reading of what it holds. |
@@ -385,9 +387,9 @@ node scripts/migrate-dcn.mjs --verify --from <original> <file…>   # plus line 
 `D` is the hash count, `B` the branch id (a root's position among roots, carried
 down its branch), `N` the rank by clock across the file (ties by document order).
 The pass writes `{ B.D.N }`. Every non-heading line survives byte for byte; a file
-whose lines already start with a marker is left untouched.
+whose lines already start with an address is left untouched.
 
-Notes already in marker form from an earlier build carry the old per-parent `B`.
+Notes already in address form from an earlier build carry the old per-parent `B`.
 One pass rewrites them onto their branch ids, and it rewrites nothing but those `B`
 fields:
 
@@ -399,7 +401,7 @@ node scripts/migrate-dcn.mjs --branches --verify --from <copy> <file…>
 
 The pass rewrites the `B` field onto the branch id — a root's position among roots,
 carried down its subtree — and touches no other byte. `--verify` checks that the
-marker count, every `D`, every `N` and every non-marker byte survived, and that
+address count, every `D`, every `N` and every non-address byte survived, and that
 every `B` now equals its branch. Run it once; a branched file reports
 `already branched`. The
 plugin never rewrites a note's numbering on load: an unmigrated note reads as the
@@ -433,12 +435,12 @@ node scripts/migrate-clock-row.mjs --verify --from <original> <file…>  # plus 
 
 `{ 2.1.3 } - 13:27:43` becomes `{ 2.1.3 }` with `+ 00:00:00 13:27:43` on the
 entry's clock row; a title written after the old clock moves to the line below the
-marker, where the parser already reads it. An entry with no duration line gains
+address, where the parser already reads it. An entry with no duration line gains
 `+ 00:00:00`, because it was settled. Frontmatter, fenced code, prose, blank lines
 and the close mark are copied verbatim. The plugin refuses an unmigrated note and
 says so — it never rewrites a note because it opened it.
 
-The record changed one more time: the marker now puts the branch first (`{ B.D.N }`)
+The record changed one more time: the address now puts the branch first (`{ B.D.N }`)
 and the clock row puts the duration first (`[+-=] HH:MM:SS HH:MM:SS`). A note in
 the previous order needs one one-shot pass; `--expect dbn` keeps it one-shot, and
 `--from` may be a directory of copies:
@@ -449,7 +451,7 @@ node scripts/migrate-order.mjs --expect dbn <file…>             # reorder in p
 node scripts/migrate-order.mjs --expect dbn --verify --from <copy|dir> <file…>
 ```
 
-The pass swaps the three marker fields and the two clock halves and changes nothing
+The pass swaps the three address fields and the two clock halves and changes nothing
 else — no byte of prose, frontmatter, fenced code or the close mark. A note that
 still carries the old per-parent `B` needs the `--branches` pass above after the
 reorder; that pass now reads and writes the branch first.
@@ -461,7 +463,7 @@ These need a live Obsidian and are not covered by `npm test`:
 - `⌘⇧⏎` with the caret in the editor of another note: one composer opens above the
   workspace, the note is untouched, and the destination reads `Main`. Type a
   thought and press `⏎`: the note for the day the thought *began* gains one entry —
-  marker, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
+  address, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
   the second `⏎` closes the composer without writing again.
 - The same with a saved reference beside it: `Go` switches to the other
   destination and the draft is still there, with its text and its selection, when
@@ -506,15 +508,15 @@ the card open.
   the screen, and *Weave a Thread* opens the composer even from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
 - Frames, the start column: with *Frame follows the indent* off, every box starts in
-  the same place and the markers and the times run down one column each; only the
+  the same place and the addresses and the times run down one column each; only the
   prose steps right. With it on, the boxes step right with the nesting.
 - Frames, Live Preview: every entry is enclosed by one unbroken box spanning the
-  text column; the box's top rail runs through the middle of the entry's own marker
+  text column; the box's top rail runs through the middle of the entry's own address
   row and its bottom edge through the middle of its own clock row, each exactly
   once and never dimmed. The bottom edge is labelled twice: the duration at the
   left corner, the moment at the right, with the rail visible between them, and
   both labels read as white digits around dimension-coloured colons. The stopwatch
-  carries a real space after its sigil, exactly as the file writes it. Marker,
+  carries a real space after its sigil, exactly as the file writes it. Address,
   moment and stopwatch all read at the note's own weight — no bold. The top-right
   corner carries a persistent link to the entry's recorded creation day only
   when it differs from the filename day. Same-day and historical undated entries
@@ -524,8 +526,8 @@ the card open.
   background is clipped at the row's bottom. Scroll to the middle of a long entry:
   the box stays whole with its last line still off-screen. Two neighbouring boxes
   never overlap — 8 px of clear space, at least, between one entry's clock centre
-  and the next entry's marker centre.
-- Frames, the caret: put the caret on the marker row or on the clock row — the
+  and the next entry's address centre.
+- Frames, the caret: put the caret on the address row or on the clock row — the
   text stays exactly where it is, both labels keep cutting their rails, and nothing
   steps aside. On the clock row the raw line keeps the widget's air, so crossing it
   moves nothing vertically either. *Frame each entry* applies in Live Preview at once;
@@ -536,12 +538,12 @@ the card open.
   still entry does not shimmer.
 - Frames, Reading view: the same boxes, one per entry, with the prose inside and no
   second indent; a nested entry's frame starts one indent step further right; the
-  marker hangs half a line over the top rail and the clock half a line over the
+  address hangs half a line over the top rail and the clock half a line over the
   bottom one, both centred on their rails, with the same `16 px + 0.45em` side
-  clearance as Live Preview. No leftover marker break adds a blank prose row.
+  clearance as Live Preview. No leftover address break adds a blank prose row.
 - Frames, phone: the box reaches the pane's edge, and the duration and the moment
   read on one line at the bottom two corners; the entry-day link sits at the
-  top-right without covering the marker.
+  top-right without covering the address.
 - Frames, entry dates: open an older day note. Same-day and historical undated
   entries carry no date link; create a child there now and its different creation
   day is visible immediately, without hover or caret focus. Links use the note's
@@ -585,7 +587,7 @@ the card open.
 
 ## Known limits
 
-- Entry markers are plain text, so Obsidian's outline, folding and `[[#heading]]`
+- Entry addresses are plain text, so Obsidian's outline, folding and `[[#heading]]`
   links do not list entries. The navigator is the only navigation, and it lists
   today's note: another day is reached by opening that note.
 - The navigator has no query: a sixty-entry day is scrolled, or walked with the
@@ -597,7 +599,7 @@ the card open.
   surface last showed, not a fresher sample of the wall clock.
 - A phone has no newline gesture inside an entry: its prose is one paragraph.
   Multi-line prose is written on a desk or pasted.
-- Setext (`===` underlined) headings are not parsed, and a marker inside frontmatter
+- Setext (`===` underlined) headings are not parsed, and an address inside frontmatter
   or a fenced code block is text.
 - With *Write day counters* off, the frontmatter keeps whatever it already says.
 

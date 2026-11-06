@@ -3,7 +3,7 @@
  *
  * Colour and indent ride on two custom properties set per line
  * (`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7
- * costs exactly what depth 1 costs. The marker keeps its text — only its runs are
+ * costs exactly what depth 1 costs. The address keeps its text — only its runs are
  * marked up, so the line stays editable and the digits stay white while the
  * punctuation carries the dimension's colour.
  *
@@ -16,7 +16,7 @@
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
  *
- * The marker row also carries a persistent creation-day link when the recorded
+ * The address row also carries a persistent creation-day link when the recorded
  * day differs from the day-note filename. Same-day and historical undated
  * entries need no label. The date is not repeated in the clock widget.
  */
@@ -35,7 +35,7 @@ import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
 import type { Entry } from "../core/entries";
 import type { EntryClock } from "../entries/clock";
 import type { EntrySession } from "../entries/session";
-import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
+import { INK_CLASS, addressSlices, NUM_CLASS } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
 import { DurationWidget, type ClockMode } from "./stopwatch-widget";
@@ -58,10 +58,10 @@ function touches(state: EditorState, from: number, to: number): boolean {
   return selection.from <= to && selection.to >= from;
 }
 
-/** The marker's runs, in place: digits white, punctuation coloured. */
-function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string): void {
+/** The address's runs, in place: digits white, punctuation coloured. */
+function addAddressRuns(ranges: Range<Decoration>[], from: number, text: string): void {
   let cursor = from;
-  for (const slice of markerSlices(text)) {
+  for (const slice of addressSlices(text)) {
     const to = cursor + slice.text.length;
     ranges.push({ from: cursor, to, value: RUNS[slice.cls] as Decoration });
     cursor = to;
@@ -69,7 +69,7 @@ function addMarkerRuns(ranges: Range<Decoration>[], from: number, text: string):
 }
 
 /**
- * The entry-day link at the top-right corner: part of the marker row,
+ * The entry-day link at the top-right corner: part of the address row,
  * positioned absolutely so it never joins the text flow or moves a character.
  *
  * `ignoreEvent` keeps a click from also placing the caret: the link is the
@@ -156,7 +156,7 @@ export function entryDecorationSet(
     if (entry.d === 1) seenThread = true;
     const branchStart = entry.d > 1 && previous !== null && previous.d > 1;
 
-    // The marker keeps its own text, always: the frame is drawn beside it, never
+    // The address keeps its own text, always: the frame is drawn beside it, never
     // over it, so there is no class to swap when the caret arrives. The stamp is
     // how the frame layer finds this row without asking for a DOM position.
     const headClasses = ["weaver-entry-head"];
@@ -172,8 +172,8 @@ export function entryDecorationSet(
       })
     });
 
-    const prefixTo = Math.min(entry.markerEnd, head.to);
-    // The marker's characters are the top rail's label: its background covers the
+    const prefixTo = Math.min(entry.addressEnd, head.to);
+    // The address's characters are the top rail's label: its background covers the
     // rail behind them, so the box appears to run into its own first row. No
     // padding, so no character moves.
     ranges.push({
@@ -181,7 +181,7 @@ export function entryDecorationSet(
       to: prefixTo,
       value: Decoration.mark({ class: LABEL_CLASS })
     });
-    addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
+    addAddressRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
 
     // The date labels the top rail without joining the text flow.
     if (dayLinkTarget !== null) {
@@ -208,7 +208,7 @@ export function entryDecorationSet(
     // A whisper row carries no `--weaver-dcolor` and no `data-weaver-n`: it is the
     // model's reading, so it is the one row that does not take the dimension's
     // colour (the stylesheet's `.weaver-entry-whisper` rule says why), and the
-    // frame finds the marker row only.
+    // frame finds the address row only.
     for (const line of entry.whisperLines) {
       if (line >= state.doc.lines) continue;
       const row = state.doc.line(line + 1);

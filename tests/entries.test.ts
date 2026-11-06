@@ -6,7 +6,7 @@ import {
   findCurrentEntry,
   findEntryAtLine,
   findEntryAtOffset,
-  formatMarker,
+  formatAddress,
   nextSeq,
   nextBranch,
   parseEntries,
@@ -16,7 +16,7 @@ import {
 const SINGLE = ["{ 2.1.3 }", "the title line", "+ 00:04:12 13:27:43"].join("\n");
 
 describe("parseEntries", () => {
-  it("reads the marker's three numbers and its clocks", () => {
+  it("reads the address's three numbers and its clocks", () => {
     const index = parseEntries(SINGLE);
     const entry = index.entries[0];
 
@@ -68,15 +68,15 @@ describe("parseEntries", () => {
     expect(entry?.title).toBe("prose");
   });
 
-  it("accepts a bare marker and a two-field moment", () => {
+  it("accepts a bare address and a two-field moment", () => {
     const entry = parseEntries("{2.1.3}\n9:14").entries[0];
 
     expect(entry?.time).toBe("09:14:00");
-    expect(entry?.markerEnd).toBe("{2.1.3}".length);
+    expect(entry?.addressEnd).toBe("{2.1.3}".length);
     expect(entry?.duration).toBeNull();
   });
 
-  it("turns a title written after the marker into the first prose line", () => {
+  it("turns a title written after the address into the first prose line", () => {
     const source = "{ 1.2.4 } spoke about the breath\nand then more";
     const entry = parseEntries(source).entries[0];
 
@@ -85,7 +85,7 @@ describe("parseEntries", () => {
     expect(entry?.firstProseLine).toBe(0);
   });
 
-  it("ignores a marker inside frontmatter or a fenced code block", () => {
+  it("ignores an address inside frontmatter or a fenced code block", () => {
     const source = [
       "---",
       "{ 9.9.9 }",
@@ -169,12 +169,12 @@ describe("parseEntries", () => {
     expect(nextSeq(index)).toBe(4);
   });
 
-  it("formats a marker with one space inside each brace", () => {
-    expect(formatMarker(2, 1, 3)).toBe("{ 2.1.3 }");
+  it("formats an address with one space inside each brace", () => {
+    expect(formatAddress(2, 1, 3)).toBe("{ 2.1.3 }");
   });
 
   it("gives every entry in a branch its branch id", () => {
-    // Crooked on purpose: the markers agree on nothing, and the branch is read
+    // Crooked on purpose: the addresses agree on nothing, and the branch is read
     // from the tree, never from the digits.
     const source = [
       "{ 5.2.1 }",
@@ -233,7 +233,7 @@ describe("parseEntries", () => {
     expect(index.entries.length).toBe(0);
   });
 
-  it("reports a note that still carries the old marker, before it is misread", () => {
+  it("reports a note that still carries the old address, before it is misread", () => {
     const index = parseEntries("{ 1.1.1 } - 10:00:00\nprose\n+ 00:00:00");
     expect(index.legacyFormat).toBe(true);
   });

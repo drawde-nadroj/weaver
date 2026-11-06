@@ -2,7 +2,7 @@
 /**
  * Renders the generated half of `SYSTEM-DESIGN.md` from `docs/design/index.json`.
  *
- * Everything between the two markers below is derived from the tree: module
+ * Everything between the two addresses below is derived from the tree: module
  * tables, every exported symbol with its signature and reference count, the
  * settings and their readers, the commands, the DOM names, and the record
  * example that the tests read. The authored half of the document is never
@@ -205,7 +205,7 @@ const begin = doc.indexOf(BEGIN);
 const end = doc.indexOf(END);
 
 if (begin === -1 || end === -1 || end < begin) {
-  console.error(`SYSTEM-DESIGN.md must contain the markers:\n${BEGIN}\n${END}`);
+  console.error(`SYSTEM-DESIGN.md must contain the addresses:\n${BEGIN}\n${END}`);
   process.exit(1);
 }
 

@@ -8,7 +8,7 @@ import Base
 # single word because `-o duration.mjs` exports each name verbatim, and every def
 # appears above the defs that call it: Bend binds only what is already defined.
 #
-# One format for both directions: an entry's clock reads against the marker's
+# One format for both directions: an entry's clock reads against the address's
 # clock, so a duration and a time of day are the same shape and can be compared
 # by eye.
 #

@@ -44,7 +44,7 @@ import {
 } from "../core/capture";
 import { dimensionColorVars } from "../core/color";
 import { formatClock as formatDuration } from "../core/duration";
-import { formatMarker } from "../core/entries";
+import { formatAddress } from "../core/entries";
 import type { WeavingContext } from "../core/contexts";
 import {
   composerHeightShare,
@@ -682,7 +682,7 @@ export class Composer {
   /**
    * The two rails: what the draft is, and what it has taken.
    *
-   * The top rail names the thing — `Thread`, `Branch`, or the saved marker — and
+   * The top rail names the thing — `Thread`, `Branch`, or the saved address — and
    * never a fabricated address. The bottom rail carries the duration at one corner
    * and the moment at the other, exactly as an entry's own clock row does.
    */
@@ -694,7 +694,7 @@ export class Composer {
       // The colour lives on the card: the root's own style is the measured box,
       // and layout writes it every frame.
       this.card.setAttribute("style", dimensionColorVars(selected.d));
-      appendDigitRuns(this.railTop, formatMarker(selected.b, selected.d, selected.n));
+      appendDigitRuns(this.railTop, formatAddress(selected.b, selected.d, selected.n));
       this.railTop.setAttribute("aria-label", `Saved thought ${selected.b}.${selected.d}.${selected.n}`);
     } else {
       this.card.setAttribute("style", dimensionColorVars(depth));
@@ -755,7 +755,7 @@ export class Composer {
 
     const address = document.createElement("span");
     address.className = "weaver-composer-parent-address";
-    appendDigitRuns(address, formatMarker(parent.b, parent.d, parent.n));
+    appendDigitRuns(address, formatAddress(parent.b, parent.d, parent.n));
     row.appendChild(address);
 
     const excerpt = document.createElement("span");
@@ -807,7 +807,7 @@ export class Composer {
       const row = document.createElement("button");
       row.className = "weaver-composer-ancestor";
       row.setAttribute("type", "button");
-      appendDigitRuns(row, formatMarker(ancestor.b, ancestor.d, ancestor.n));
+      appendDigitRuns(row, formatAddress(ancestor.b, ancestor.d, ancestor.n));
       row.setAttribute("aria-label", `Go to ancestor ${ancestor.b}.${ancestor.d}.${ancestor.n}`);
       row.addEventListener("click", () => void this.select(ancestor));
       this.outline.appendChild(row);

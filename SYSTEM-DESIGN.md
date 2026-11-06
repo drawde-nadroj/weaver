@@ -23,29 +23,29 @@ it — run `npm run design`.
 
 ## 1. The record
 
-An entry is a marker line, its prose, and at most one clock row. A day note is a
+An entry is an address line, its prose, and at most one clock row. A day note is a
 list of them plus the day's frontmatter. Everything else in the plugin exists to
 draw that list, move a caret through it, or write one of its fields.
 
 The clock row is the frame's bottom edge: the duration and the moment sit at its
 two ends, so the row you write is the row the frame is labelled with. Both halves
 are digit and punctuation runs — white digits around dimension-coloured colons —
-the same grammar the marker is drawn in. The duration comes first because it is
-the half that moves: settling rewrites its characters and leaves the moment's
-alone.
+the same grammar the Dimensional Address is drawn in. The duration comes first
+because it is the half that moves: settling rewrites its characters and leaves the
+moment's alone.
 
 | Field | Written by | Read by | Shape |
 | --- | --- | --- | --- |
-| Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ B.D.N }`, matched as a prefix |
-| Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row that is not a whisper row, trimmed at both ends |
+| Dimensional Address | `formatAddress` | `parseAddressPrefix`, `parseEntries` | `{ B.D.N }`, matched as a prefix |
+| Prose | the writer's own typing | `parseEntries` | every line between the address and the clock row that is not a whisper row, trimmed at both ends |
 | Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>` — one to three rows (the prompt asks for two or three); a `thread:` row may be appended later |
 | Moment | `planEntryBeginning`, `planCaptureEntry` | `parseClockRow` | `YYYY-MM-DD HH:MM:SS` captured on first committed text — or, in the composer, on the first committed character of the draft; an undated historical moment inherits the filename day |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS` at the head of the clock row; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats`, `mergeAlignment` | `scanFrontmatter`, `recountDay`, `readAlignments` | `date`, `travels`, `depth`, `duration`, and structured `weaver-alignments` |
 
-<!-- claim: src/core/entries.ts#formatMarker @c9eab6a8cb -->
-<!-- claim: src/core/entries.ts#parseEntries @9a8f2bc1c5 -->
+<!-- claim: src/core/entries.ts#formatAddress @1abc672aad -->
+<!-- claim: src/core/entries.ts#parseEntries @867ab254f7 -->
 <!-- claim: src/core/duration.ts#parseClockRow @8f42ef87a2 -->
 <!-- claim: src/core/close.ts#parseClose @1690b1d5c0 -->
 <!-- claim: src/core/day-stats.ts#recountDay @89a9e7f928 -->
@@ -97,13 +97,13 @@ entry, its note's.
 <!-- claim: src/entries/day-note.ts#resolveContextDay @283d4405d2 -->
 <!-- claim: src/entries/day-note.ts#ensureDayNote @210f61c1da -->
 <!-- claim: src/entries/daily-log.ts#readDailyLog @f215b22c09 -->
-<!-- claim: src/core/entries.ts#repairBranches @a57d8d7a30 -->
+<!-- claim: src/core/entries.ts#repairBranches @511204537d -->
 
 The parser is a prefix match, so `{ 1.2.3 } a title` is one entry whose first
-prose line is `a title`; the marker inside frontmatter or a fenced block is text
+prose line is `a title`; the Dimensional Address inside frontmatter or a fenced block is text
 (`src/core/document.ts#scanFrontmatter`, `src/core/document.ts#scanFences`). The
 clock row is the entry's last line, and either half may be absent: a row with
-only a moment, or only a duration, is still a clock row. A marker that still
+only a moment, or only a duration, is still a clock row. An address that still
 carries its old `- HH:MM:SS` clock sets `EntryIndex.legacyFormat`; every plan
 refuses such a note rather than read the clock as its first prose line. The
 documented example below is a file the tests parse, not a retyped sample.
@@ -145,7 +145,7 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-<!-- claim: src/entries/engine.ts#EntryEngine @9ab18fd325 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @73a8cbc1d5 -->
 
 ## 3. The plans
 
@@ -155,9 +155,9 @@ transaction, so one undo reverses all of it.
 | Plan | Intent | Changes | Renumbers |
 | --- | --- | --- | --- |
 
-| `planChildEntry` | open a child under a settled entry, above older siblings | marker, blank line, `- 00:00:00` | no — inherits `B` |
+| `planChildEntry` | open a child under a settled entry, above older siblings | address, blank line, `- 00:00:00` | no — inherits `B` |
 | `planEntryBeginning` | stamp a draft's beginning on first input | the clock row's day and moment, duration bytes untouched | no |
-| `planCaptureEntry` | write one settled thought | marker, prose, a `+` clock row with its own duration and moment, and the invitation's record when it applies | no — new `N`, next branch or the parent's `B` |
+| `planCaptureEntry` | write one settled thought | address, prose, a `+` clock row with its own duration and moment, and the invitation's record when it applies | no — new `N`, next branch or the parent's `B` |
 | `planDeleteEntry` | remove a subtree | the block, its blank separator, and nulling deleted history associations | yes — surviving `B` values |
 | `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
 | `planWhisper` | name an entry | whisper rows above the first prose line | no |
@@ -165,12 +165,12 @@ transaction, so one undo reverses all of it.
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
-<!-- claim: src/core/insert.ts#planCaptureEntry @d9fa1fcd24 -->
-<!-- claim: src/core/insert.ts#planChildEntry @dfd9e28c58 -->
+<!-- claim: src/core/insert.ts#planCaptureEntry @7886bde2d8 -->
+<!-- claim: src/core/insert.ts#planChildEntry @5cc924783b -->
 <!-- claim: src/core/insert.ts#planEntryBeginning @3e58476127 -->
-<!-- claim: src/core/insert.ts#planDeleteEntry @9e6538e477 -->
+<!-- claim: src/core/insert.ts#planDeleteEntry @f800e9f3b2 -->
 <!-- claim: src/core/insert.ts#planDuration @546c356091 -->
-<!-- claim: src/core/insert.ts#planWhisper @a9fb1e4a70 -->
+<!-- claim: src/core/insert.ts#planWhisper @ddb2eef9bb -->
 <!-- claim: src/core/insert.ts#planThread @a8069bde30 -->
 <!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
 
@@ -178,8 +178,8 @@ transaction, so one undo reverses all of it.
 allocates `N` itself, places a root at the tip or a child under its parent above
 older siblings, and then **parses the result back**: the written note must contain
 exactly the allocated entry, at the intended parent and depth, with the typed prose
-between the marker and the planned clock row. A paste that leaves a fence open, or
-prose ending in a line that reads as a marker or as a clock row, therefore refuses
+between the address and the planned clock row. A paste that leaves a fence open, or
+prose ending in a line that reads as an address or as a clock row, therefore refuses
 instead of writing a record that describes a different entry. An invitation's
 evidence joins the same plan only when the thought is a root, an opening was really
 announced, and the first committed input fell inside that opening's own minute —
@@ -241,7 +241,7 @@ The transitions, and where each lives:
 | Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable — and, when the idle pause already answered, the whisper rows in the same transaction |
 | Drop | the entry being written is deleted | `src/entries/engine.ts#deleteEntry` | none |
 
-<!-- claim: src/entries/engine.ts#EntryEngine @9ab18fd325 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @73a8cbc1d5 -->
 
 `afterEdit` is the only place a clock starts, and it starts on an input
 observation only: `{ path, seq, at }`, read from the transaction's own selection
@@ -337,7 +337,7 @@ Nothing reflows. The text decides where the box is, never the reverse.
   preview and an input, the preview goes rather than the box overflowing.
 - The constants that turn "a box" into this box — `MIN_AIR`, `NO_CLOCK_PAD`,
   `INLINE_TITLE_PAD` — stay in the measuring layer. The shared side clearance is
-  `src/core/frame.ts#frameLabelInset`: `16 px + 0.45em`, using the rendered marker's
+  `src/core/frame.ts#frameLabelInset`: `16 px + 0.45em`, using the rendered address's
   font size, exactly the inset Reading view uses. The labels' background halos
   therefore leave both rounded corners visible without moving the text.
   Nothing renders into that air. The labels cannot overhang the
@@ -345,18 +345,18 @@ Nothing reflows. The text decides where the box is, never the reverse.
   a label that needs the corner is drawn inside the text column instead, and the
   gutter is the margin that keeps the rail off the ink.
 - Where a frame starts is a setting with two answers. On (`frameFollowsIndent`, the
-  default) the marker, the prose and the clock row all take the indent, and because
-  the frame's left edge is pinned a fixed air left of the marker, the boxes step right
-  with the nesting. Off, only the prose is indented: the marker and the clock row stay
+  default) the address, the prose and the clock row all take the indent, and because
+  the frame's left edge is pinned a fixed air left of the address, the boxes step right
+  with the nesting. Off, only the prose is indented: the address and the clock row stay
   in the left margin, the frame's edge follows them, and every box starts in the same
-  column — which puts the markers and the times in one column each down the note. The
+  column — which puts the addresses and the times in one column each down the note. The
   body class is `weaver-frame-fixed`; both modes are four CSS declarations.
-- Vertical rhythm is two settings, both air above a marker row. `threadSpacing` is
+- Vertical rhythm is two settings, both air above an address row. `threadSpacing` is
   the gap above every depth-1 entry after the note's first Thread, so one Thread's
   subtree does not run into the next; `branchSpacing` is the gap above each branch
   whose predecessor is also a branch, so the first branch stays close to its Thread's
   root and later siblings separate. `src/editor/entry-decorations.ts#entryDecorationSet`
-  stamps `weaver-thread-start` and `weaver-branch-start` on the marker line, where
+  stamps `weaver-thread-start` and `weaver-branch-start` on the address line, where
   padding moves the row, its prose and its frame together;
   `src/reading/entry-processor.ts#createEntryProcessor` stamps the same names on the
   static frame, where the top margin does the work. Both default to zero, and the
@@ -408,7 +408,7 @@ measurement is involved at all.
 addresses to attach a signed clock to its entry even when Markdown rendered it
 as a separate list block. That clock section is hidden independently of render
 order. Static frames allow overflow so their rail labels are never clipped.
-The marker's soft break is removed with its text, not carried into the first
+The address's soft break is removed with its text, not carried into the first
 prose line as a blank row; later prose breaks and inline markup are retained.
 
 ## 6. Surfaces
@@ -418,7 +418,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 
 | Surface | Code | Writes | One undo | Empty |
 | --- | --- | --- | --- | --- |
-| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing (it renders the marker's runs, the frame label, and a different-day entry's creation-day link) |
+| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing (it renders the address's runs, the frame label, and a different-day entry's creation-day link) |
 | Clock row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
@@ -434,7 +434,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
 <!-- claim: src/ui/navigator.ts#Navigator @171ea4ebc1 -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @b36fbbafc7 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @39d5cddb58 -->
 
 A command's target is the day plane, and *Whisper the day* aims at the day note on
 screen — `src/entries/engine.ts#dayToWhisper` — falling back to today's note only
@@ -463,7 +463,7 @@ succeeds.
 
 ## 7. Settings, colour, and the look
 
-Colour is a pure function of `D` — for the marker and the prose.
+Colour is a pure function of `D` — for the address and the prose.
 `dimensionColor(7)` is the same value in every vault and at every moment, and
 `dimensionColorVars` packages the two custom properties a line carries. A whisper
 row is the one row that takes the note's own text colour, because the glyph alone
@@ -501,7 +501,7 @@ copy capitalises Thread; the stored `B`/`D`/`N` and the internal plan names do n
 change with it. `heading` names Markdown syntax and
 nothing else, which is why the settings fields are `entrySize` and
 `equalizeEntrySizes` and why the v2 names appear once, in the migration. The
-frame's labels — marker, the date link on another day, stopwatch and moment — carry
+frame's labels — address, the date link on another day, stopwatch and moment — carry
 the note's own weight, so no setting exists for theirs.
 
 ## 8. Every sentence the user sees
@@ -540,7 +540,7 @@ No unit test can see a pixel, and this document does not pretend otherwise.
 
 | You change | Also change |
 | --- | --- |
-| a marker or duration shape | `core/entries.ts`, `core/duration.ts`, `core/duration.bend` + `LAWS.bend`, the fixture, §1 |
+| an address or duration shape | `core/entries.ts`, `core/duration.ts`, `core/duration.bend` + `LAWS.bend`, the fixture, §1 |
 | what a plan changes | `core/insert.ts`, its test in `tests/entry-plans.test.ts`, §3 |
 | when a clock starts or stops | `entries/engine.ts#afterEdit`, `editor/entry-keys.ts`, §4 |
 | a geometry constant | `editor/entry-frame.ts`, `tests/frame.test.ts`, §5 |
@@ -1018,8 +1018,8 @@ The entry: the unit a day note is made of.
 | --- | --- | --- | --- | --- | --- |
 | `Entry` | interface | 36 | `export interface Entry` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
 | `EntryIndex` | interface | 85 | `export interface EntryIndex` | `core/capture.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/capture.test.ts` |
-| `MarkerPrefix` | interface | 113 | `export interface MarkerPrefix` | — | — |
-| `parseMarkerPrefix` | function | 128 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
+| `AddressPrefix` | interface | 113 | `export interface AddressPrefix` | — | — |
+| `parseAddressPrefix` | function | 128 | `export function parseAddressPrefix(text: string): AddressPrefix \| null` | `reading/entry-processor.ts` | — |
 | `parseEntries` | function | 166 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/capture.ts`<br>`entries/daily-log.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/navigator.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/capture.test.ts`<br>`tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
 | `findEntryAtLine` | function | 344 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
 | `findEntryAtOffset` | function | 353 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
@@ -1029,7 +1029,7 @@ The entry: the unit a day note is made of.
 | `endOfSubtree` | function | 385 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
 | `nextSeq` | function | 390 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
 | `nextBranch` | function | 395 | `export function nextBranch(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `formatMarker` | function | 400 | `export function formatMarker(b: number, d: number, n: number): string` | `core/capture.ts`<br>`core/insert.ts`<br>`entries/engine.ts`<br>`ui/composer.ts` | `tests/entries.test.ts` |
+| `formatAddress` | function | 400 | `export function formatAddress(b: number, d: number, n: number): string` | `core/capture.ts`<br>`core/insert.ts`<br>`entries/engine.ts`<br>`ui/composer.ts` | `tests/entries.test.ts` |
 | `repairBranches` | function | 411 | `export function repairBranches(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
 
 #### `src/core/frame.ts`
@@ -1545,7 +1545,7 @@ The digit-and-ink grammar: `B.D.N`, the clock row and the date label all split
 | `NUM_CLASS` | const | 16 | `export const NUM_CLASS = "weaver-dcn-num"` | `editor/entry-decorations.ts` | — |
 | `INK_CLASS` | const | 18 | `export const INK_CLASS = "weaver-dcn-ink"` | `editor/entry-decorations.ts` | — |
 | `Slice` | interface | 21 | `export interface Slice` | — | — |
-| `markerSlices` | function | 31 | `export function markerSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
+| `addressSlices` | function | 31 | `export function addressSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
 | `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | — |
 | `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
 
