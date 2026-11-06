@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { MarkdownPostProcessorContext } from "obsidian";
+import type { MarkdownPostProcessorContext, MarkdownRenderChild } from "obsidian";
 
 import { createCloseProcessor } from "../src/reading/close-processor";
 import { createEntryProcessor } from "../src/reading/entry-processor";
 import { ShimElement } from "../test-support/dom";
+import { EntryClock } from "../src/entries/clock";
+import { EntrySession } from "../src/entries/session";
 
 function context(sourcePath: string): MarkdownPostProcessorContext {
   return { sourcePath, frontmatter: {}, docId: "1", addChild: () => {} } as unknown as MarkdownPostProcessorContext;
@@ -21,6 +23,20 @@ function container(): ShimElement {
 }
 
 describe("the entry processor", () => {
+  it("keeps adjacent unprocessed entry paragraphs in sibling frames", () => {
+    const root = container();
+    paragraph(root, "{ 1.1.1 }\nfirst\n+ 00:00:07 2026-11-05 22:55:00");
+    paragraph(root, "{ 2.1.2 }\nsecond\n= 00:00:03 2026-11-05 23:00:00");
+    createEntryProcessor()(root as never, context("Chronomancer/2026.11.05.md"));
+    const frames = root.querySelectorAll(".weaver-frame");
+    expect(frames.length).toBe(2);
+    expect(frames.every(frame => frame.parentElement === root)).toBe(true);
+    expect(frames[0]?.querySelector(".weaver-entry-prose")?.textContent).toBe("first");
+    expect(frames[1]?.querySelector(".weaver-entry-prose")?.textContent).toBe("second");
+    expect(frames[0]?.querySelector(".weaver-duration-clock")?.textContent).toBe("+ 00:00:07");
+    expect(frames[1]?.querySelector(".weaver-duration-clock")?.textContent).toBe("= 00:00:03");
+  });
+
   it.each(["+", "-"])("keeps a %s clock in its frame across Obsidian sections", (sigil) => {
     const source = `{ 15.1.29 }\nprose\n${sigil} 00:00:29 08:30:06`;
     const root = container();
@@ -335,6 +351,30 @@ describe("the entry processor", () => {
     expect(row?.querySelector(".weaver-duration-moment")?.textContent).toBe("13:27:43");
     // The date labels the top-right corner only; the row stays time.
     expect(row?.textContent).not.toContain("2026-11-05");
+  });
+
+  it("shows an awaiting wall clock without inventing a recorded day", () => {
+    let now = new Date(2026, 10, 5, 23, 59, 58).getTime();
+    const clock = new EntryClock(new EntrySession(), () => now);
+    const root = container();
+    paragraph(root, "{ 1.1.1 }");
+    paragraph(root, "- 00:00:00");
+    const children: MarkdownRenderChild[] = [];
+    createEntryProcessor(undefined, clock)(root as never, {
+      ...context("Chronomancer/2026.11.05.md"),
+      addChild: (child) => { children.push(child); return child; }
+    });
+    for (const child of children) child.onload();
+    expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
+    expect(root.querySelector(".weaver-duration-moment")?.textContent).toBe("23:59:58");
+    now = new Date(2026, 10, 6, 0, 0, 3).getTime();
+    clock.refresh();
+    expect(root.querySelector(".weaver-duration-moment")?.textContent).toBe("00:00:03");
+    for (const child of children) child.onunload();
+    now += 1000;
+    clock.refresh();
+    expect(root.querySelector(".weaver-duration-moment")?.textContent).toBe("00:00:03");
+    clock.destroy();
   });
 
   it("draws no day link on a note that is not a day", () => {

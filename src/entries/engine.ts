@@ -16,16 +16,19 @@ import { MarkdownView, Notice, TFile, type App } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { Transaction, type StateEffect } from "@codemirror/state";
 
+import { readAlignments } from "../core/alignments";
 import { dayKeyFromName } from "../core/day";
 import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
   findEntryAtOffset,
   formatMarker,
+  nextSeq,
   parseEntries,
   type Entry,
   type EntryIndex
 } from "../core/entries";
+import { portalAlignments, portalPhase } from "../core/portals";
 import {
   applyPlanToSource,
   cmChanges,
@@ -33,6 +36,8 @@ import {
   planChildEntry,
   planDeleteEntry,
   planDuration,
+  planEntryBeginning,
+  planPortalEntry,
   planStartEntry,
   planThread,
   planWhisper,
@@ -54,7 +59,13 @@ import { NoModel, type WhisperFailure } from "../model/whisper-model";
 import { WHISPER_FAILURE_LIMIT } from "../model/whisper-runner";
 import { pushStop, type Stop } from "../core/navigator-stack";
 import { editorPathOf } from "../editor/editor-path";
-import { entryIndexField, programmaticWrite, refreshEntriesEffect } from "../editor/entry-field";
+import {
+  capturedInput,
+  entryIndexField,
+  programmaticWrite,
+  refreshEntriesEffect,
+  type InputObservation
+} from "../editor/entry-field";
 import {
   findActiveEditorView,
   findEditorViewForFile,
@@ -64,23 +75,50 @@ import {
   NOTICE_NEEDS_EDITING,
   NOTICE_NEEDS_ENTRY,
   NOTICE_NO_DAY_NOTE,
+  NOTICE_PARTIAL_MS,
+  NOTICE_PORTAL_UNAVAILABLE,
   NOTICE_REFUSAL_MS,
+  NOTICE_STOP_FAILED,
   NOTICE_WHISPERING,
   NOTICE_WHISPER_UNREACHABLE,
   noticeCloseCodeBlock,
   noticeCloseFrontmatter,
   noticeLegacyFormat,
+  noticePortalRefused,
   noticeWhispered,
   whisperFailurePhrase
 } from "../notices";
+import { focusPortal } from "../editor/portal-widget";
 import type WeaverPlugin from "../main";
 import { ensureDayNote, resolveDayNote } from "./day-note";
 import { EntrySession } from "./session";
 import { planRewrite, rewriteDay } from "./writer";
 
+/**
+ * A draft that has not recorded its beginning yet: a clock row with a duration
+ * and no moment. That is the structural fact — never a zero duration, never
+ * empty prose, both of which a written entry may also have. A historical draft
+ * that genuinely lacks a moment is awaiting too; an entry with a moment keeps
+ * it, whatever day it was written on.
+ */
+function awaitingBeginning(index: EntryIndex, entry: Entry): boolean {
+  if (entry.state !== "draft" || entry.clockLine === null) return false;
+  if (entry.time !== null || entry.day !== null) return false;
+  const line = index.lines[entry.clockLine] ?? "";
+  return line.trim() !== "";
+}
+
 /** The only writer of entry text: every surface changes an entry through one of its methods. */
 export class EntryEngine {
   constructor(private readonly plugin: WeaverPlugin) {}
+
+  /** The last reason a portal capture was refused, per opening. */
+  private readonly portalFailures = new Map<string, string>();
+
+  /** The reason the last capture of this opening was refused, if it was. */
+  portalFailure(id: string): string | null {
+    return this.portalFailures.get(id) ?? null;
+  }
 
   private get session(): EntrySession {
     return this.plugin.session;
@@ -116,7 +154,7 @@ export class EntryEngine {
     const result = await rewriteDay(
       this.app,
       file,
-      planRewrite((source) => planStartEntry(source, parseEntries(source), now)),
+      planRewrite((source) => planStartEntry(source, parseEntries(source))),
       true
     );
 
@@ -212,14 +250,16 @@ export class EntryEngine {
     const current = entryBySeq(index, entry.n);
     if (current === null || current.state === "settled") return;
 
-    // A live session holds the elapsed time; a paused entry holds its own stored
-    // time, so settling never restarts a clock it never had.
-    const ms = this.session.activeFor(path, current.n)
-      ? this.session.elapsed(Date.now())
-      : (current.duration?.ms ?? 0);
-    this.session.clear();
+    // A live session holds the displayed time; a paused entry holds its own
+    // stored time, so settling never restarts a clock it never had. The digit on
+    // screen is the truth: `⏎` never refreshes the clock, and a raw sample taken
+    // here could turn a visible `00:00:07` into `00:00:09` when a tick was late.
+    const live = this.session.activeFor(path, current.n);
+    const ms = live ? this.session.displayed() : (current.duration?.ms ?? 0);
 
     const plan = planDuration(source, index, current, "+", ms);
+    // Nothing can be written for this entry, so this is not a stop at all: the
+    // session is kept rather than dropped, and no clock is silently discarded.
     if (plan === null) return;
 
     // A warm whisper goes in the same transaction as `+`, so one undo takes the
@@ -230,10 +270,26 @@ export class EntryEngine {
     const whisperPlan =
       input === null || cached === null ? null : planWhisper(source, index, current, cached);
 
-    view.dispatch({
-      changes: cmChanges([...plan.changes, ...(whisperPlan?.changes ?? [])]),
-      annotations: programmaticWrite.of(true)
-    });
+    // Held before the transaction that carries the stop: if it cannot land, the
+    // stopwatch stays on the second the writer saw instead of resuming past it.
+    if (live) this.session.freezeDisplay();
+
+    try {
+      view.dispatch({
+        changes: cmChanges([...plan.changes, ...(whisperPlan?.changes ?? [])]),
+        annotations: programmaticWrite.of(true)
+      });
+    } catch {
+      new Notice(NOTICE_STOP_FAILED, NOTICE_PARTIAL_MS);
+      return;
+    }
+
+    // Released only now, after the transaction carrying the stopped duration
+    // exists.
+    if (live) {
+      this.session.clear();
+      this.repaintStoppedClocks(path);
+    }
 
     if (input !== null && cached === null) this.plugin.whisper.request(path, current.n, input);
   }
@@ -243,14 +299,15 @@ export class EntryEngine {
    * the caret in its prose. The parent's clock row is not touched.
    */
   descend(view: EditorView, entry: Entry): void {
-    const now = new Date();
     const source = view.state.doc.toString();
     const index = this.indexOf(view, source);
     if (this.refuseLegacy(index, "opening a child entry")) return;
     const parent = entryBySeq(index, entry.n);
     if (parent === null) return;
 
-    const child = planChildEntry(source, index, parent, now);
+    // Duration only: the child gets its own beginning when the writer first
+    // types in it, not from the moment this blank block was made.
+    const child = planChildEntry(source, index, parent);
     if (child === null) return;
 
     this.pushStopFrom(view);
@@ -264,52 +321,465 @@ export class EntryEngine {
    * `=` is the sigil for "the writer stopped here": it is a draft like `-`, so
    * the next keystroke resumes from this second, and the write is free at second
    * resolution because an unchanged clock plans nothing.
+   *
+   * The written duration is the last painted second, never a fresh sample: a
+   * stop preserves exactly the digits the writer was looking at. The second is
+   * held before the write and the session is released only once it lands, so a
+   * failed write leaves the clock stopped exactly where it stopped — a retry
+   * writes the same digits, and only fresh input starts counting again.
    */
-  pause(now: Date): void {
+  pause(): Promise<void> {
     const active = this.session.active();
-    if (active === null) return;
+    if (active === null) return Promise.resolve();
 
-    const ms = this.session.elapsed(now.getTime());
-    this.session.clear();
-    this.publish(active.path, active.seq, "=", ms, false);
+    // Held before the write: the stop's number is the second that was on
+    // screen, and no tick may advance it while the write is in flight — nor
+    // after a failed one, until the writer types again.
+    this.session.freezeDisplay();
+    const ms = this.session.displayed();
+
+    return this.publish(active.path, active.seq, "=", ms, false).then((accepted) => {
+      // The session that stopped must be the one still running: a new entry may
+      // have been started while this write settled, and it is not this stop's
+      // to clear.
+      const current = this.session.active();
+      if (
+        current === null ||
+        current.path !== active.path ||
+        current.seq !== active.seq ||
+        current.resumedAt !== active.resumedAt
+      ) {
+        return;
+      }
+
+      if (accepted) {
+        this.session.clear();
+        this.repaintStoppedClocks(active.path);
+        return;
+      }
+
+      // A failed write is not a stop, but it is not a resume either: the
+      // stopwatch stays held at the second it stopped on, so a retry writes the
+      // same digits, and only fresh input starts counting again.
+      new Notice(NOTICE_STOP_FAILED, NOTICE_PARTIAL_MS);
+    });
   }
 
   /**
-   * Keeps the live session on the entry the caret is in.
+   * Captures an entry's beginning together with the first text written in it.
+   *
+   * A draft with a duration-only clock row has no moment yet: the moment is the
+   * time the writer actually typed, not the time the blank block was made. The
+   * text and the recorded day/moment therefore go into one transaction, so one
+   * undo takes the whole beginning back and one redo restores it whole.
+   *
+   * Returns `false` for everything that is not the first nonempty text of an
+   * awaiting entry — including an input aimed at the clock row itself, whose
+   * start would be after the metadata being appended — so the caller can leave
+   * ordinary input to CodeMirror.
+   *
+   * `beganAt` is the input's own timestamp, sampled when the input arrived;
+   * `userEvent` is CodeMirror's name for that input, carried through so a paste
+   * stays a paste and a committed composition stays a composition for history.
+   */
+  captureInput(
+    view: EditorView,
+    from: number,
+    to: number,
+    text: string,
+    beganAt: number,
+    userEvent = "input.type"
+  ): boolean {
+    if (text === "") return false;
+
+    const path = editorPathOf(view);
+    if (path === null) return false;
+
+    const source = view.state.doc.toString();
+    const index = this.indexOf(view, source);
+    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return false;
+
+    const entry = findEntryAtOffset(index, from);
+    if (entry === null || !awaitingBeginning(index, entry)) return false;
+
+    // Text written from inside the clock row would be inserted where the
+    // metadata is about to be appended. That is not the entry's first prose,
+    // and the two changes would overlap, so this input stays native.
+    const clockStart = index.lineStarts[entry.clockLine ?? entry.line] ?? entry.clockFrom;
+    if (from >= clockStart || to > clockStart) return false;
+
+    // Build the beginning against the text the input will produce, resolved
+    // through that same parse: the plan refuses an entry whose identity moved,
+    // so a first keystroke that breaks the block is left to the editor.
+    const inserted = source.slice(0, from) + text + source.slice(to);
+    const delta = text.length - (to - from);
+    const nextIndex = parseEntries(inserted);
+    const next = entryBySeq(nextIndex, entry.n);
+    if (next === null || !awaitingBeginning(nextIndex, next)) return false;
+    // The row the metadata is appended to must still be the row this entry had:
+    // a paste that put a clock-looking line above it must not have its own text
+    // rewritten, so that input stays native.
+    if (
+      (nextIndex.lines[next.clockLine ?? -1] ?? "") !== (index.lines[entry.clockLine ?? -1] ?? "")
+    ) {
+      return false;
+    }
+
+    const beginning = planEntryBeginning(inserted, nextIndex, next, new Date(beganAt));
+    if (beginning === null) return false;
+
+    const changes = [{ from, to, insert: text }];
+    // The beginning plan is built against the text this input produces, so its
+    // offsets are in *post-input* coordinates. The transaction below is applied
+    // to the pre-input document, where the replaced range `[from, to)` opens a
+    // gap of `delta`: every later offset moves back by it. A change inside the
+    // inserted text has no pre-input position, so such an input stays native.
+    const insertedEnd = from + text.length;
+    for (const change of beginning.changes) {
+      if (change.from < insertedEnd) return false;
+      changes.push({ from: change.from - delta, to: change.to - delta, insert: change.text });
+    }
+
+    try {
+      view.dispatch({
+        changes,
+        selection: { anchor: from + text.length },
+        userEvent,
+        scrollIntoView: true,
+        annotations: capturedInput.of({ path, seq: entry.n, at: beganAt })
+      });
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Records an awaiting entry's beginning after an IME composition commits.
+   *
+   * A composition's text reaches the document natively: CodeMirror applies the
+   * preedit and keeps the committed text when `compositionend` arrives, often
+   * without a further document change for the text handler to intercept. So
+   * this path writes **only** the metadata — never the text, which is already
+   * the writer's — in one transaction named `input.type.compose`. CodeMirror's
+   * history always joins a `input.type.compose` event with the event before it,
+   * so the committed composition and its recorded beginning undo together.
+   *
+   * `input.at` is the composition's commit instant, never a preedit update; a
+   * later deferred callback cannot move the recorded moment.
+   *
+   * An entry that already recorded its beginning needs no metadata at all: the
+   * committed text is the writer's own input, and the composition's end often
+   * arrives with no further document change for the update listener to observe.
+   * Such a commit is handed to the same bookkeeping ordinary typing uses, so a
+   * paused or held draft resumes from the committed moment, without a write and
+   * without a new undo step. A settled entry never starts a clock. Returns
+   * `true` when the commit was taken as input into a draft — with or without a
+   * metadata write — and `false` when there was nothing safe to do with it.
+   */
+  captureComposition(view: EditorView, input: InputObservation): boolean {
+    const path = editorPathOf(view);
+    if (path === null || input.path !== path) return false;
+
+    const source = view.state.doc.toString();
+    const index = this.indexOf(view, source);
+    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return false;
+
+    const entry = entryBySeq(index, input.seq);
+    if (entry === null) return false;
+
+    if (!awaitingBeginning(index, entry)) {
+      // Only a draft is being written; a settled entry is edited, not timed.
+      if (entry.state !== "draft" || entry.time === null) return false;
+      // The writer may have moved on before this commit was observed: a caret
+      // now in another entry means the pause that move caused stands, and this
+      // old commit must not restart a clock behind them.
+      const caret = view.state.selection.main.head;
+      if (caret < entry.from || caret > entry.proseTo) return false;
+      this.afterEdit(view, input);
+      return true;
+    }
+
+    const beginning = planEntryBeginning(source, index, entry, new Date(input.at));
+    if (beginning === null) return false;
+
+    try {
+      view.dispatch({
+        changes: cmChanges(beginning.changes),
+        // The name is the undo group: history joins this with the composition
+        // it completes, so one undo takes the text and the beginning back.
+        userEvent: "input.type.compose",
+        annotations: capturedInput.of(input)
+      });
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Enters a portal: the first text accepted at or after its opening becomes a
+   * real root entry, with its marker, prose and clock row, and the alignment
+   * record, all in one undoable transaction.
+   *
+   * Nothing is trusted from the moment the receptacle was prepared: the owning
+   * note, the live text, the portal's candidacy and its phase are all re-read
+   * here, at the input's own timestamp. A held portal may be entered after its
+   * original minute; an untouched one may not, because its opening has passed.
+   * The portal is consumed only after the write lands, so a refused attempt
+   * leaves the frame available for the retry the writer's text is still in.
+   *
+   * Returns `false` — keeping the candidate and the writer's text — when there
+   * is no live candidate, when the instant is outside the opening, when the
+   * note's history cannot be read, or when the write throws. The refusal is
+   * spoken once, with the reason, because it is the writer who must repair the
+   * note.
+   */
+  capturePortal(view: EditorView, id: string, text: string, beganAt: number): boolean {
+    if (text.trim() === "") return false;
+
+    const path = editorPathOf(view);
+    if (path === null) return false;
+
+    const source = view.state.doc.toString();
+    const portal = this.plugin.portals
+      .candidates(path, source)
+      .find((candidate) => candidate.id === id);
+    if (portal === undefined) return false;
+
+    // Phase is re-derived from the input instant, not from the scheduled unlock:
+    // an early input inserts nothing, an untouched opening ends with its minute,
+    // and only a prepared one is still enterable afterwards.
+    const held = this.plugin.portals.held()?.portal.id === id;
+    const phase = portalPhase(portal, beganAt, held);
+    if (phase !== "open" && phase !== "held") return false;
+
+    // The reason a malformed history refuses is not in the plan's `null`; read
+    // it first so the writer is told what to fix instead of a bare no.
+    const history = readAlignments(source);
+    if (!history.ok) return this.refusePortal(id, history.error);
+
+    const index = this.indexOf(view, source);
+    // A note whose own shape cannot take an entry says why in the one place
+    // every refusal is worded.
+    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) {
+      this.notifyRefusal(index, "entering this portal");
+      return this.refusePortal(id, "this note cannot take a new entry until it is repaired", false);
+    }
+
+    const seq = nextSeq(index);
+    const plan = planPortalEntry(source, index, portal, new Date(beganAt), text);
+    if (plan === null) {
+      return this.refusePortal(id, "the note's text could not take a new entry");
+    }
+
+    // One transaction carries the marker, the first prose and the frontmatter
+    // record, so one undo takes the whole beginning back. It is named as real
+    // input rather than a Weaver write: the session starts from this very
+    // observation, at the moment the writer typed, on the entry just created.
+    try {
+      view.dispatch({
+        changes: cmChanges(plan.changes),
+        userEvent: "input.type",
+        annotations: capturedInput.of({ path, seq, at: beganAt })
+      });
+    } catch {
+      return this.refusePortal(id, "the note could not be written");
+    }
+
+    // The caret is an ordinary position in a document that already holds the
+    // new entry, so it is placed by a second, non-undoable dispatch — the same
+    // split every appending plan uses. It must land inside the new prose.
+    view.dispatch({
+      selection: { anchor: plan.selection.from },
+      effects: [EditorView.scrollIntoView(plan.selection.from, { y: "nearest" })],
+      annotations: [Transaction.addToHistory.of(false), programmaticWrite.of(true)]
+    });
+    view.focus();
+
+    // Only now: the opening is spent for this session, and the frame that
+    // showed it is removed by the controller's own emission.
+    this.plugin.portals.consume(id);
+    // An exact-second hit earns one acknowledgement and then yields; an ordinary
+    // entry — or a late, held entry outside its minute — earns nothing.
+    const aligned = portalAlignments(portal, beganAt).length > 0;
+    this.plugin.portalEntered(path, seq, aligned);
+    this.portalFailures.delete(id);
+    return true;
+  }
+
+  /**
+   * Shows a portal in the note that owns it, deliberately and on request.
+   *
+   * The hold pins the note: a portal prepared before midnight keeps its own
+   * note, so preparing it again after rollover does not move it to a new day.
+   * For an opening with no hold yet, the controller pins today's note; the note
+   * is created only here, because this is an explicit act, never a passive
+   * reveal. The leaf is switched to Live Preview — source stays raw text — and
+   * the same portal id is focused, so the one writing implementation is the one
+   * the writer types into.
+   *
+   * `owner` is the surface the writer asked from — a Reading view's own
+   * `MarkdownView`. Given one, that exact leaf is switched and focused: another
+   * tab that happens to hold the same note is not the writer's pane, and moving
+   * it would hide the surface they were reading.
+   */
+  async revealPortal(id: string, owner?: MarkdownView): Promise<void> {
+    const now = new Date(this.plugin.portals.now());
+    const resolved = resolveDayNote(this.app, this.plugin.settings, now);
+    // The note a hold is pinned to wins: an opening prepared before midnight
+    // stays with yesterday's note instead of moving to the new day.
+    const held = this.plugin.portals.held();
+    const venue = held === null ? resolved.path : held.path;
+
+    const found = this.app.vault.getAbstractFileByPath(venue);
+    let file: TFile | null = found instanceof TFile ? found : null;
+    let source = "";
+    if (file !== null) {
+      try {
+        source = await this.app.vault.cachedRead(file);
+      } catch {
+        this.refusePortal(id, "the note's portal history could not be read; reopen the note and try again");
+        return;
+      }
+    }
+
+    // Resolved from the note's own history, exactly as the frame resolved it,
+    // so an id that is no longer offered is refused rather than guessed at.
+    const portal = this.plugin.portals
+      .candidates(venue, source)
+      .find((candidate) => candidate.id === id);
+    if (portal === undefined) {
+      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    // Prepared before the switch so the hold exists even if the surface cannot
+    // be reached; the controller pins the note the explicit act is for.
+    this.plugin.portals.prepare(id);
+
+    // Only today's note may be created by an explicit act; a pinned note that
+    // has been deleted or renamed is reported rather than replaced.
+    if (file === null && resolved.path === venue) {
+      try {
+        file = await ensureDayNote(this.app, resolved.path, now);
+      } catch {
+        new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
+        return;
+      }
+    }
+    if (file === null) {
+      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    this.pushStopFrom(findActiveEditorView(this.app));
+    const view = await this.revealPreview(file, owner);
+    if (view === null) {
+      new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    // Prepared after the switch: the controller pins the note that is active
+    // now, so the hold belongs to the surface that will focus it.
+    this.plugin.portals.prepare(id);
+    const prepared = this.plugin.portals.held();
+    if (prepared === null || prepared.portal.id !== id) {
+      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
+      return;
+    }
+
+    focusPortal(view, id);
+  }
+
+  /**
+   * Keeps the live session on the entry the writer is typing in.
+   *
+   * `input` is what the editor observed at the moment of the input: its path,
+   * its entry, and its timestamp. Nothing here re-reads the caret to decide
+   * where typing landed — a caret that moved before this deferred run must not
+   * attach the keystroke to another entry, and the clock's baseline is the
+   * moment of typing, not of bookkeeping. `null` means an edit that was not
+   * input (a deletion, an undo, a reload), which never starts a clock.
    *
    * Deleting the live entry leaves the session on a sequence number that no
    * longer exists; the next entry would reuse it and inherit a running clock.
    * So a session whose entry is gone — or whose entry is no longer the one under
-   * the caret — is settled first, and only then may a draft under the caret
-   * resume.
+   * the caret — is settled first, and only then may a draft resume.
    *
    * The clock starts on the writer's own typing and nothing else: an entry the
    * vault reloaded, or one Weaver itself wrote, has no time in it yet.
    */
-  afterEdit(view: EditorView, typed: boolean): void {
+  afterEdit(view: EditorView, input: InputObservation | null): void {
     const path = editorPathOf(view);
     if (path === null) return;
 
     const index = this.indexOf(view, view.state.doc.toString());
     const at = findEntryAtOffset(index, view.state.selection.main.head);
 
+    // A session measures an entry that has a recorded beginning. An undo can
+    // take that beginning away — the entry is awaiting its first text again —
+    // and a redo can settle it. In both cases there is nothing to write: the
+    // row is the evidence. The clock ends here rather than clinging to an entry
+    // that is no longer being written, so a later redo cannot revive it.
+    const before = this.session.active();
+    if (before !== null && before.path === path) {
+      const measured = entryBySeq(index, before.seq);
+      if (
+        measured !== null &&
+        (measured.state === "settled" ||
+          measured.clockLine === null ||
+          awaitingBeginning(index, measured))
+      ) {
+        this.session.clear();
+      }
+    }
+
     const active = this.session.active();
     const moved =
-      active !== null && (entryBySeq(index, active.seq) === null || active.seq !== at?.n);
+      active !== null &&
+      (active.path !== path ||
+        entryBySeq(index, active.seq) === null ||
+        active.seq !== at?.n);
     // Pausing writes `=` into the entry it aimed at, and `publish` skips the
     // write when that entry is gone, so a deletion leaves the file alone.
-    if (moved) this.pause(new Date());
+    if (moved) void this.pause();
 
-    if (typed && at !== null && at.state === "draft" && !this.session.activeFor(path, at.n)) {
-      this.session.start(path, at.n, at.duration?.ms ?? 0, Date.now());
+    if (input === null || input.path !== path) {
+      this.refreshSoon(view);
+      return;
+    }
+
+    const target = entryBySeq(index, input.seq);
+    if (target === null || target.state !== "draft") {
+      this.refreshSoon(view);
+      return;
+    }
+    // A deferred observation can outlive the beginning it described: an undo
+    // removes the text and the recorded moment, and the capture's callback may
+    // still arrive afterwards. An entry without a beginning is awaiting, not
+    // being written, so no clock starts on it.
+    if (target.time === null) {
+      this.refreshSoon(view);
+      return;
+    }
+
+    if (this.session.frozen() && this.session.activeFor(path, target.n)) {
+      // Fresh input releases a held stop: counting resumes from the second the
+      // clock was held on, never from the time that passed while held.
+      this.session.start(path, target.n, this.session.displayed(), input.at);
+      this.plugin.clock.refresh();
+    } else if (!this.session.activeFor(path, target.n)) {
+      this.session.start(path, target.n, target.duration?.ms ?? 0, input.at);
+      // One clock samples the session, mounted or not: a tick starts now, so
+      // the row this typing is in has a displayed second to stop at.
+      this.plugin.clock.refresh();
     }
 
     // Speculation, not a write: every edit pushes the idle timer back, and an
     // answer that arrives before `⏎` makes the settle warm.
-    if (typed && at !== null && at.state === "draft") {
-      const input = this.whisperInput(index, at);
-      if (input !== null) this.plugin.whisper.arm(path, at.n, input);
-    }
+    const whisper = this.whisperInput(index, target);
+    if (whisper !== null) this.plugin.whisper.arm(path, target.n, whisper);
 
     this.refreshSoon(view);
   }
@@ -356,21 +826,36 @@ export class EntryEngine {
    * session time becomes the entry's clock row. `pause` publishes `=`, and
    * `settle` publishes `+` into the open editor through the same `planDuration`.
    * A settled entry plans nothing, so this is a no-op there.
+   *
+   * `true` means the stop was accepted — the write landed, or there was nothing
+   * left to write (the file is gone, or the entry no longer exists). `false`
+   * means the write itself failed, and the caller must keep what it was holding.
    */
-  publish(path: string, n: number, sigil: DurationSigil, ms: number, undoable: boolean): void {
+  async publish(
+    path: string,
+    n: number,
+    sigil: DurationSigil,
+    ms: number,
+    undoable: boolean
+  ): Promise<boolean> {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) return;
+    if (!(file instanceof TFile)) return true;
 
-    void rewriteDay(
-      this.app,
-      file,
-      planRewrite((source) => {
-        const index = parseEntries(source);
-        const entry = entryBySeq(index, n);
-        return entry === null ? null : planDuration(source, index, entry, sigil, ms);
-      }),
-      undoable
-    );
+    try {
+      await rewriteDay(
+        this.app,
+        file,
+        planRewrite((source) => {
+          const index = parseEntries(source);
+          const entry = entryBySeq(index, n);
+          return entry === null ? null : planDuration(source, index, entry, sigil, ms);
+        }),
+        undoable
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -413,6 +898,17 @@ export class EntryEngine {
     return view.state.field(entryIndexField, false) ?? parseEntries(source);
   }
 
+  /** A successful stop must replace running widgets before another clock paint. */
+  private repaintStoppedClocks(path: string): void {
+    for (const view of registeredEditorViews()) {
+      if (editorPathOf(view) !== path) continue;
+      view.dispatch({
+        effects: refreshEntriesEffect.of(undefined),
+        annotations: programmaticWrite.of(true)
+      });
+    }
+  }
+
   /** A refresh has to wait for the update that asked for it to finish. */
   private refreshSoon(view: EditorView): void {
     window.setTimeout(() => {
@@ -442,6 +938,56 @@ export class EntryEngine {
     if (view.getMode() === "source") return;
     if (typeof view.setState !== "function") return;
     await view.setState({ ...view.getState(), mode: "source" }, { history: false });
+  }
+
+  /**
+   * Shows a note in Live Preview: revealing its tab or opening one, then leaving
+   * the leaf in source mode with `source: false`, which is Obsidian's stored
+   * state for Live Preview. A portal is entered where its frame is drawn, so a
+   * Reading-view Prepare must switch the *same* leaf rather than open a second
+   * surface — and source mode stays raw text unless asked for here.
+   *
+   * `owner` is that same leaf when the caller has it. It is used only after
+   * proving it still shows the note and is still one of the workspace's live
+   * markdown leaves; anything else refuses rather than switching some other
+   * pane that happens to hold the same file. Without an owner — a navigator
+   * Prepare, which has no surface of its own — the note's first leaf is used.
+   */
+  private async revealPreview(file: TFile, owner?: MarkdownView): Promise<EditorView | null> {
+    const workspace = this.app.workspace;
+
+    if (owner !== undefined) {
+      const leaf = workspace
+        .getLeavesOfType("markdown")
+        .find((candidate) => candidate.view === owner);
+      if (leaf === undefined || owner.file?.path !== file.path) return null;
+      workspace.setActiveLeaf(leaf, { focus: true });
+      await workspace.revealLeaf(leaf);
+    } else {
+      const existing = workspace
+        .getLeavesOfType("markdown")
+        .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
+
+      if (existing !== undefined) {
+        workspace.setActiveLeaf(existing, { focus: true });
+        await workspace.revealLeaf(existing);
+      } else {
+        await workspace.getLeaf("tab").openFile(file);
+      }
+    }
+
+    const view = this.openViewFor(file);
+    if (view === null) return null;
+    await this.ensureLivePreview(view);
+    return findEditorViewForFile(file);
+  }
+
+  /** Leaves the note in Live Preview (`mode: "source"`, `source: false`). */
+  private async ensureLivePreview(view: MarkdownView): Promise<void> {
+    if (typeof view.setState !== "function") return;
+    const state = view.getState() as { mode?: string; source?: boolean };
+    if (state.mode === "source" && state.source !== true) return;
+    await view.setState({ ...state, mode: "source", source: false }, { history: false });
   }
 
   /**
@@ -805,6 +1351,19 @@ export class EntryEngine {
     if (!index.legacyFormat) return false;
     new Notice(noticeLegacyFormat(action), NOTICE_REFUSAL_MS);
     return true;
+  }
+
+  /**
+   * Records why a portal capture could not land, and says it once.
+   *
+   * `speak` is false when the caller has already shown a more specific notice
+   * (the note's shape); the reason is still kept for the frame's own failure
+   * state, which the surface shows beside the text it preserved.
+   */
+  private refusePortal(id: string, reason: string, speak = true): false {
+    this.portalFailures.set(id, reason);
+    if (speak) new Notice(noticePortalRefused(reason), NOTICE_PARTIAL_MS);
+    return false;
   }
 
   private notifyRefusal(index: EntryIndex, action: string): void {

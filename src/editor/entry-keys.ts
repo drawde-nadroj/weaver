@@ -20,11 +20,22 @@
 import { Prec, Transaction, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
-import { findEntryAtOffset, type Entry } from "../core/entries";
+import {
+  entryBySeq,
+  findEntryAtOffset,
+  parseEntries,
+  type Entry,
+  type EntryIndex
+} from "../core/entries";
 import type { EntrySession } from "../entries/session";
 import { isPhone } from "../ui/platform";
 import { editorPathOf } from "./editor-path";
-import { entryIndexField, programmaticWrite } from "./entry-field";
+import {
+  capturedInput,
+  entryIndexField,
+  programmaticWrite,
+  type InputObservation
+} from "./entry-field";
 import { registeredEditorViews } from "./view-registry";
 
 /**
@@ -45,14 +56,30 @@ export interface EntryKeyHost {
     settle(view: EditorView, entry: Entry): void;
     descend(view: EditorView, entry: Entry): void;
     deleteEntry(view: EditorView, entry: Entry): void;
-    pause(now: Date): void;
+    pause(): Promise<void>;
   };
 }
 
-/** The same host plus `afterEdit`, for the listeners that start and pause a clock. */
+/**
+ * The same host plus the two edit hooks: `captureInput` decides whether this
+ * input is the first text of an awaiting entry and, when it is, writes the text
+ * and the entry's beginning in one transaction; `captureComposition` finishes
+ * that beginning after an IME commits, or resumes an entry that already has
+ * one; `afterEdit` starts and pauses the clock from the input the editor
+ * observed, not from a later caret.
+ */
 export interface EntryEditHost extends EntryKeyHost {
   entries: EntryKeyHost["entries"] & {
-    afterEdit(view: EditorView, typed: boolean): void;
+    afterEdit(view: EditorView, input: InputObservation | null): void;
+    captureInput(
+      view: EditorView,
+      from: number,
+      to: number,
+      text: string,
+      beganAt: number,
+      userEvent?: string
+    ): boolean;
+    captureComposition(view: EditorView, input: InputObservation): boolean;
   };
 }
 
@@ -152,21 +179,241 @@ export function entryKeysExtension(host: EntryKeyHost): Extension {
   );
 }
 
+/**
+ * What the writer's input was, read from the transactions themselves.
+ *
+ * A capture transaction carries its own observation, so the clock starts from
+ * the same path, entry and timestamp the beginning was written from. Any other
+ * input is observed at the transaction's own selection — never the caret as it
+ * is when the deferred listener finally runs — with the moment of the input.
+ *
+ * `null` means this edit was not the writer's text: a `delete`, selection
+ * repair, undo, redo, the vault reloading the note, or a preedit composition
+ * change. None of those may start a clock or be mistaken for a first keystroke.
+ */
+export function inputObservation(
+  transactions: readonly Transaction[],
+  context: {
+    path: string | null;
+    index: EntryIndex;
+    composing: boolean;
+    now: () => number;
+  }
+): InputObservation | null {
+  for (const transaction of transactions) {
+    const captured = transaction.annotation(capturedInput);
+    if (captured !== undefined) return captured;
+
+    const path = context.path;
+    if (context.composing || path === null) continue;
+    const event = transaction.annotation(Transaction.userEvent);
+    if (event === undefined || !event.startsWith("input.")) continue;
+
+    const entry = findEntryAtOffset(context.index, transaction.newSelection.main.head);
+    return entry === null ? null : { path, seq: entry.n, at: context.now() };
+  }
+  return null;
+}
+
+/**
+ * The composition commit, as a pair of DOM handlers.
+ *
+ * An IME composition's text reaches the document natively — CodeMirror applies
+ * the preedit, and the commit often arrives with no further document change at
+ * all — so the beginning cannot come from the text input handler alone. These
+ * handlers observe the composition's end and finish the beginning afterwards:
+ * metadata only (the text is already the writer's), timestamped at the commit,
+ * named `input.type.compose` so history joins it into the composition's own undo
+ * group. A cancelled composition leaves the document as it was, which is why the
+ * committed text has to still be there before anything is stamped.
+ *
+ * Everything the commit is about is captured when the composition *starts*: the
+ * note, the replaced range, and the entry that range belongs to. A deferred
+ * callback then cannot be retargeted by a caret that moved in the meantime —
+ * the committed text must sit exactly where the composition was, in that same
+ * entry, or nothing is stamped. Identical prose elsewhere in the note is not
+ * evidence that this composition committed it.
+ *
+ * Exported so a test can drive it without a browser's IME.
+ */
+export function compositionCommit(host: Pick<EntryEditHost, "entries">): {
+  compositionstart(event: CompositionEvent, view: EditorView): boolean;
+  compositionend(event: CompositionEvent, view: EditorView): boolean;
+} {
+  /** What each live composition began from, keyed by the view it started in. */
+  interface ComposedFrom {
+    path: string;
+    /** The document before the preedit, to tell a commit from a cancellation. */
+    before: string;
+    /** The range the preedit — and then the committed text — replaces. */
+    from: number;
+    /** The entry that range belongs to, pinned when the composition starts. */
+    seq: number | null;
+  }
+  const composedFrom = new WeakMap<EditorView, ComposedFrom>();
+
+  return {
+    compositionstart(_event, view) {
+      const path = editorPathOf(view);
+      if (path === null) {
+        composedFrom.delete(view);
+        return false;
+      }
+
+      const doc = view.state.doc.toString();
+      const index = view.state.field(entryIndexField, false) ?? parseEntries(doc);
+      const range = view.state.selection.main;
+      composedFrom.set(view, {
+        path,
+        before: doc,
+        from: range.from,
+        seq: findEntryAtOffset(index, range.from)?.n ?? null
+      });
+      return false;
+    },
+    compositionend(event, view) {
+      const start = composedFrom.get(view);
+      composedFrom.delete(view);
+      const committedAt = Date.now();
+      const committed = event.data;
+      if (start === undefined || committed === "") return false;
+
+      window.setTimeout(() => {
+        if (!registeredEditorViews().includes(view)) return;
+        // The same view still showing the same note: a replaced view, or one
+        // repurposed to another file, is not where this composition happened.
+        if (editorPathOf(view) !== start.path) return;
+        // A cancelled composition leaves the document exactly as it was before
+        // the preedit started, even when the entry already had prose of its own.
+        const after = view.state.doc.toString();
+        if (after === start.before) return;
+
+        // The committed text must be *there* — at the range the composition
+        // began from — not merely somewhere in the document. The committed text
+        // replaced the preedit, which replaced that range.
+        const insertedTo = start.from + committed.length;
+        if (view.state.doc.sliceString(start.from, insertedTo) !== committed) return;
+
+        const index = view.state.field(entryIndexField, false) ?? parseEntries(after);
+        const entry = start.seq === null ? null : entryBySeq(index, start.seq);
+        if (entry === null) return;
+        // Outside the entry's prose — the clock row, a whisper row — is not its
+        // first text, and the plan would append metadata under it.
+        if (start.from < entry.proseFrom || insertedTo > entry.proseTo) return;
+
+        host.entries.captureComposition(view, { path: start.path, seq: entry.n, at: committedAt });
+      }, 0);
+      return false;
+    }
+  };
+}
+
+/**
+ * True when this update replaced the document without the writer typing: an
+ * undo, a redo, or a write that carries no input event of its own (a reload, a
+ * rewrite from another surface). A deletion and an in-progress composition are
+ * the writer's own editing, and are not replacements.
+ */
+export function replacedDocument(transactions: readonly Transaction[]): boolean {
+  return transactions.some((transaction) => {
+    if (transaction.changes.empty) return false;
+    const event = transaction.annotation(Transaction.userEvent);
+    return (
+      event === undefined ||
+      event === "undo" ||
+      event === "redo" ||
+      event.startsWith("undo.") ||
+      event.startsWith("redo.")
+    );
+  });
+}
+
+/**
+ * What one document update observed, and the generation of the document it was
+ * observed in.
+ */
+export interface PendingInput {
+  observation: InputObservation | null;
+  generation: number;
+}
+
+/**
+ * The input observations waiting to be acted on after the update finishes.
+ *
+ * A deferred callback runs after the document may have moved on — an undo, a
+ * redo, a reload, another view's write. Those are document replacements without
+ * input, so they end the generation: a captured observation still in flight
+ * cannot start a clock on the text that replaced its own. A later input starts
+ * a new generation with its own timestamp, so typing that follows an undo is
+ * still honored.
+ */
+export class InputLedger {
+  private generation = 0;
+
+  /**
+   * Files what this update observed.
+   *
+   * `replaced` is the update's own fact: the document was replaced without the
+   * writer typing — an undo, a redo, or a write from outside the editor. That
+   * ends the generation, so a callback scheduled before it cannot act on the
+   * replacement. A deletion or an in-progress composition is still the writer's
+   * own editing and leaves pending observations valid.
+   */
+  record(observation: InputObservation | null, replaced: boolean): PendingInput {
+    if (replaced) this.generation += 1;
+    return { observation, generation: this.generation };
+  }
+
+  /** The observation this callback may act on, or `null` if the document moved on. */
+  resolve(pending: PendingInput): InputObservation | null {
+    return pending.generation === this.generation ? pending.observation : null;
+  }
+}
+
 /** Turns edits and interruptions into session starts and pauses. */
 export function entryEditExtension(host: EntryEditHost): Extension {
   /**
    * Pausing writes a duration through this same editor, and a dispatch may not
-   * happen inside an update listener: every pause is deferred one turn.
+   * happen inside an update listener. One microtask is enough: the write lands
+   * before the browser paints the raw clock row the caret just exposed, so the
+   * source the writer sees already carries the stopped second. The caller holds
+   * the painted second first, so nothing can advance while this waits.
    */
   const pauseSoon = (view: EditorView): void => {
     if (host.session.active() === null) return;
-    window.setTimeout(() => {
+    queueMicrotask(() => {
       if (!registeredEditorViews().includes(view)) return;
-      host.entries.pause(new Date());
-    }, 0);
+      void host.entries.pause();
+    });
   };
 
+  /**
+   * The pending input observations for this editor. A document replacement
+   * without input — an undo, a redo, a reload — ends the generation, so a
+   * callback scheduled before it cannot start a clock on the replacement.
+   */
+  const ledger = new InputLedger();
+
   return [
+    /**
+     * The first text of an awaiting entry is the one input the engine has to
+     * write itself: the entry's beginning goes into the clock row in the same
+     * transaction as the text, so the pair is one undo and one redo.
+     *
+     * Returning `false` leaves everything else — ordinary typing, Vim normal
+     * mode (no text at all), a caret that is not in an awaiting entry — to
+     * CodeMirror. Preedit is not captured either: composing text is not the
+     * writer's text yet, and the committed change arrives as input of its own
+     * with the composition's name on it, which is carried through unchanged.
+     */
+    EditorView.inputHandler.of((view, from, to, text, insert) => {
+      if (text === "" || view.composing) return false;
+      // The default transaction already knows which kind of input this is; the
+      // merged transaction names itself the same way so history groups it as
+      // the paste or composition it was.
+      const userEvent = insert().annotation(Transaction.userEvent) ?? "input.type";
+      return host.entries.captureInput(view, from, to, text, Date.now(), userEvent);
+    }),
     EditorView.updateListener.of((update) => {
       const view = update.view;
 
@@ -180,42 +427,65 @@ export function entryEditExtension(host: EntryEditHost): Extension {
         const ours = update.transactions.some(
           (transaction) => transaction.annotation(programmaticWrite) === true
         );
-        if (!ours) pauseSoon(update.view);
+        if (!ours) {
+          // A caret that moves into the clock row exposes it as source text. Hold
+          // the second that is on screen now: the write that follows must carry
+          // those digits, not one sampled after the row is revealed.
+          const caret = update.state.selection.main.head;
+          const index =
+            update.state.field(entryIndexField, false) ?? parseEntries(update.state.doc.toString());
+          const at = findEntryAtOffset(index, caret);
+          const onClockRow =
+            at !== null && at.clockLine !== null && caret >= at.clockFrom && caret <= at.clockTo;
+          if (onClockRow) host.session.freezeDisplay();
+          pauseSoon(update.view);
+        }
         return;
       }
 
       const programmatic = update.transactions.some(
         (transaction) => transaction.annotation(programmaticWrite) === true
       );
-      // The writer's own input, named by CodeMirror: a paste and a typed
-      // character both start a clock, a `delete` and the vault reloading the
-      // note from disk do not.
-      const typed = update.transactions.some((transaction) => {
-        const event = transaction.annotation(Transaction.userEvent);
-        return event !== undefined && event.startsWith("input.");
-      });
+
+      // The identity and the time are read now, from the transaction's own
+      // selection and this instant: a caret that moves before the clock starts
+      // cannot retarget the keystroke, and a timed-out listener cannot make it
+      // late. A document replacement without input ends the generation, so an
+      // earlier callback cannot restart a clock on the text that replaced its
+      // own; fresh typing afterwards records a new generation and its own time.
+      const pending = ledger.record(
+        inputObservation(update.transactions, {
+          path: editorPathOf(view),
+          index:
+            update.state.field(entryIndexField, false) ?? parseEntries(update.state.doc.toString()),
+          composing: view.composing,
+          now: () => Date.now()
+        }),
+        replacedDocument(update.transactions)
+      );
       // Deferred: settling the session writes its duration through this same
       // editor, which a dispatch may not do from inside an update listener.
       window.setTimeout(() => {
         if (!registeredEditorViews().includes(view)) return;
         // Weaver's own writes are not the writer typing: starting an entry must
         // not start its clock before the first keystroke.
-        if (!programmatic) host.entries.afterEdit(view, typed);
+        if (!programmatic) host.entries.afterEdit(view, ledger.resolve(pending));
         maybePinStopwatch(view, host);
       }, 0);
     }),
     EditorView.domEventHandlers({
+      ...compositionCommit(host),
       blur: () => {
-        host.entries.pause(new Date());
+        void host.entries.pause();
       },
       // `wheel` and `touchmove`, never `scroll`: a caret-driven `scrollIntoView`
       // is programmatic, while a wheel or a finger is the writer reading instead
       // of writing.
       wheel: () => {
-        host.entries.pause(new Date());
+        void host.entries.pause();
       },
       touchmove: () => {
-        host.entries.pause(new Date());
+        void host.entries.pause();
       }
     })
   ];

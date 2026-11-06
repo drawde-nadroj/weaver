@@ -21,6 +21,28 @@ export const refreshEntriesEffect = StateEffect.define<void>();
  */
 export const programmaticWrite = Annotation.define<boolean>();
 
+/**
+ * The writer's input, as observed at the moment it happened: which entry it
+ * landed in, and when.
+ *
+ * The clock starts on the identity and the time of the input itself, never on
+ * where the caret happens to be when the deferred listener runs — a caret that
+ * moved on in the meantime must not attach the keystroke to another entry, and
+ * the moment recorded must be the moment of typing, not of bookkeeping.
+ */
+export interface InputObservation {
+  path: string;
+  seq: number;
+  at: number;
+}
+
+/**
+ * Marks the one transaction that carries an entry's first text together with
+ * its recorded beginning. Its value is the observation, so the listener starts
+ * the clock from the same facts the plan was built from.
+ */
+export const capturedInput = Annotation.define<InputObservation>();
+
 /** The shared parse: one per document change, read by every surface. */
 export const entryIndexField = StateField.define<EntryIndex>({
   create: (state) => parseEntries(state.doc.toString()),

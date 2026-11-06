@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { frameBox, frameSpan, type FrameColumn, type FrameSpan } from "../src/core/frame";
+import { frameBox, frameColumn, frameSpan, trayFrame, type FrameColumn, type FrameSpan } from "../src/core/frame";
 
 const COLUMN: FrameColumn = { left: 100, right: 500 };
 /** Corner 10 + stub 14 + label pad 8: where the marker's ink starts inside its rail. */
@@ -9,6 +9,76 @@ const GUTTER = 32;
 function box(textLeft: number | null, column: FrameColumn = COLUMN) {
   return frameBox({ column, textLeft, gutter: GUTTER });
 }
+
+/**
+ * The pending tray is laid out, not drawn: its numbers are relative to the
+ * content's own text edge, which is zero. A desktop note is inset from the pane;
+ * a phone note runs close to it. Both must produce the box a root entry's frame
+ * gets at the same anchor.
+ */
+describe("frameColumn", () => {
+  const PANE: FrameColumn = { left: 0, right: 1400 };
+
+  it("runs from the pane's left edge to one gutter past the content", () => {
+    const column = frameColumn({ pane: PANE, content: { left: 200, right: 1000 }, gutter: GUTTER });
+
+    expect(column).toEqual({ left: 0, right: 1032 });
+  });
+
+  it("stops at the pane's own right edge rather than running past it", () => {
+    const column = frameColumn({ pane: { left: 0, right: 320 }, content: { left: 16, right: 304 }, gutter: GUTTER });
+
+    expect(column).toEqual({ left: 0, right: 320 });
+  });
+});
+
+describe("trayFrame", () => {
+  /** A root entry's marker ink starts at the content's own text edge. */
+  function rootEntry(contentLeft: number, column: FrameColumn) {
+    return frameBox({ column, textLeft: contentLeft, gutter: GUTTER });
+  }
+
+  it("reaches the same two edges as a root entry's frame on a desktop note", () => {
+    const content: FrameColumn = { left: 200, right: 1000 };
+    const column = frameColumn({ pane: { left: 0, right: 1400 }, content, gutter: GUTTER });
+
+    const entry = rootEntry(content.left, column);
+    // In the tray's own coordinates the content's text edge is zero.
+    const tray = trayFrame({
+      column: frameColumn({
+        pane: { left: -200, right: 1200 },
+        content: { left: 0, right: 800 },
+        gutter: GUTTER
+      }),
+      textLeft: 0,
+      gutter: GUTTER
+    });
+
+    expect(tray).toEqual({ marginLeft: -GUTTER, width: entry.width });
+    expect(content.left + (tray?.marginLeft ?? 0)).toBe(entry.left);
+  });
+
+  it("spans the whole pane on a phone, exactly as the entry frame does", () => {
+    const content: FrameColumn = { left: 16, right: 304 };
+    const entry = rootEntry(content.left, frameColumn({ pane: { left: 0, right: 320 }, content, gutter: GUTTER }));
+    const tray = trayFrame({
+      column: frameColumn({
+        pane: { left: -16, right: 304 },
+        content: { left: 0, right: 288 },
+        gutter: GUTTER
+      }),
+      textLeft: 0,
+      gutter: GUTTER
+    });
+
+    expect(entry).toEqual({ left: 0, width: 320, drawn: true });
+    expect(tray).toEqual({ marginLeft: -16, width: 320 });
+  });
+
+  it("never draws before the content has a width", () => {
+    expect(trayFrame({ column: { left: 0, right: 0 }, textLeft: 0, gutter: GUTTER })).toBeNull();
+  });
+});
 
 describe("frameBox", () => {
   it("puts the left rail one label inset outside the marker's ink", () => {

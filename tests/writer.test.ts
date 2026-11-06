@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { readAlignments } from "../src/core/alignments";
 import { parseEntries } from "../src/core/entries";
-import { planDuration, planStartEntry } from "../src/core/insert";
+import { planDuration, planPortalEntry, planStartEntry } from "../src/core/insert";
+import { portalInstants } from "../src/core/portals";
 import { minimalChange, planRewrite, rewriteDay } from "../src/entries/writer";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 import {
@@ -11,7 +13,6 @@ import {
   resetHarness
 } from "../test-support/harness";
 
-const AT_1337 = new Date(2026, 9, 27, 13, 27, 43);
 const DAY = "Chronomancer/2026.10.27.md";
 
 function withStats(source: string): string {
@@ -72,7 +73,7 @@ describe("the one writer", () => {
     const result = await rewriteDay(
       app,
       file,
-      planRewrite((data) => planStartEntry(data, parseEntries(data), AT_1337)),
+      planRewrite((data) => planStartEntry(data, parseEntries(data))),
       true
     );
 
@@ -140,14 +141,12 @@ describe("planRewrite", () => {
     // from the file.
     expect(parseEntries(earlier).maxN).toBe(1);
 
-    const rewrite = planRewrite((source) =>
-      planStartEntry(source, parseEntries(source), AT_1337)
-    );
+    const rewrite = planRewrite((source) => planStartEntry(source, parseEntries(source)));
     const result = rewrite(current);
     if (result === null) throw new Error("expected a rewrite");
 
     expect(result.source).toContain("{ 3.1.3 }");
-    expect(result.source.indexOf("13:27:43")).toBeGreaterThan(result.source.indexOf("second"));
+    expect(result.source.indexOf("- 00:00:00")).toBeGreaterThan(result.source.indexOf("second"));
     expect(result.changes.length).toBe(1);
   });
 
@@ -177,5 +176,51 @@ describe("minimalChange", () => {
     if (change === undefined) return;
 
     expect(before.slice(0, change.from) + change.text + before.slice(change.to)).toBe(after);
+  });
+});
+
+describe("portals through the one writer", () => {
+  it("writes the entry and its record in a single vault write", async () => {
+    const source = ["---", "travels: 1", "---", "{ 1.1.1 }", "prose", "+ 00:01:00 10:00:00"].join("\n");
+    const file = createFile(DAY, source);
+    const app = createApp([file]);
+
+    const opened = new Date(2026, 10, 5, 22, 55, 0);
+    const began = new Date(2026, 10, 5, 22, 55, 0, 250);
+    const [portal] = portalInstants(opened.getTime(), opened.getTime());
+    if (portal === undefined) throw new Error("expected an opening");
+
+    let vaultWrites = 0;
+    const process = app.vault.process.bind(app.vault);
+    app.vault.process = (target, transform) => {
+      vaultWrites += 1;
+      return process(target, transform);
+    };
+
+    const result = await rewriteDay(
+      app,
+      file,
+      planRewrite((current) =>
+        planPortalEntry(current, parseEntries(current), portal, began, "through the door")
+      ),
+      true
+    );
+
+    expect(result).not.toBeNull();
+    expect(vaultWrites).toBe(1);
+    expect(fileContent(file)).toBe(result?.source);
+
+    const content = fileContent(file);
+    expect(content).toContain("{ 2.1.2 }");
+    expect(content).toContain("through the door");
+    expect(content).toMatch(/- 00:00:00 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n/);
+    // The stats block keeps its own key and gains the record beside it.
+    expect(content).toContain("travels: 1");
+
+    const records = readAlignments(content);
+    if (!records.ok) throw new Error(records.error);
+    expect(records.records).toHaveLength(1);
+    expect(records.records[0]?.entry).toBe(2);
+    expect(records.records[0]?.portal).toBe(portal.id);
   });
 });

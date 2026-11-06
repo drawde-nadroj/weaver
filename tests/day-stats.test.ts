@@ -76,3 +76,40 @@ describe("applyDayStats", () => {
     expect(applyDayStats(source, recountDay(source, null), null).changed).toBe(false);
   });
 });
+
+describe("alignment metadata", () => {
+  const RECORD =
+    '  - {"portal":"2026-11-06T06:55:00.000Z","opened":"2026-11-05T22:55:00-08:00","began":"2026-11-05T22:55:22-08:00","entry":1}';
+  const WITH_HISTORY = [
+    "---",
+    "date: 2026-10-27",
+    "travels: 0",
+    "weaver-alignments:",
+    RECORD,
+    "tags:",
+    "  - journal",
+    "---",
+    "{ 1.1.1 }",
+    "prose",
+    "+ 00:00:00 2026-10-27 22:55:22"
+  ].join("\n");
+
+  it("keeps the day's portal history unchanged while writing the counts", () => {
+    const stats = recountDay(WITH_HISTORY, null);
+    expect(stats.travels).toBe(1);
+
+    const result = applyDayStats(WITH_HISTORY, stats, "2026-10-27");
+    expect(result.changed).toBe(true);
+    expect(result.source).toContain("travels: 1");
+
+    // The structured record is not a counter and is not touched: same key, same
+    // row, same order, and the tags after it stay where they were.
+    expect(result.source).toContain(`weaver-alignments:\n${RECORD}\ntags:\n  - journal`);
+    expect(result.source.match(/weaver-alignments:/g)).toHaveLength(1);
+
+    // A second pass has nothing left to write.
+    const twice = applyDayStats(result.source, recountDay(result.source, null), "2026-10-27");
+    expect(twice.changed).toBe(false);
+    expect(twice.source).toBe(result.source);
+  });
+});

@@ -41,14 +41,17 @@ pixel. The manual checks they need are at the end of this file.
 ## The loop
 
 1. **Start** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
-   added at the tip of today's note with an empty prose line and a clock row of
-   `- 00:00:00 YYYY-MM-DD HH:MM:SS`, using the actual local creation date and time.
-2. **Write.** The first keystroke starts the stopwatch; the rendered duration ticks
-   while the file still says `- 00:00:00`.
+   added at the tip of today's note with an empty prose line and a duration-only
+   clock row, `- 00:00:00`. The entry is awaiting its first text: it records no
+   date or moment until there is one.
+2. **Write.** The first text writes its own local date and moment into the clock
+   row in the same undoable transaction, and starts the stopwatch; the rendered
+   duration then ticks while the file's duration half still says `- 00:00:00`.
 3. **Stop writing** — move the caret away, click out of the note, scroll with the
-   wheel, open a card — and the clock pauses, writing `=` at that second.
-4. **Settle** with `⏎`: the duration half becomes `+ HH:MM:SS`, the session ends and
-   nothing else moves. `⏎` again on that settled entry opens a child one dimension
+   wheel, open a card — and the clock pauses, writing `=` with exactly the displayed
+   duration. Unseen fractions and delayed timer callbacks never advance it on stop.
+4. **Settle** with `⏎`: the duration half becomes `+ HH:MM:SS`, preserving the displayed
+   digits; the session ends and nothing else moves. `⏎` again on that settled entry opens a child one dimension
    deeper with the caret in its prose.
 5. **Navigate** with `⌘⇧P`: today's entries in one card, where `⏎` jumps, `⇧⏎`
    settles and descends, `n` starts a root, `x` deletes the selection's
@@ -62,6 +65,38 @@ Editing a settled entry changes nothing: a `+` half is never rewritten.
 The clock starts on the writer's own input — a typed character or a paste — and on
 nothing else. The vault reloading a note from disk, or Weaver rewriting a line,
 starts no clock: an entry nobody has touched has no time in it.
+
+## Portals
+
+Local openings fall at minutes 00, 11, 22, 33, 44 and 55, plus the
+24-hour mirror of the hour (12:12, 22:22). Overlaps are one opening.
+Several may approach together. Each appears eleven minutes early; Obsidian
+announces it while the app is visible, without operating-system alarms.
+Waking late offers the nearest current invitation, never a backlog.
+
+An untouched opening expires at the end of its minute. Preparation holds one
+opening in its note; another preparation releases the previous one. Hiding
+the app, leaving the leaf or unloading releases the hold. An ordinary running
+stopwatch never holds a portal. Neither an invitation nor preparation writes
+an entry, changes the note, or creates a missing day note.
+
+On desktop, click Prepare or reach its button with Tab and press Enter/Space.
+On a phone, tap it to focus the waiting line; after a Reading-view switch, tap
+that line if the host has not opened the soft keyboard.
+Before opening, typing and paste insert nothing. Once open, the first character,
+paste or committed composition creates the real entry; all later writing is in
+the note's normal editor. Return settles it. There is no separate recording button.
+Escape releases preparation on a keyboard; the same control becomes Release
+for touch or pointer cancellation. A refused write retains the whole first text
+with Retry. Reading-view preparation switches the same pane to Live Preview.
+
+Recognition uses the actual first-input second: boundary at second 00, hour
+echo at second HH, minute echo at second MM. Coincident echoes are one
+acknowledgment; hidden milliseconds are never rounded into a hit. A held opening
+entered after its original minute records the actual beginning without alignment.
+There are no chosen targets, scores, streaks, obligations or recorded missed attempts.
+Turning off *Portals* removes invitations and preparation, not entries or history,
+and does not disable ordinary awaiting clocks or the displayed-duration stop rule.
 
 ## Commands
 
@@ -130,6 +165,15 @@ while it is open. Every action re-reads the document; the card never caches a li
 number across a write. The list is today's note — the same target *Start an entry*
 writes to — so reaching another day means opening that note.
 
+A collapsed *Portals* section follows the entry rows. Expand it for actual
+beginnings, current invitations and the most recent passed opening; *Show all
+openings* reveals the day's full schedule. A passed row is a schedule fact, not
+a missed attempt or a claim that a notice was delivered. Captured rows retain
+their original offset; reconstructed schedule rows are labelled *Schedule in
+current timezone*. Enter or tap an available recorded row to jump, or an
+upcoming/open row to prepare. Deleted or mismatched beginnings say *Entry
+unavailable*. History rows never descend or delete; those gestures remain entry-only.
+
 ## Record formats
 
 **Marker line** — `{ B.D.N }`, matched as a prefix, so a title typed after it
@@ -142,15 +186,17 @@ the rail runs through the middle of the row and is cut behind it, so the file's
 own text is what names the box.
 
 **Clock row** — the entry's last line: an optional duration `[+-=] HH:MM:SS`,
-then an optional moment. New entries record the moment as `YYYY-MM-DD HH:MM:SS`,
-for example `+ 00:04:12 2026-11-05 09:14:22`. Root and child entries retain the
-actual local creation date, even when created inside an older note. Historical
-rows with just `HH:MM:SS` remain valid: their date is the day-note filename, with
+then an optional moment. New entries begin with duration only; their first committed
+text records `YYYY-MM-DD HH:MM:SS`, for example
+`+ 00:04:12 2026-11-05 09:14:22` after settling. Root and child entries retain that
+actual first-input date, even when inserted into an older note or typed after midnight.
+Historical rows with just `HH:MM:SS` remain valid: their date is the day-note filename, with
 no bulk rewrite. A hand-written `09:14:22` and a stray `+ 00:04:12` are still clock rows.
 The frame shows the date once at the top-right, and the time once at the
 bottom-right, opposite the duration. White digits and dimension-coloured colons
-match the marker. A half that is absent labels no corner. Creation date and time
-are written once; pausing and settling replace only the duration, preserving the
+match the marker. Awaiting drafts show wall time without claiming a recorded day;
+an untouched settled row remains momentless. Beginning date and time are written
+once; pausing and settling replace only the duration, preserving the
 moment's characters. Minutes and seconds are `0–59`; duration hours are unbounded. One sigil decides
 what the entry is: `-` is open and being written, `=` is open and paused, and `+`
 alone is settled. A settled entry is final — nothing rewrites it, not a pause, not
@@ -167,6 +213,14 @@ only when the writer stops.
 **Frontmatter** — `date`, `travels` (entry count), `depth` (deepest `D`),
 `duration` (`HH:MM:SS`, the sum of every duration). Written only when a value
 changes, and only when *Write day counters* is on.
+
+Portal beginnings additionally own `weaver-alignments`, independent of the counters
+toggle. Each YAML sequence row is a readable JSON mapping containing the UTC
+opening, its original local offset timestamp, the actual first-input timestamp,
+and the entry sequence (null after deletion). Deletion keeps the event facts;
+undo restores the association. Malformed history refuses a portal write rather
+than replacing it with an empty list. This is plugin-managed structured metadata;
+Obsidian's native Properties editor is not a nested-record editor.
 
 **Close mark** — `✓ HH:MM:SS` on its own line, at most one per day.
 
@@ -193,6 +247,7 @@ before its title.
 | Group | Setting | Default | Effect |
 | --- | --- | --- | --- |
 | Writing | Write day counters | on | Keep `travels`, `depth` and `duration` in the day note's frontmatter. |
+| Writing | Portals | on | Eleven-minute local opening invitations, deliberate preparation, and automatic exact-second recognition. Turning off preserves entries and history. |
 | Day | Day note folder | `Chronomancer` | Used only when the core Daily Notes plugin cannot be read. |
 | Day | Day note format | `YYYY.MM.DD` | Same fallback, for the filename. |
 | Look | Equalize entry sizes | on | One size for every entry, whatever its depth. Off steps deeper entries down. |
@@ -258,7 +313,7 @@ One format, both directions: `HH:MM:SS` out of seconds, and seconds back out of
 `HH:MM:SS` or `0` when the text is not that shape. `src/core/duration.bend` holds
 it — `clock` and `parseClock`, with the `field`/`verdict` chain underneath — `bend
 src/core/duration.bend -o src/core/bend/duration.mjs` compiles it, and
-`src/core/duration.ts` is the typed facade that rounds milliseconds into seconds,
+`src/core/duration.ts` is the typed facade that floors milliseconds into whole seconds,
 reads the sigil, and answers "not a clock row" for anything else. The generated
 module is committed, so `npm test` needs no Bend install.
 
@@ -369,8 +424,9 @@ reorder; that pass now reads and writes the branch first.
 These need a live Obsidian and are not covered by `npm test`:
 
 - `⌘⇧E` with the caret in the editor of another note: today's note gains
-  `{ 1.1.1 }`, a blank line and a clock row `HH:MM:SS - 00:00:00`, the caret sits
-  on the blank line, and no session has started yet.
+  `{ 1.1.1 }`, a blank line and a duration-only clock row `- 00:00:00`, the caret
+  sits on the blank line, and no session has started yet. The first text records
+  the day and moment in the same undo step; one undo takes both back.
 - Two keystrokes: the clock ticks in seconds. Moving the caret out of the entry
   writes `=` in the duration half; so does an arrow key inside it. The next
   keystroke resumes from that second and the rendered sigil returns to `-` without
@@ -419,7 +475,8 @@ card open.
   moment and stopwatch all read at the note's own weight — no bold. The top-right
   corner carries a persistent link to the entry's recorded creation day only
   when it differs from the filename day. Same-day and historical undated entries
-  have no date link, even on hover or caret focus. Both rails are cut behind their labels,
+  have no date link, and an awaiting draft has none until its first text records a
+  day, even on hover or caret focus. Both rails are cut behind their labels,
   with `16 px + 0.45em` of air on each side so the corners stay curved and no glyph or label
   background is clipped at the row's bottom. Scroll to the middle of a long entry:
   the box stays whole with its last line still off-screen. Two neighbouring boxes
@@ -492,8 +549,9 @@ card open.
   arrows. Filtering is a contained addition (one input, one filter), not a redesign.
 - The frame's box is full-width by design: a hugging box could not put the clock in
   its own bottom-right corner without rendering the row twice.
-- Durations are whole seconds: a session under half a second reads `00:00:00`, and
-  a hundredth of a second is not recoverable.
+- Durations are whole seconds, floored: a session under a second reads `00:00:00`,
+  and a fraction of a second is not recoverable. A stop writes the digits the
+  surface last showed, not a fresher sample of the wall clock.
 - A phone has no newline gesture inside an entry: its prose is one paragraph.
   Multi-line prose is written on a desk or pasted.
 - Setext (`===` underlined) headings are not parsed, and a marker inside frontmatter

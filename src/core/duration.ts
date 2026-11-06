@@ -19,8 +19,9 @@
  * beside this file would win the extensionless `./duration` import, and Vite
  * tries `.mjs` before `.ts`.
  *
- * What stays here is what Bend cannot see: milliseconds, which are rounded into
- * the seconds the algebra counts in, and the sigil, which is text.
+ * What stays here is what Bend cannot see: milliseconds, which are floored into
+ * the whole seconds the algebra counts in — a clock may only show a second that
+ * has happened — and the sigil, which is text.
  */
 
 import duration from "./bend/duration.mjs";
@@ -28,9 +29,12 @@ import duration from "./bend/duration.mjs";
 /** The three sigils: `-` open and being written, `=` open and paused, `+` settled. */
 export type DurationSigil = "+" | "-" | "=";
 
-/** Milliseconds as `HH:MM:SS`; hours are unbounded. */
+/**
+ * Milliseconds as `HH:MM:SS`; hours are unbounded. Whole seconds are floored,
+ * never rounded: a clock may only show a second that has actually happened.
+ */
 export function formatClock(ms: number): string {
-  return duration.clock(Math.max(0, Math.round(ms / 1000)));
+  return duration.clock(Math.max(0, Math.floor(ms / 1000)));
 }
 
 /** The duration half of a clock row, e.g. `+ 00:04:12`. */

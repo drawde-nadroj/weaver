@@ -23,6 +23,7 @@ describe("the settings tab", () => {
     const names = uiSettings().map((setting) => setting.name);
 
     expect(names).toContain("Write day counters");
+    expect(names).toContain("Portals");
     expect(names).toContain("Day note folder");
     expect(names).toContain("Day note format");
     expect(names).toContain("Equalize entry sizes");
@@ -56,6 +57,19 @@ describe("the settings tab", () => {
     ]) {
       expect(names).not.toContain(gone);
     }
+
+    plugin.onunload();
+  });
+
+  it("turns portal invitations off and on from the Writing group", async () => {
+    const { plugin } = await start();
+
+    expect(plugin.settings.portalsEnabled).toBe(true);
+    uiSetting("Portals")?.controls[0]?.change(false);
+    expect(plugin.settings.portalsEnabled).toBe(false);
+
+    uiSetting("Portals")?.controls[0]?.change(true);
+    expect(plugin.settings.portalsEnabled).toBe(true);
 
     plugin.onunload();
   });

@@ -1,10 +1,19 @@
 /**
- * The navigator: today's entries, the return stack, and the three gestures.
+ * The navigator: today's entries, the return stack, today's portal history, and
+ * the gestures that move between them.
  *
  * One component serves both platforms. Desktop gets a card over the note and the
  * key map in its footer; a phone gets the same card as a full-screen sheet, where
  * a row is a tap target and the footer names the taps. Nothing else navigates:
  * there is no second list, no query, and no rectangle drawn on the note.
+ *
+ * The portal section is the human-facing half of the note's `weaver-alignments`
+ * block. It lists facts — an opening that was really entered — beside the day's
+ * remaining schedule, in one chronology. A schedule row is reconstructed for the
+ * current local day and never written; a recorded row keeps the opening's
+ * original offset and the actual beginning, so travel cannot rewrite what
+ * happened. This is a list, not a scoreboard: no percentage, no missed count, and
+ * no targets.
  *
  * It is a self-mounted overlay rather than a `Modal` for one reason: it must
  * never take a `Scope`. A scope is what swallowed `⌘,` and stopped Obsidian's own
@@ -12,11 +21,15 @@
  * every chord this card does not claim reaches Obsidian untouched.
  *
  * Nothing here caches offsets across a write: every action re-reads the document,
- * because a write moves every line under it.
+ * because a write moves every line under it. The card is open only while the
+ * writer is choosing; it owns exactly one controller subscription and one
+ * document listener, both removed on close, and neither is a timer.
  */
 
-import type { EditorView } from "@codemirror/view";
+import { Compartment, StateEffect } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
+import { pad2 } from "../core/clock";
 import { dimensionColorVars } from "../core/color";
 import {
   childrenOf,
@@ -27,6 +40,11 @@ import {
   type EntryIndex
 } from "../core/entries";
 import { popStop, type Stop } from "../core/navigator-stack";
+import {
+  linkedPortalEntry,
+  portalHistoryRows,
+  type PortalHistoryRow
+} from "../core/portal-history";
 import { programmaticWrite } from "../editor/entry-field";
 import type WeaverPlugin from "../main";
 import { NAVIGATOR_HINT_KEYS, NAVIGATOR_HINT_TOUCH } from "../notices";
@@ -36,9 +54,31 @@ import { appendDigitRuns } from "./dcn";
 type Item =
   | { kind: "start" }
   | { kind: "stop"; stop: Stop; entry: Entry | null }
-  | { kind: "entry"; entry: Entry };
+  | { kind: "entry"; entry: Entry }
+  | { kind: "portals" }
+  | { kind: "portals-all" }
+  | { kind: "portal"; row: PortalHistoryRow };
 
-/** The card: today's entries, the return stack, and the three gestures. */
+/** `2026-11-05T22:55:00-08:00`: the moment and the offset it was recorded in. */
+const LOCAL_STAMP = /T(\d{2}:\d{2}:\d{2})([+-]\d{2}:\d{2})$/;
+
+/**
+ * The card's document subscription, shared by every navigator a session opens.
+ *
+ * A compartment only contributes when its instance is already in the editor's
+ * configuration, so the first open appends `compartment.of(listener)` and every
+ * later open replaces its content. One instance stays behind as an empty
+ * compartment rather than accumulating one per opening.
+ */
+const CARD_SOURCE = new Compartment();
+
+/** `22:55:00 -08:00` — the actual moment, with the offset it happened at. */
+function momentText(began: string): string {
+  const match = LOCAL_STAMP.exec(began);
+  return match === null ? began : `${match[1]} ${match[2]}`;
+}
+
+/** The card: today's entries, the return stack, portals, and the gestures. */
 export class Navigator {
   private readonly root: HTMLElement;
   private readonly card: HTMLElement;
@@ -51,6 +91,23 @@ export class Navigator {
   private caret = 0;
   private armedDelete: number | null = null;
   private opened = false;
+
+  /** The portal section stays collapsed until it is deliberately opened. */
+  private portalsExpanded = false;
+  /** `Show all openings` widens the schedule from the window to the whole day. */
+  private showAll = false;
+  private portalRows: PortalHistoryRow[] = [];
+  private portalError: string | null = null;
+  /** Each row's element, so the first expansion can bring one into view. */
+  private readonly portalElements = new Map<string, HTMLElement>();
+
+  /** The card's own document subscription, installed only while it is open. */
+  private readonly sourceListener = EditorView.updateListener.of((update) => {
+    if (update.docChanged) this.refresh();
+  });
+  private stopPortals: (() => void) | null = null;
+  /** True while an engine write is already rebuilding the list by hand. */
+  private suspended = false;
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     // `⌘[` is ours; every other chord belongs to Obsidian. Not prevented, not
@@ -108,7 +165,7 @@ export class Navigator {
   /** Shows today's entries, with the caret's own entry selected. */
   open(view: EditorView): void {
     // Nothing keeps ticking behind the card.
-    this.plugin.entries.pause(new Date());
+    void this.plugin.entries.pause();
 
     this.view = view;
     this.armedDelete = null;
@@ -119,9 +176,10 @@ export class Navigator {
       this.card.addEventListener("keydown", this.onKeyDown, true);
       document.addEventListener("mousedown", this.onOutside);
       this.opened = true;
+      this.attachSignals(view);
     }
 
-    this.render();
+    this.render("selection");
     this.card.focus();
   }
 
@@ -136,6 +194,9 @@ export class Navigator {
     if (!this.opened) return;
     this.opened = false;
 
+    this.stopPortals?.();
+    this.stopPortals = null;
+
     this.card.removeEventListener("keydown", this.onKeyDown, true);
     document.removeEventListener("mousedown", this.onOutside);
     this.root.remove();
@@ -144,15 +205,54 @@ export class Navigator {
     this.view = null;
     this.index = null;
     this.items = [];
+    this.portalRows = [];
+    this.portalError = null;
+    this.portalElements.clear();
     if (view === null) return;
 
+    // Detach the card's listener in the same transaction that restores the
+    // caret, so closing never costs the editor a second undo step.
+    const detached = CARD_SOURCE.get(view.state) === undefined ? null : CARD_SOURCE.reconfigure([]);
     if (restoreCaret) {
-      view.dispatch({
-        selection: { anchor: Math.min(this.caret, view.state.doc.length) },
-        annotations: programmaticWrite.of(true)
-      });
+      const selection = { anchor: Math.min(this.caret, view.state.doc.length) };
+      view.dispatch(
+        detached === null
+          ? { selection, annotations: programmaticWrite.of(true) }
+          : { selection, effects: detached, annotations: programmaticWrite.of(true) }
+      );
+    } else if (detached !== null) {
+      view.dispatch({ effects: detached });
     }
     view.focus();
+  }
+
+  /**
+   * Watches the two things a row is derived from while the card is open: the
+   * portal lifecycle and the note's own text.
+   *
+   * Neither is a timer. The document listener is a CodeMirror extension in a
+   * compartment, removed on close; the controller subscription is dropped in the
+   * same place. A second of elapsed time never rebuilds this list — the
+   * countdown lives on the portal frame, not here.
+   */
+  private attachSignals(view: EditorView): void {
+    const existing = CARD_SOURCE.get(view.state);
+    view.dispatch({
+      effects:
+        existing === undefined
+          ? StateEffect.appendConfig.of(CARD_SOURCE.of(this.sourceListener))
+          : CARD_SOURCE.reconfigure(this.sourceListener)
+    });
+    this.stopPortals = this.plugin.portals.subscribe(() => this.refresh());
+  }
+
+  /** Re-reads source and lifecycle, keeping the selected row and scroll place. */
+  private refresh(): void {
+    if (!this.opened || this.suspended) return;
+    const key = this.itemKey(this.items[this.selected]);
+    const scroll = this.list.scrollTop;
+    this.buildItems(key);
+    this.render(scroll);
   }
 
   /** The command a key runs here, or `null` when the key is not ours. */
@@ -177,13 +277,23 @@ export class Navigator {
     }
   }
 
-  /** Re-reads the document: rows, the return stack, and the caret's entry. */
-  private buildItems(): void {
+  /**
+   * Re-reads the document: rows, the return stack, the portal history, and the
+   * caret's entry.
+   *
+   * `prefer` names the row the previous render had selected. A refresh keeps
+   * that identity when it still exists; a vanished portal row falls back to the
+   * section header rather than jumping to whatever entry the caret happens to be
+   * in. Without `prefer`, the caret's own entry is selected, which is what an
+   * initial open and a return walk want.
+   */
+  private buildItems(prefer: string | null = null): void {
     const view = this.view;
     if (view === null) return;
 
     this.caret = view.state.selection.main.head;
-    const index = parseEntries(view.state.doc.toString());
+    const source = view.state.doc.toString();
+    const index = parseEntries(source);
     this.index = index;
 
     const stops = this.plugin.stack.stops.map(
@@ -194,21 +304,54 @@ export class Navigator {
       })
     );
 
-    this.items = [
+    const items: Item[] = [
       { kind: "start" },
       ...stops,
       ...index.entries.map((entry): Item => ({ kind: "entry", entry }))
     ];
+
+    this.portalRows = [];
+    this.portalError = null;
+    if (this.portalsExpanded) {
+      const read = portalHistoryRows(source, this.plugin.portals.now(), this.showAll);
+      if (read.ok) this.portalRows = read.rows;
+      else this.portalError = read.error;
+    }
+
+    items.push({ kind: "portals" });
+    if (this.portalsExpanded && this.portalError === null) {
+      for (const row of this.portalRows) items.push({ kind: "portal", row });
+      items.push({ kind: "portals-all" });
+    }
+
+    this.items = items;
+
+    if (prefer !== null) {
+      const kept = items.findIndex((item) => this.itemKey(item) === prefer);
+      if (kept >= 0) {
+        this.selected = kept;
+        this.clamp();
+        return;
+      }
+      if (prefer.startsWith("portal")) {
+        const header = items.findIndex((item) => item.kind === "portals");
+        if (header >= 0) {
+          this.selected = header;
+          this.clamp();
+          return;
+        }
+      }
+    }
 
     const caretLine = view.state.doc.lineAt(this.caret).number - 1;
     const current = findCurrentEntry(index, caretLine);
     const at =
       current === null
         ? -1
-        : this.items.findIndex(
+        : items.findIndex(
             (item) => item.kind === "entry" && item.entry.n === current.n
           );
-    const first = this.items.findIndex((item) => item.kind === "entry");
+    const first = items.findIndex((item) => item.kind === "entry");
 
     this.selected = Math.max(0, at >= 0 ? at : first);
     this.clamp();
@@ -216,6 +359,25 @@ export class Navigator {
 
   private clamp(): void {
     this.selected = Math.max(0, Math.min(this.selected, this.items.length - 1));
+  }
+
+  /** A stable name for a row, so a refresh can find the same one again. */
+  private itemKey(item: Item | undefined): string | null {
+    if (item === undefined) return null;
+    switch (item.kind) {
+      case "start":
+        return "start";
+      case "stop":
+        return `stop:${item.stop.n ?? "none"}:${item.stop.caret}`;
+      case "entry":
+        return `entry:${item.entry.n}`;
+      case "portals":
+        return "portals";
+      case "portals-all":
+        return "portals-all";
+      case "portal":
+        return `portal:${item.row.id}`;
+    }
   }
 
   /** The `N` of the entry the caret is in, or `null` outside every entry. */
@@ -232,26 +394,79 @@ export class Navigator {
     this.selected += delta;
     this.clamp();
     this.armedDelete = null;
-    this.render();
+    this.render("selection");
   }
 
-  /** `⏎` / a tap: append, return, or jump. */
+  /** `⏎` / a tap: append, return, jump, expand, or prepare. */
   private activate(): void {
     const item = this.items[this.selected];
     if (item === undefined) return;
 
-    if (item.kind === "start") {
-      this.startNew();
+    switch (item.kind) {
+      case "start":
+        this.startNew();
+        return;
+      case "stop":
+        this.walkTo(item.stop);
+        return;
+      case "entry":
+        void this.plugin.entries.jumpTo(item.entry.n);
+        this.close();
+        return;
+      case "portals":
+        this.togglePortals();
+        return;
+      case "portals-all":
+        this.toggleShowAll();
+        return;
+      case "portal":
+        this.activatePortal(item.row);
+        return;
+    }
+  }
+
+  /**
+   * Enters an opening or follows a recorded fact.
+   *
+   * A recorded row is revalidated against the live document first: a deleted
+   * sequence can be reused, so its recorded beginning must still match. An
+   * unavailable entry never becomes a jump. Upcoming and open rows prepare only
+   * while portals are enabled; a passed minute is informational unless held.
+   */
+  private activatePortal(row: PortalHistoryRow): void {
+    if (row.kind === "opening") {
+      if (this.plugin.settings.portalsEnabled !== true) return;
+      const held = this.plugin.portals.held();
+      const isHeld = held !== null && held.portal.id === row.portal.id;
+      if (row.phase === "passed" && !isHeld) return;
+
+      void this.plugin.preparePortal(row.portal.id);
+      this.close();
       return;
     }
 
-    if (item.kind === "stop") {
-      this.walkTo(item.stop);
-      return;
-    }
+    const view = this.view;
+    if (view === null) return;
+    const entry = linkedPortalEntry(row.record, parseEntries(view.state.doc.toString()));
+    if (entry === null) return;
 
-    void this.plugin.entries.jumpTo(item.entry.n);
+    void this.plugin.entries.jumpTo(entry.n);
     this.close();
+  }
+
+  private togglePortals(): void {
+    this.portalsExpanded = !this.portalsExpanded;
+    this.buildItems("portals");
+    // The first look at a day starts at the nearest opening; a second look does
+    // the same, because the writer asked for it again.
+    this.render(this.portalsExpanded ? "nearest" : "selection");
+  }
+
+  private toggleShowAll(): void {
+    this.showAll = !this.showAll;
+    const scroll = this.list.scrollTop;
+    this.buildItems("portals-all");
+    this.render(scroll);
   }
 
   /** `⇧⏎` / a tap on the caret's own row: a child under the selection. */
@@ -260,7 +475,12 @@ export class Navigator {
     const view = this.view;
     if (item === undefined || item.kind !== "entry" || view === null) return;
 
-    this.plugin.entries.settleAndDescend(view, item.entry);
+    this.suspended = true;
+    try {
+      this.plugin.entries.settleAndDescend(view, item.entry);
+    } finally {
+      this.suspended = false;
+    }
     this.close();
   }
 
@@ -272,6 +492,9 @@ export class Navigator {
   /**
    * `x`: the selected subtree goes, and the list stays open on what is left.
    *
+   * Only a real entry row can be deleted. Schedule rows and recorded portal facts
+   * are history, not entries, and the key is inert on them.
+   *
    * The engine focuses the editor as part of the write, which would leave the
    * remaining keys dead — so the card takes focus back with the selection
    * clamped, and the list stays open on what is left.
@@ -281,10 +504,15 @@ export class Navigator {
     const view = this.view;
     if (item === undefined || item.kind !== "entry" || view === null) return;
 
-    this.plugin.entries.deleteEntry(view, item.entry);
+    this.suspended = true;
+    try {
+      this.plugin.entries.deleteEntry(view, item.entry);
+    } finally {
+      this.suspended = false;
+    }
     this.armedDelete = null;
     this.buildItems();
-    this.render();
+    this.render("selection");
     this.card.focus();
   }
 
@@ -297,7 +525,7 @@ export class Navigator {
     void (async () => {
       await this.plugin.entries.jumpTo(stop.n, stop);
       this.buildItems();
-      this.render();
+      this.render("selection");
     })();
   }
 
@@ -306,8 +534,16 @@ export class Navigator {
     this.close();
   }
 
-  private render(): void {
+  /**
+   * Draws the list.
+   *
+   * `scroll` is the one decision every rebuild must make explicitly: follow the
+   * selection after a move, restore a place after a refresh, or bring the nearest
+   * opening into view on the first expansion.
+   */
+  private render(scroll: "selection" | "nearest" | number = "selection"): void {
     this.list.textContent = "";
+    this.portalElements.clear();
 
     const index = this.index;
     if (this.view === null || index === null) return;
@@ -362,6 +598,93 @@ export class Navigator {
         return;
       }
 
+      if (item.kind === "portals") {
+        const button = document.createElement("button");
+        button.className = "weaver-navigator-row weaver-navigator-portals-toggle";
+        button.setAttribute("aria-expanded", String(this.portalsExpanded));
+        button.textContent = `${this.portalsExpanded ? "▾" : "▸"} Portals`;
+        if (at === this.selected) button.classList.add("is-selected");
+        button.addEventListener("click", onRow(at));
+        add(at, button);
+
+        if (this.portalsExpanded && this.portalError !== null) {
+          const error = document.createElement("div");
+          error.className = "weaver-navigator-portals-error";
+          error.setAttribute("role", "status");
+          error.textContent = this.portalError;
+          this.list.appendChild(error);
+        } else if (this.portalsExpanded && this.portalRows.length === 0) {
+          const quiet = document.createElement("div");
+          quiet.className = "weaver-navigator-label";
+          quiet.textContent = "no portal openings today";
+          this.list.appendChild(quiet);
+        }
+        return;
+      }
+
+      if (item.kind === "portals-all") {
+        const button = document.createElement("button");
+        button.className = "weaver-navigator-row weaver-navigator-portals-all";
+        button.setAttribute(
+          "aria-pressed",
+          String(this.showAll)
+        );
+        button.textContent = this.showAll ? "Show fewer openings" : "Show all openings";
+        if (at === this.selected) button.classList.add("is-selected");
+        button.addEventListener("click", onRow(at));
+        add(at, button);
+        return;
+      }
+
+      if (item.kind === "portal") {
+        const row = document.createElement("div");
+        const rowClasses = ["weaver-navigator-row", "weaver-navigator-portal"];
+        if (item.row.kind === "recorded") {
+          rowClasses.push("is-recorded");
+          if (item.row.entry === null) rowClasses.push("is-unavailable");
+        } else {
+          rowClasses.push(`is-${item.row.phase}`);
+        }
+        if (at === this.selected) rowClasses.push("is-selected");
+        row.className = rowClasses.join(" ");
+        row.setAttribute("data-portal-id", item.row.id);
+
+        const open = document.createElement("button");
+        open.className = "weaver-navigator-open";
+
+        const time = document.createElement("span");
+        time.className = "weaver-navigator-portal-time";
+        time.textContent = `${pad2(item.row.portal.hour)}:${pad2(item.row.portal.minute)}`;
+        open.appendChild(time);
+
+        const label = document.createElement("span");
+        label.className = "weaver-navigator-portal-label";
+        label.textContent = item.row.label;
+        open.appendChild(label);
+
+        if (item.row.kind === "recorded") {
+          // The actual beginning, with the offset it was recorded in: the fact
+          // keeps its own timezone even after the machine travels.
+          const moment = document.createElement("span");
+          moment.className = "weaver-navigator-portal-moment";
+          moment.textContent = momentText(item.row.record.began);
+          open.appendChild(moment);
+
+          if (item.row.entry === null) {
+            const unavailable = document.createElement("span");
+            unavailable.className = "weaver-navigator-portal-unavailable";
+            unavailable.textContent = "Entry unavailable";
+            open.appendChild(unavailable);
+          }
+        }
+
+        open.addEventListener("click", onRow(at));
+        row.appendChild(open);
+        this.portalElements.set(item.row.id, row);
+        add(at, row);
+        return;
+      }
+
       // A row is a container, not a button: the row's own tap target and its
       // delete are siblings, so a click on one can never reach the other.
       const row = document.createElement("div");
@@ -386,11 +709,11 @@ export class Navigator {
 
       // The reading first, then the writer's own words: a whisper is what the
       // entry holds, a title is how it starts.
-      const label = item.entry.whisper[0]?.text ?? item.entry.title;
-      if (label !== "") {
+      const title = item.entry.whisper[0]?.text ?? item.entry.title;
+      if (title !== "") {
         const titleSpan = document.createElement("span");
         titleSpan.className = "weaver-navigator-title";
-        titleSpan.textContent = label;
+        titleSpan.textContent = title;
         open.appendChild(titleSpan);
       }
 
@@ -413,7 +736,10 @@ export class Navigator {
       const label = document.createElement("div");
       label.className = "weaver-navigator-label";
       label.textContent = "no entries yet — ＋ starts the first";
-      this.list.appendChild(label);
+      const anchorAt = this.items.findIndex((item) => item.kind === "portals");
+      const before = anchorAt >= 0 ? rows.get(anchorAt) : undefined;
+      if (before !== undefined) this.list.insertBefore(label, before);
+      else this.list.appendChild(label);
     } else {
       const label = document.createElement("div");
       label.className = "weaver-navigator-label";
@@ -425,7 +751,38 @@ export class Navigator {
       else this.list.appendChild(label);
     }
 
-    rows.get(this.selected)?.scrollIntoView({ block: "nearest" });
+    // Schedule rows are this machine's clock, not a recorded fact: say so once,
+    // rather than letting a travel day imply the openings happened here.
+    if (this.portalsExpanded && this.portalRows.some((row) => row.kind === "opening")) {
+      const note = document.createElement("div");
+      note.className = "weaver-navigator-label weaver-navigator-portals-note";
+      note.textContent = "Schedule in current timezone";
+      this.list.appendChild(note);
+    }
+
+    if (scroll === "selection") {
+      rows.get(this.selected)?.scrollIntoView({ block: "nearest" });
+    } else if (scroll === "nearest") {
+      const nearest = this.nearestPortalId();
+      if (nearest !== null) {
+        this.portalElements.get(nearest)?.scrollIntoView({ block: "nearest" });
+      }
+    } else {
+      this.list.scrollTop = scroll;
+    }
+  }
+
+  /** The row whose opening is closest to now, for the first expansion. */
+  private nearestPortalId(): string | null {
+    const now = this.plugin.portals.now();
+    let best: { id: string; distance: number } | null = null;
+    for (const row of this.portalRows) {
+      const distance = Math.abs(row.portal.opensAt - now);
+      if (best === null || distance < best.distance) {
+        best = { id: row.id, distance };
+      }
+    }
+    return best?.id ?? null;
   }
 
   /** `✕` arms on the first press and deletes on the second. */

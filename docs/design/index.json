@@ -2,12 +2,158 @@
   "generatedBy": "scripts/design-index.mjs",
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
-    "modules": 39,
-    "exports": 202,
-    "classes": 44,
-    "testFiles": 31
+    "modules": 47,
+    "exports": 260,
+    "classes": 64,
+    "testFiles": 41
   },
   "modules": [
+    {
+      "file": "src/core/alignments.ts",
+      "layer": "core",
+      "lines": 484,
+      "doc": "Portal history: the openings a day note actually entered, and the frontmatter\nblock that carries them.\n\nOne record is one fact — a portal opened, and the first text of an entry was\nreally typed at a particular moment. The record keeps the portal's UTC\ninstant, the local opening that names its hour and minute, and the actual\nlocal beginning, so the recognition can be recomputed years later without\ntrusting the machine's clock or its current timezone.\n\nThe block is owned whole: the literal `weaver-alignments` key and its indented\nsequence of single-line JSON flow mappings. Everything else in the note — the\nother properties, their nesting, the closing delimiter, the body — is copied\nbyte for byte. The format is canonical on write and strict on read: a record\nthis module cannot read is refused with the reason, never replaced by an empty\nhistory, because a lost alignment cannot be recomputed.",
+      "obsidian": false,
+      "imports": [
+        "src/core/clock",
+        "src/core/document"
+      ],
+      "exports": [
+        {
+          "name": "ALIGNMENTS_KEY",
+          "kind": "const",
+          "line": 23,
+          "signature": "export const ALIGNMENTS_KEY = \"weaver-alignments\"",
+          "doc": "The one frontmatter property this module owns, and the only key it writes.",
+          "hash": "7a51c41fee",
+          "bytes": 50,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "AlignmentRecord",
+          "kind": "interface",
+          "line": 35,
+          "signature": "export interface AlignmentRecord",
+          "doc": "One recorded portal beginning.\n\n`portal` is the opening instant in canonical UTC and doubles as the portal's\nidentity; `opened` is that same instant written with its original numeric\noffset, which is what preserves the local hour and minute the echoes are\nmeasured against. `began` is the actual first-input moment at whole-second\nprecision, and `entry` is the allocated `N` — or null once that entry has\nbeen deleted, because the fact outlives the entry.",
+          "hash": "c454246ab9",
+          "bytes": 113,
+          "refs": [
+            "src/core/insert.ts",
+            "src/core/portal-history.ts"
+          ],
+          "refCount": 7,
+          "testedBy": [
+            "tests/alignments.test.ts",
+            "tests/navigator.test.ts",
+            "tests/portal-history.test.ts"
+          ]
+        },
+        {
+          "name": "AlignmentRead",
+          "kind": "type",
+          "line": 43,
+          "signature": "export type AlignmentRead = |",
+          "doc": "A parsed history, or why the note's history could not be read.",
+          "hash": "57b213972b",
+          "bytes": 72,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "AlignmentWrite",
+          "kind": "type",
+          "line": 48,
+          "signature": "export type AlignmentWrite = |",
+          "doc": "The rewritten note, or why nothing was written.",
+          "hash": "43a9252f8c",
+          "bytes": 61,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "formatLocalTimestamp",
+          "kind": "function",
+          "line": 88,
+          "signature": "export function formatLocalTimestamp(date: Date): string",
+          "doc": "Formats an instant as a local timestamp with its numeric offset:\n`2026-11-05T22:55:00-08:00`.\n\nThe milliseconds are floored away, because a recorded beginning is whole\nseconds and rounding up would report a moment the writer had not reached. The\noffset is taken for that same instant, so the stamp names exactly the instant\nit came from — including both sides of a daylight-saving fold, which differ by\ntheir offset alone.",
+          "hash": "828faa3a62",
+          "bytes": 902,
+          "refs": [
+            "src/core/insert.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/alignments.test.ts",
+            "tests/navigator.test.ts",
+            "tests/portal-controller.test.ts",
+            "tests/reading-portals.test.ts"
+          ]
+        },
+        {
+          "name": "readAlignments",
+          "kind": "function",
+          "line": 348,
+          "signature": "export function readAlignments(source: string): AlignmentRead",
+          "doc": "Reads a note's portal history.\n\nA note without the key, or with the key left blank, has no history yet: that\nis the empty list, not an error. Anything else that cannot be read is reported\nwith the line and the reason, and the caller must refuse to write — an\nunreadable history is never replaced by an empty one.",
+          "hash": "c8e2addd3e",
+          "bytes": 1095,
+          "refs": [
+            "src/core/insert.ts",
+            "src/core/portal-history.ts",
+            "src/entries/engine.ts",
+            "src/entries/portals.ts",
+            "src/main.ts"
+          ],
+          "refCount": 12,
+          "testedBy": [
+            "tests/alignments.test.ts",
+            "tests/entry-plans.test.ts",
+            "tests/writer.test.ts"
+          ]
+        },
+        {
+          "name": "mergeAlignment",
+          "kind": "function",
+          "line": 442,
+          "signature": "export function mergeAlignment(source: string, record: AlignmentRecord): AlignmentWrite",
+          "doc": "Adds one recorded alignment to a note's history.\n\nThe record is validated first and the note's history is read first, so a\nmalformed record and an unreadable note both refuse rather than overwrite. A\nrow already identical in portal, beginning and entry is not added twice; two\ndevices that entered the same portal at different moments both keep their\nrecord, because neither fact is a correction of the other.",
+          "hash": "17b76713cd",
+          "bytes": 648,
+          "refs": [
+            "src/core/insert.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/alignments.test.ts",
+            "tests/portal-controller.test.ts"
+          ]
+        },
+        {
+          "name": "detachAlignments",
+          "kind": "function",
+          "line": 470,
+          "signature": "export function detachAlignments(source: string, deleted: ReadonlySet<number>): AlignmentWrite",
+          "doc": "Detaches deleted entries from the history it belongs to.\n\nDeleting an entry nulls the records of every entry in the deleted subtree, in\nthe same plan that removes the text, so a reused `N` can never adopt an older\nportal. The records themselves are kept: the opening and the moment are\nfacts about the day, and they are exactly what the history is for. Two records\nthat both lose their entry stay two records — collapsing them would erase an\nevent, not tidy it.",
+          "hash": "0023623c82",
+          "bytes": 560,
+          "refs": [
+            "src/core/insert.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/alignments.test.ts"
+          ]
+        }
+      ],
+      "classes": [
+        "weaver-alignments"
+      ],
+      "dataAttrs": []
+    },
     {
       "file": "src/core/clock.ts",
       "layer": "core",
@@ -25,9 +171,15 @@
           "hash": "40620e3631",
           "bytes": 98,
           "refs": [
-            "src/core/day.ts"
+            "src/core/alignments.ts",
+            "src/core/day.ts",
+            "src/core/insert.ts",
+            "src/core/portal-history.ts",
+            "src/main.ts",
+            "src/ui/navigator.ts",
+            "src/ui/portal.ts"
           ],
-          "refCount": 5,
+          "refCount": 44,
           "testedBy": [
             "tests/clock.test.ts"
           ]
@@ -48,12 +200,14 @@
             "src/editor/duration-ticker.ts",
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/portal.ts"
           ],
-          "refCount": 18,
+          "refCount": 19,
           "testedBy": [
             "tests/clock.test.ts",
-            "tests/duration.test.ts"
+            "tests/duration.test.ts",
+            "tests/entry-plans.test.ts"
           ]
         }
       ],
@@ -170,7 +324,7 @@
           "refs": [
             "src/ui/css.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -376,12 +530,15 @@
           "bytes": 129,
           "refs": [
             "src/core/insert.ts",
+            "src/core/portals.ts",
             "src/entries/day-note.ts",
             "src/main.ts"
           ],
-          "refCount": 7,
+          "refCount": 9,
           "testedBy": [
-            "tests/day-note.test.ts"
+            "tests/day-note.test.ts",
+            "tests/entry-plans.test.ts",
+            "tests/portal-controller.test.ts"
           ]
         },
         {
@@ -398,6 +555,7 @@
           "refCount": 2,
           "testedBy": [
             "tests/day-note.test.ts",
+            "tests/reading-portals.test.ts",
             "tests/start-entry.test.ts"
           ]
         },
@@ -524,11 +682,12 @@
           "hash": "ff65f3fae3",
           "bytes": 481,
           "refs": [
+            "src/core/alignments.ts",
             "src/core/close.ts",
             "src/core/day-stats.ts",
             "src/core/entries.ts"
           ],
-          "refCount": 6,
+          "refCount": 9,
           "testedBy": []
         },
         {
@@ -553,8 +712,8 @@
     {
       "file": "src/core/duration.ts",
       "layer": "core",
-      "lines": 153,
-      "doc": "The clock row of an entry, and the clocks it is written with.\n\nThe row is the entry's last line and carries its two clocks: how long it took,\nthen the moment it was written, with the day it was written on between them\n(`+ 00:04:12 2026-11-05 09:14:22`) so an entry keeps its own creation date\neven in a note named for another one. One format for both clocks, `HH:MM:SS`, so\na time of day and a duration are the same shape at the same width — which is\nwhat lets them sit at opposite ends of one rail. The algebra behind it — and\nthe inverse, reading a clock string back — lives in `duration.bend`, where\n`LAWS.bend` pins it and `bend PROOF.bend` proves it; `bend/duration.mjs` is\nthat module compiled, and this file is its typed facade.\n\nThe duration comes first because it is the half that moves: settling rewrites\nthe head of the row and leaves the moment's own characters untouched. On the\nframe the duration labels the left corner and the moment the right.\n\nThe generated module sits in its own directory on purpose: a `duration.mjs`\nbeside this file would win the extensionless `./duration` import, and Vite\ntries `.mjs` before `.ts`.\n\nWhat stays here is what Bend cannot see: milliseconds, which are rounded into\nthe seconds the algebra counts in, and the sigil, which is text.",
+      "lines": 157,
+      "doc": "The clock row of an entry, and the clocks it is written with.\n\nThe row is the entry's last line and carries its two clocks: how long it took,\nthen the moment it was written, with the day it was written on between them\n(`+ 00:04:12 2026-11-05 09:14:22`) so an entry keeps its own creation date\neven in a note named for another one. One format for both clocks, `HH:MM:SS`, so\na time of day and a duration are the same shape at the same width — which is\nwhat lets them sit at opposite ends of one rail. The algebra behind it — and\nthe inverse, reading a clock string back — lives in `duration.bend`, where\n`LAWS.bend` pins it and `bend PROOF.bend` proves it; `bend/duration.mjs` is\nthat module compiled, and this file is its typed facade.\n\nThe duration comes first because it is the half that moves: settling rewrites\nthe head of the row and leaves the moment's own characters untouched. On the\nframe the duration labels the left corner and the moment the right.\n\nThe generated module sits in its own directory on purpose: a `duration.mjs`\nbeside this file would win the extensionless `./duration` import, and Vite\ntries `.mjs` before `.ts`.\n\nWhat stays here is what Bend cannot see: milliseconds, which are floored into\nthe whole seconds the algebra counts in — a clock may only show a second that\nhas happened — and the sigil, which is text.",
       "obsidian": false,
       "imports": [
         "src/core/bend/duration.mjs"
@@ -563,7 +722,7 @@
         {
           "name": "DurationSigil",
           "kind": "type",
-          "line": 29,
+          "line": 30,
           "signature": "export type DurationSigil = \"+\" | \"-\" | \"=\"",
           "doc": "The three sigils: `-` open and being written, `=` open and paused, `+` settled.",
           "hash": "bcc5defb43",
@@ -580,10 +739,10 @@
         {
           "name": "formatClock",
           "kind": "function",
-          "line": 32,
+          "line": 36,
           "signature": "export function formatClock(ms: number): string",
-          "doc": "Milliseconds as `HH:MM:SS`; hours are unbounded.",
-          "hash": "e9595ee6a1",
+          "doc": "Milliseconds as `HH:MM:SS`; hours are unbounded. Whole seconds are floored,\nnever rounded: a clock may only show a second that has actually happened.",
+          "hash": "9ca9491421",
           "bytes": 112,
           "refs": [
             "src/core/clock.ts",
@@ -593,18 +752,20 @@
             "src/editor/duration-ticker.ts",
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/portal.ts"
           ],
-          "refCount": 16,
+          "refCount": 17,
           "testedBy": [
             "tests/clock.test.ts",
-            "tests/duration.test.ts"
+            "tests/duration.test.ts",
+            "tests/entry-plans.test.ts"
           ]
         },
         {
           "name": "formatDurationLine",
           "kind": "function",
-          "line": 37,
+          "line": 41,
           "signature": "export function formatDurationLine(sigil: DurationSigil, ms: number): string",
           "doc": "The duration half of a clock row, e.g. `+ 00:04:12`.",
           "hash": "0b884ca13a",
@@ -618,7 +779,7 @@
         {
           "name": "ClockRow",
           "kind": "interface",
-          "line": 52,
+          "line": 56,
           "signature": "export interface ClockRow",
           "doc": "The parts of a clock row: the duration, the day it was written, then the\nmoment beside it.",
           "hash": "a5c699710d",
@@ -626,13 +787,13 @@
           "refs": [
             "src/reading/entry-processor.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": []
         },
         {
           "name": "parseClockRow",
           "kind": "function",
-          "line": 94,
+          "line": 98,
           "signature": "export function parseClockRow(text: string): ClockRow | null",
           "doc": "A clock row: a duration, a day and a moment, and nothing else.\n\nEither clock may be absent — a draft has no settled duration, a hand-written\nentry may carry only a moment — so `null` back means the row is prose, not\nthat a part of it was wrong. A day is only readable beside a moment: a date\non its own would let a surface infer a wall-clock moment the row never\ncarried, so `+ 00:04:12 2026-11-05` is prose. The duration half's span is\nreported so a rewrite of it can leave every other character of the row alone.\n\nMinutes and seconds are 0–59, so `formatClock`'s own output always reads back.\nThe duration's separator is required, so a prose line that starts with a plus\nis prose. The moment follows the duration; the old moment-first row is not a\nclock row, which is what makes an unmigrated note fail visibly rather than be\nread with its clock as prose.",
           "hash": "8f42ef87a2",
@@ -642,7 +803,7 @@
             "src/core/insert.ts",
             "src/reading/entry-processor.ts"
           ],
-          "refCount": 10,
+          "refCount": 11,
           "testedBy": [
             "tests/duration.test.ts"
           ]
@@ -650,7 +811,7 @@
         {
           "name": "formatClockRow",
           "kind": "function",
-          "line": 142,
+          "line": 146,
           "signature": "export function formatClockRow( time: string | null, sigil: DurationSigil, ms: number, day: string | null ): string",
           "doc": "The whole clock row, e.g. `+ 00:04:12 2026-11-05 09:14:22`, or a part alone.\n\n`day` is the entry's own creation day, `YYYY-MM-DD`; a row with no moment\ncarries no day either, because a date is read only beside a moment.",
           "hash": "9e938a2e04",
@@ -658,7 +819,7 @@
           "refs": [
             "src/core/insert.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": [
             "tests/duration.test.ts"
           ]
@@ -690,13 +851,16 @@
           "bytes": 609,
           "refs": [
             "src/core/insert.ts",
+            "src/core/portal-history.ts",
+            "src/editor/entry-decorations.ts",
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 21,
+          "refCount": 31,
           "testedBy": [
+            "tests/navigator.test.ts",
             "tests/settings-tab.test.ts"
           ]
         },
@@ -711,11 +875,13 @@
           "refs": [
             "src/core/day-stats.ts",
             "src/core/insert.ts",
+            "src/core/portal-history.ts",
             "src/editor/entry-field.ts",
+            "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 19,
+          "refCount": 27,
           "testedBy": []
         },
         {
@@ -741,7 +907,7 @@
           "refs": [
             "src/reading/entry-processor.ts"
           ],
-          "refCount": 2,
+          "refCount": 3,
           "testedBy": []
         },
         {
@@ -756,20 +922,25 @@
             "src/core/close.ts",
             "src/core/day-stats.ts",
             "src/core/insert.ts",
+            "src/core/portal-history.ts",
             "src/editor/entry-field.ts",
+            "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
             "src/main.ts",
             "src/reading/entry-processor.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 25,
+          "refCount": 36,
           "testedBy": [
             "tests/color.test.ts",
             "tests/day-stats.test.ts",
             "tests/entries.test.ts",
+            "tests/entry-keys.test.ts",
             "tests/entry-plans.test.ts",
+            "tests/portal-history.test.ts",
             "tests/record-format.test.ts",
             "tests/start-entry.test.ts",
+            "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts",
             "tests/whisper.test.ts",
             "tests/writer.test.ts"
@@ -801,7 +972,7 @@
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts"
           ],
-          "refCount": 7,
+          "refCount": 11,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -831,10 +1002,13 @@
           "hash": "53b1606b80",
           "bytes": 169,
           "refs": [
+            "src/core/portal-history.ts",
+            "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
+            "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 13,
+          "refCount": 23,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -879,9 +1053,10 @@
           "hash": "4bb89b4dc3",
           "bytes": 79,
           "refs": [
-            "src/core/insert.ts"
+            "src/core/insert.ts",
+            "src/entries/engine.ts"
           ],
-          "refCount": 3,
+          "refCount": 6,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -897,7 +1072,7 @@
           "refs": [
             "src/core/insert.ts"
           ],
-          "refCount": 2,
+          "refCount": 3,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -914,7 +1089,7 @@
             "src/core/insert.ts",
             "src/entries/engine.ts"
           ],
-          "refCount": 7,
+          "refCount": 8,
           "testedBy": [
             "tests/entries.test.ts"
           ]
@@ -942,7 +1117,7 @@
     {
       "file": "src/core/frame.ts",
       "layer": "core",
-      "lines": 104,
+      "lines": 165,
       "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the marker line — is the box's top-left\nlabel, and its own clock row is the bottom edge, labelling the bottom-left\ncorner with the duration and the bottom-right with the moment. Every label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the marker's ink to the right edge of the text column: a box that hugged\nits text could not put the duration at one bottom corner and the moment at the\nother without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
       "obsidian": false,
       "imports": [],
@@ -978,9 +1153,37 @@
           ]
         },
         {
-          "name": "FrameBoxInput",
+          "name": "FrameColumnInput",
           "kind": "interface",
           "line": 36,
+          "signature": "export interface FrameColumnInput",
+          "doc": "The pane and the content it holds, in one coordinate space.",
+          "hash": "cc08fd3cbb",
+          "bytes": 109,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "frameColumn",
+          "kind": "function",
+          "line": 55,
+          "signature": "export function frameColumn(input: FrameColumnInput): FrameColumn",
+          "doc": "The column every frame in a view may occupy: from the pane's left edge to one\nlabel inset past the content's right, and never past the pane's own right.\n\nOne column serves the drawn boxes and the pending portal tray alike. The\nright edge is the content's edge plus one gutter of air, clamped to the pane;\nthe left edge is the pane's own, because the box below it sits the same gutter\noutside the text. A narrow pane is clamped here rather than in each caller, so\na portal can never be narrower than the entries above it.",
+          "hash": "e465da8d2e",
+          "bytes": 186,
+          "refs": [
+            "src/editor/entry-frame.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/frame.test.ts"
+          ]
+        },
+        {
+          "name": "FrameBoxInput",
+          "kind": "interface",
+          "line": 63,
           "signature": "export interface FrameBoxInput",
           "doc": "What a box needs: the column, the text's left edge, and the label inset.",
           "hash": "13f504ab95",
@@ -992,7 +1195,7 @@
         {
           "name": "FrameBox",
           "kind": "interface",
-          "line": 45,
+          "line": 72,
           "signature": "export interface FrameBox",
           "doc": "The rectangle to draw, or `drawn: false` when there is nothing to enclose.",
           "hash": "635f1a434a",
@@ -1004,7 +1207,7 @@
         {
           "name": "frameBox",
           "kind": "function",
-          "line": 58,
+          "line": 85,
           "signature": "export function frameBox(input: FrameBoxInput): FrameBox",
           "doc": "The box spans one label inset outside the entry's first row's ink to the\ncolumn's right edge.\n\nThere is no width below which a box is withheld: a narrow pane gets a narrow\nbox. The only way to get no box is to have measured nothing yet.",
           "hash": "cbb958de1d",
@@ -1018,9 +1221,37 @@
           ]
         },
         {
+          "name": "TrayFrame",
+          "kind": "interface",
+          "line": 98,
+          "signature": "export interface TrayFrame",
+          "doc": "A pending tray's placement inside the note's content.\n\nThe tray is a child of the content in the normal flow, so the frame's box\nbecomes one negative left margin and one explicit width. Nothing else about\nthe pending portal is an entry: this is the only geometry it shares.",
+          "hash": "5dd4fb3dc7",
+          "bytes": 72,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "trayFrame",
+          "kind": "function",
+          "line": 110,
+          "signature": "export function trayFrame(input:",
+          "doc": "Where the pending tray sits, or `null` before anything has been measured.\n\nA pending portal is a root, so its text edge is the note's own — never a\nchild's indent, and never the width of the first entry it happens to follow.",
+          "hash": "7abb9f9502",
+          "bytes": 354,
+          "refs": [
+            "src/editor/entry-frame.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/frame.test.ts"
+          ]
+        },
+        {
           "name": "FrameSpanInput",
           "kind": "interface",
-          "line": 65,
+          "line": 126,
           "signature": "export interface FrameSpanInput",
           "doc": "The three rails: this entry's two, and where the next entry's top one sits.",
           "hash": "ec0d2677fb",
@@ -1032,7 +1263,7 @@
         {
           "name": "FrameSpan",
           "kind": "interface",
-          "line": 77,
+          "line": 138,
           "signature": "export interface FrameSpan",
           "doc": "The vertical extent to draw, or `drawn: false` when the rails leave no interior.",
           "hash": "69ed767a0d",
@@ -1046,7 +1277,7 @@
         {
           "name": "frameSpan",
           "kind": "function",
-          "line": 98,
+          "line": 159,
           "signature": "export function frameSpan(input: FrameSpanInput): FrameSpan",
           "doc": "The box's vertical extent: from one rail to the other, and nothing more.\n\nThe rails are the label lines, so there is no padding to add and no cap to\napply. The old version derived both ends from the text's edges and padded them,\nwhich put the top rail 5 px above the marker's own row and the bottom rail 5 px\nbelow the clock's — so the labels sat inside the box instead of on it, and the\nclock row was clipped by the rail under it.\n\nThe only judgement left is whether two rails are far enough apart: a box is\nwithheld when the next entry's rail is closer than {@link FrameSpanInput.air},\nbecause two labels would then share the space and neither would read. There is\nno trimming — a rail is a label's centre or it is nothing — and no padding cap.\nWhen the rails cross, there is no interior and no box.",
           "hash": "324739146a",
@@ -1066,22 +1297,24 @@
     {
       "file": "src/core/insert.ts",
       "layer": "core",
-      "lines": 333,
+      "lines": 636,
       "doc": "The plans that write entry text, and the arithmetic every plan shares.\n\nA plan is a list of changes plus the selection to leave behind, applied in one\ntransaction so a single undo reverts all of it. `+` is never written twice,\n`B` is the branch id (inherited on insert, repaired only when a root is\ndeleted), and `N` is only ever appended.",
       "obsidian": false,
       "imports": [
+        "src/core/alignments",
         "src/core/clock",
         "src/core/day",
         "src/core/document",
         "src/core/duration",
         "src/core/entries",
+        "src/core/portals",
         "src/core/whisper"
       ],
       "exports": [
         {
           "name": "TextChange",
           "kind": "interface",
-          "line": 32,
+          "line": 40,
           "signature": "export interface TextChange",
           "doc": "One replacement in the document, in absolute offsets.",
           "hash": "22373b16f7",
@@ -1097,7 +1330,7 @@
         {
           "name": "InsertPlan",
           "kind": "interface",
-          "line": 39,
+          "line": 47,
           "signature": "export interface InsertPlan",
           "doc": "Changes plus the selection to leave behind, applied in one transaction.",
           "hash": "d2823a4c51",
@@ -1115,7 +1348,7 @@
         {
           "name": "planAppendLine",
           "kind": "function",
-          "line": 63,
+          "line": 71,
           "signature": "export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan",
           "doc": "Appends `text` as the last line, separated from existing content by exactly\none blank line. Trailing blank lines are normalized away, so a note that ends\nin three newlines does not collect them above the new block.\n\nA file that ended with a newline still ends with one: the write must not turn\na POSIX text file into a \"no newline at end of file\" diff.\n\n`caret` is an offset inside `text`; the plan's selection lands there.",
           "hash": "1d4307c25c",
@@ -1129,11 +1362,11 @@
         {
           "name": "planStartEntry",
           "kind": "function",
-          "line": 97,
-          "signature": "export function planStartEntry(source: string, index: EntryIndex, now: Date): InsertPlan | null",
-          "doc": "A new root entry at the tip of the note: `{ b.1.m }`, a blank prose line, and\nits clock row `- 00:00:00 YYYY-MM-DD HH:MM:SS`.\n\nThe row carries the entry's own creation day and moment, both read from the\none `now` the caller passed: a note may be named for another day, and the\nentry still records when it was actually written.\n\nThe caret lands on the blank line, which is where the writing happens.",
-          "hash": "cba606eec0",
-          "bytes": 445,
+          "line": 106,
+          "signature": "export function planStartEntry(source: string, index: EntryIndex): InsertPlan | null",
+          "doc": "A new root entry at the tip of the note: `{ b.1.m }`, a blank prose line, and\nits clock row `- 00:00:00`.\n\nThe row carries only a duration: the entry is a draft that has no moment yet,\nbecause a moment is the time the first text was actually typed, not the time\nthe blank block was made. `planEntryBeginning` stamps the day and moment from\nthe one input timestamp, preserving these duration bytes.\n\nThe caret lands on the blank line, which is where the writing happens.",
+          "hash": "2820f13712",
+          "bytes": 415,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1146,11 +1379,11 @@
         {
           "name": "planChildEntry",
           "kind": "function",
-          "line": 121,
-          "signature": "export function planChildEntry( _source: string, index: EntryIndex, parent: Entry, now: Date ): InsertPlan | null",
-          "doc": "A child entry one dimension deeper, directly beneath the parent's own block,\nabove any older siblings: the newest branch is closest to what it descends\nfrom.\n\nThe child inherits its parent's written `B`, so a branch carries one branch id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change. `N` is still `maxN + 1`, so the new child is\nthe day's newest entry even when it is shown above older siblings carrying\nsmaller numbers: `N` is identity, not display order.\n\nThe child's clock row records the creation day and moment from the one `now`\nit was given — its own, not the parent's — so a child written after midnight\nunder an old parent is dated the day it was written.",
-          "hash": "da8ce048ae",
-          "bytes": 1136,
+          "line": 131,
+          "signature": "export function planChildEntry( _source: string, index: EntryIndex, parent: Entry ): InsertPlan | null",
+          "doc": "A child entry one dimension deeper, directly beneath the parent's own block,\nabove any older siblings: the newest branch is closest to what it descends\nfrom.\n\nThe child inherits its parent's written `B`, so a branch carries one branch id\nfrom its root all the way down — and an insert never renumbers anything, which\nis what makes it a single change. `N` is still `maxN + 1`, so the new child is\nthe day's newest entry even when it is shown above older siblings carrying\nsmaller numbers: `N` is identity, not display order.\n\nThe child's clock row is duration-only, like a new root's: `- 00:00:00`. It\ngains its own creation day and moment when the first text is typed, from that\ninput's timestamp, so a child written after midnight under an old parent is\ndated the day it was actually written.",
+          "hash": "5f9ac6508b",
+          "bytes": 1104,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1160,13 +1393,47 @@
           ]
         },
         {
+          "name": "planEntryBeginning",
+          "kind": "function",
+          "line": 190,
+          "signature": "export function planEntryBeginning( _source: string, index: EntryIndex, entry: Entry, beganAt: Date ): InsertPlan | null",
+          "doc": "Stamps a draft's beginning — the day and the moment — into the clock row that\nalready carries its duration.\n\nA new root or child is written as `- 00:00:00`: a real record with a duration\nand no moment, which is exactly what \"the writer has not started\" means. This\nplan turns that row into `- 00:00:00 YYYY-MM-DD HH:MM:SS` on the first text,\nso both halves describe one input timestamp. The duration half is copied byte\nfor byte, which preserves a paused `= 00:00:05` as well as an empty `-`.\n\nNothing else is ever rewritten: an entry that already carries a moment keeps\nit, including a historical moment with no day, because a moment is a fact and\nnot a default. Settled (`+`) entries and entries with no duration are final.\nA note this cannot read whole — unclosed frontmatter, an unclosed fence, the\nold marker — returns null, as does an `entry` that no longer describes the\ncurrent parse. The selection sits in the prose, so a caller can keep the\ncaret where the text was typed.",
+          "hash": "3e58476127",
+          "bytes": 1210,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 3,
+          "testedBy": [
+            "tests/entry-plans.test.ts"
+          ]
+        },
+        {
+          "name": "planPortalEntry",
+          "kind": "function",
+          "line": 262,
+          "signature": "export function planPortalEntry( source: string, index: EntryIndex, portal: PortalInstant, beganAt: Date, text: string ): InsertPlan | null",
+          "doc": "A portal's first text: one root entry carrying the typed prose, the full clock\nrow of the moment it was actually typed, and the day's alignment history.\n\nHome is a root at the tip of the note, exactly where an ordinary entry would\nbe: `{ b.1.N }`, a blank line, the prose, then the clock row. The row is full\nfrom the first byte — duration, day and moment — because this entry *was*\nbegun at a known instant; there is no awaiting phase to stamp later.\n\nThe history record joins the same plan, so the note either gains the entry and\nthe record or changes in no way at all: one dispatch, one undo. `readAlignments`\nruns before anything is planned, so unreadable history refuses the capture\ninstead of being replaced by a record written on top of it. The merge is\nfolded back into original-source offsets, so the body append and the\nfrontmatter edit cannot compose against mixed coordinates.\n\nAn empty or whitespace-only first input is not a capture: a portal is entered\nby deliberate text. Multi-line text is prose, exactly as typed — including a\nbalanced code fence, which the parser reads as text. Text that changes what\nthe block *is* — an unclosed fence, a line that reads as another marker or as\na clock row — is refused: the record is only merged once the written note\nparses back as the entry this plan allocated, so a capture cannot consume a\nportal for an entry that never began.",
+          "hash": "a5ef2d3c5b",
+          "bytes": 2925,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/entry-plans.test.ts",
+            "tests/portal-history.test.ts",
+            "tests/writer.test.ts"
+          ]
+        },
+        {
           "name": "planDeleteEntry",
           "kind": "function",
-          "line": 155,
+          "line": 347,
           "signature": "export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan | null",
-          "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose branch id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.",
-          "hash": "7d2327a51c",
-          "bytes": 1493,
+          "doc": "Removes an entry and everything under it: the exact inverse of the block\n`planChildEntry` writes.\n\nThe block runs from the marker to the end of its subtree, the blank separator\nlines below it go with it, and every surviving branch whose branch id shifted\nis rewritten in the same plan, so one undo restores the whole subtree and the\naddressing. The caret lands where the block was.\n\nThe deleted subtree's numbers go with it: every alignment record that pointed\nat one of them keeps its event — the portal, its opening and the instant the\ntext began — and loses only the association. `N` is reused after a delete, so\na record left pointing at a number would otherwise describe an unrelated entry\nthat inherited it. All of it is one plan, so one undo restores the block, the\naddressing and the associations together.",
+          "hash": "9e6538e477",
+          "bytes": 1919,
           "refs": [
             "src/entries/engine.ts"
           ],
@@ -1178,7 +1445,7 @@
         {
           "name": "planDuration",
           "kind": "function",
-          "line": 206,
+          "line": 410,
           "signature": "export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan | null",
           "doc": "Writes the duration half of the clock row in place.\n\nA settled entry — a `+` half, or a row that carries no duration at all — is\nfinal: nothing is planned for it, whatever the sigil. An open entry is\nrewritten whenever the bytes would change, which the identical-text guard\ndecides, so a pause that reaches the same second plans nothing. Only the\nduration half is rewritten: the moment keeps its own characters, so the row\ncannot move, and neither can the day written beside it: everything outside\n`durationSpan` is copied byte for byte. The selection is reported at the\nprose, because the caller keeps the live selection: rewriting a duration must\nnot move the caret. A note that\nstill carries the old marker is refused whole — its old duration line parses\nas a clock row, so a field-level rewrite would be the one write that slipped\nthrough the migration.",
           "hash": "546c356091",
@@ -1195,7 +1462,7 @@
         {
           "name": "planWhisper",
           "kind": "function",
-          "line": 251,
+          "line": 455,
           "signature": "export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan | null",
           "doc": "Writes a whisper above an entry's first prose line. One insertion, so one\nundo.\n\nA whisper is the model's reading of a settled thought, so this plan refuses\nevery case where it would be a guess: a note it cannot read whole, an answer\nwith no rows or more than three, an entry that already has one — written once,\nnever rewritten — an entry with nothing to read, an entry with no clock row to\nsit above, and an entry the writer named on the marker row himself. It does\nnot look at `entry.state`: settle runs while the entry is still `draft`, so\nthe callers decide who may be whispered.\n\nThe inserted text is newline-terminated and the selection lands past it, so\nthe plan is valid against the text it produces. No caller uses that selection\nto move a caret: the writer is somewhere else, by construction.",
           "hash": "a9fb1e4a70",
@@ -1211,7 +1478,7 @@
         {
           "name": "planThread",
           "kind": "function",
-          "line": 280,
+          "line": 484,
           "signature": "export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan | null",
           "doc": "Appends one row to an entry that already carries a whisper.\n\nThe day pass may add a `thread:` row to a reading written earlier — the day it\nrefers to did not exist when the reading was written. Nothing is rewritten: the\nrow goes directly below the last whisper row, so the reading above it is the same\nbytes it was.",
           "hash": "a8069bde30",
@@ -1225,7 +1492,7 @@
         {
           "name": "offsetToLineCh",
           "kind": "function",
-          "line": 303,
+          "line": 507,
           "signature": "export function offsetToLineCh(source: string, offset: number):",
           "doc": "Converts an absolute offset into a zero-based line/ch position.",
           "hash": "b2443552a3",
@@ -1239,7 +1506,7 @@
         {
           "name": "cmChanges",
           "kind": "function",
-          "line": 316,
+          "line": 520,
           "signature": "export function cmChanges( changes: readonly TextChange[] ):",
           "doc": "A plan's changes in CodeMirror's own shape.\n\nCodeMirror reads `insert`, not `text`: a `TextChange` handed to a view as-is\nis a change with no text, so nothing is written and nothing throws. Every\ndispatch of a plan goes through here.",
           "hash": "7f311f1a35",
@@ -1248,7 +1515,7 @@
             "src/entries/engine.ts",
             "src/entries/writer.ts"
           ],
-          "refCount": 5,
+          "refCount": 7,
           "testedBy": [
             "tests/entry-plans.test.ts"
           ]
@@ -1256,7 +1523,7 @@
         {
           "name": "applyPlanToSource",
           "kind": "function",
-          "line": 323,
+          "line": 527,
           "signature": "export function applyPlanToSource(source: string, plan: InsertPlan):",
           "doc": "Applies a plan's changes to a source string; used by tests and previews.",
           "hash": "c5b022f97b",
@@ -1297,7 +1564,7 @@
             "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 7,
+          "refCount": 8,
           "testedBy": [
             "tests/navigator-stack.test.ts",
             "tests/navigator.test.ts"
@@ -1347,6 +1614,217 @@
           "refCount": 2,
           "testedBy": [
             "tests/navigator-stack.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/core/portal-history.ts",
+      "layer": "core",
+      "lines": 320,
+      "doc": "The day's portal history, as rows a surface can list.\n\nTwo kinds of fact share one chronology. A recorded row is something that\nreally happened: a note's `weaver-alignments` record, its original local\nopening and beginning preserved, and its alignments recomputed from those\nfrozen facts rather than from the machine's current timezone. An opening row\nis only a schedule: an eligible local minute that no record in this note has\nclaimed. Schedule rows are reconstructed on demand and never written.\n\nThe default view is deliberately small — what is approaching or open now,\nplus the most recent opportunity that has passed — while `showAll` lays out\nthe whole local day. \"Passed\" means the opening minute elapsed; it never\nclaims that a notice was delivered or that someone chose to ignore it.\n\nNothing here reads or writes the vault. It parses the note it is given and\nreturns rows, or the reason the note's history could not be read at all.",
+      "obsidian": false,
+      "imports": [
+        "src/core/alignments",
+        "src/core/clock",
+        "src/core/entries",
+        "src/core/portals"
+      ],
+      "exports": [
+        {
+          "name": "RecordedPortalHistoryRow",
+          "kind": "interface",
+          "line": 123,
+          "signature": "export interface RecordedPortalHistoryRow",
+          "doc": "A recorded beginning, and the entry it still truthfully points at.",
+          "hash": "62e3864f08",
+          "bytes": 218,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "OpeningPortalHistoryRow",
+          "kind": "interface",
+          "line": 136,
+          "signature": "export interface OpeningPortalHistoryRow",
+          "doc": "A scheduled opening that this note has not recorded.",
+          "hash": "9b645de727",
+          "bytes": 163,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "PortalHistoryRow",
+          "kind": "type",
+          "line": 145,
+          "signature": "export type PortalHistoryRow = RecordedPortalHistoryRow | OpeningPortalHistoryRow",
+          "doc": "One row in the navigator's portal history.",
+          "hash": "5357bf01fc",
+          "bytes": 82,
+          "refs": [
+            "src/ui/navigator.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/portal-history.test.ts"
+          ]
+        },
+        {
+          "name": "PortalHistory",
+          "kind": "type",
+          "line": 148,
+          "signature": "export type PortalHistory = |",
+          "doc": "A read history, or why the note's history could not be listed.",
+          "hash": "b50d9d6ab6",
+          "bytes": 70,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "linkedPortalEntry",
+          "kind": "function",
+          "line": 161,
+          "signature": "export function linkedPortalEntry(record: AlignmentRecord, index: EntryIndex): Entry | null",
+          "doc": "Resolves a record's entry only when its clock row still names the recorded\nbeginning exactly.\n\n`N` alone is not identity: entries are deleted and numbers reused. A record is\ntrusted for an entry only when the entry still carries the same recorded day\nand moment; a manually edited row, a missing entry and a reused number all\nresolve to null. Nothing is inferred from proximity or title.",
+          "hash": "19d46f5970",
+          "bytes": 161,
+          "refs": [
+            "src/ui/navigator.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/portal-history.test.ts"
+          ]
+        },
+        {
+          "name": "portalHistoryRows",
+          "kind": "function",
+          "line": 252,
+          "signature": "export function portalHistoryRows( source: string, now: number, showAll: boolean ): PortalHistory",
+          "doc": "Lists a day note's portal history.\n\nEvery recorded event is included, whether or not it still points at an entry.\nThe schedule beneath it is reconstructed for the local day containing `now`\nand omits any portal the note has already recorded, so one opening is never\nboth a fact and an invitation. Rows are chronological by opening instant, then\nby recorded beginning, and keep source order for otherwise identical events.\n\n`showAll` lays out the whole current local day; otherwise only the eleven\nminute invitation window, the currently open minute, and the most recent\nelapsed opening are listed. An unreadable history is returned as an error and\nnever silently becomes an empty list.",
+          "hash": "e55d13dbca",
+          "bytes": 1894,
+          "refs": [
+            "src/ui/navigator.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/portal-history.test.ts"
+          ]
+        }
+      ],
+      "classes": [
+        "weaver-alignments"
+      ],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/core/portals.ts",
+      "layer": "core",
+      "lines": 48,
+      "doc": "Local openings are epoch instants, so daylight-saving gaps and repeats stay real.",
+      "obsidian": false,
+      "imports": [
+        "src/core/day"
+      ],
+      "exports": [
+        {
+          "name": "PortalInstant",
+          "kind": "interface",
+          "line": 5,
+          "signature": "export interface PortalInstant",
+          "doc": "The local facts of an opening, frozen independently of later timezone changes.",
+          "hash": "650dd9e004",
+          "bytes": 141,
+          "refs": [
+            "src/core/insert.ts",
+            "src/core/portal-history.ts",
+            "src/editor/portal-widget.ts",
+            "src/entries/portals.ts",
+            "src/reading/portals.ts",
+            "src/ui/portal.ts"
+          ],
+          "refCount": 31,
+          "testedBy": [
+            "tests/entry-plans.test.ts",
+            "tests/portal-controller.test.ts",
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "AlignmentKind",
+          "kind": "type",
+          "line": 15,
+          "signature": "export type AlignmentKind = \"boundary\" | \"hour-echo\" | \"minute-echo\"",
+          "doc": "Exact-second recognitions, never targets or snapped input times.",
+          "hash": "407d32fa27",
+          "bytes": 69,
+          "refs": [
+            "src/core/portal-history.ts"
+          ],
+          "refCount": 5,
+          "testedBy": []
+        },
+        {
+          "name": "portalInstants",
+          "kind": "function",
+          "line": 18,
+          "signature": "export function portalInstants(fromMs: number, toMs: number): PortalInstant[]",
+          "doc": "Enumerates eligible actual local minutes in inclusive epoch bounds.",
+          "hash": "b7bf600753",
+          "bytes": 589,
+          "refs": [
+            "src/core/portal-history.ts",
+            "src/entries/portals.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/entry-plans.test.ts",
+            "tests/portal-controller.test.ts",
+            "tests/portal-history.test.ts",
+            "tests/portals.test.ts",
+            "tests/writer.test.ts"
+          ]
+        },
+        {
+          "name": "portalAlignments",
+          "kind": "function",
+          "line": 33,
+          "signature": "export function portalAlignments(portal: PortalInstant, beganAt: number): readonly AlignmentKind[]",
+          "doc": "Returns every coincident recognition in the opening's original minute.",
+          "hash": "82de3ae36c",
+          "bytes": 387,
+          "refs": [
+            "src/core/portal-history.ts",
+            "src/entries/engine.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/portals.test.ts"
+          ]
+        },
+        {
+          "name": "portalPhase",
+          "kind": "function",
+          "line": 43,
+          "signature": "export function portalPhase(portal: PortalInstant, now: number, held: boolean): \"approaching\" | \"open\" | \"held\" | \"expired\"",
+          "doc": "Preparation extends the open minute, never unlocks it early.",
+          "hash": "e79460db47",
+          "bytes": 264,
+          "refs": [
+            "src/core/portal-history.ts",
+            "src/editor/portal-widget.ts",
+            "src/entries/engine.ts",
+            "src/entries/portals.ts"
+          ],
+          "refCount": 10,
+          "testedBy": [
+            "tests/portals.test.ts"
           ]
         }
       ],
@@ -1697,73 +2175,37 @@
     {
       "file": "src/editor/duration-ticker.ts",
       "layer": "editor",
-      "lines": 55,
-      "doc": "The one writer of a ticking clock.\n\nA ticker belongs to the element it writes into, not to whoever asked for it:\nCodeMirror may hand a new widget the element an old one built, and the frame\nlayer may hand the same element a different entry. Keying the interval by the\nDOM means one writer per element, whichever caller started it.\n\nA second is the smallest unit a clock shows, so the tick is a second.",
+      "lines": 23,
+      "doc": "The digit writer shared by every drawn clock.\n\nA clock is three digit spans around two colons; the same spans are rewritten\nin place for the life of the element, and no edit ever touches the document.\nThe ticking itself belongs to `EntryClock`: an element owns no timer.",
       "obsidian": false,
       "imports": [
         "src/core/duration"
       ],
       "exports": [
         {
-          "name": "TICK_MS",
-          "kind": "const",
-          "line": 15,
-          "signature": "export const TICK_MS = 1000",
-          "doc": "A second: the smallest unit a clock shows, and the only tick rate.",
-          "hash": "495d818dd6",
-          "bytes": 28,
-          "refs": [],
-          "refCount": 0,
-          "testedBy": []
-        },
-        {
-          "name": "Ticker",
-          "kind": "interface",
-          "line": 18,
-          "signature": "export interface Ticker",
-          "doc": "The one interval an element may hold, keyed by the element itself.",
-          "hash": "fc0c2f7ea4",
-          "bytes": 86,
-          "refs": [],
-          "refCount": 0,
+          "name": "writeClockText",
+          "kind": "function",
+          "line": 12,
+          "signature": "export function writeClockText(digits: readonly HTMLElement[], clock: string): void",
+          "doc": "Splits an `HH:MM:SS` text into the three digit spans, in place.",
+          "hash": "750851670a",
+          "bytes": 224,
+          "refs": [
+            "src/editor/stopwatch-widget.ts",
+            "src/reading/entry-processor.ts",
+            "src/ui/portal.ts"
+          ],
+          "refCount": 6,
           "testedBy": []
         },
         {
           "name": "writeDigits",
           "kind": "function",
-          "line": 27,
+          "line": 20,
           "signature": "export function writeDigits(digits: readonly HTMLElement[], ms: number): void",
           "doc": "Rewrites the three digit spans — hours, minutes, seconds — in place.",
-          "hash": "fed0aeb2e3",
-          "bytes": 244,
-          "refs": [
-            "src/editor/stopwatch-widget.ts"
-          ],
-          "refCount": 2,
-          "testedBy": []
-        },
-        {
-          "name": "stopTicking",
-          "kind": "function",
-          "line": 37,
-          "signature": "export function stopTicking(dom: HTMLElement | null): void",
-          "doc": "Stops the interval attached to this element, if there is one.",
-          "hash": "9f030ed5ef",
-          "bytes": 212,
-          "refs": [
-            "src/editor/stopwatch-widget.ts"
-          ],
-          "refCount": 3,
-          "testedBy": []
-        },
-        {
-          "name": "startTicking",
-          "kind": "function",
-          "line": 45,
-          "signature": "export function startTicking(dom: HTMLElement, digits: HTMLElement[], ms: number): void",
-          "doc": "Starts the one interval this element may have, from its current second.",
-          "hash": "6da859596b",
-          "bytes": 332,
+          "hash": "838fcbcb7d",
+          "bytes": 124,
           "refs": [
             "src/editor/stopwatch-widget.ts"
           ],
@@ -1795,9 +2237,10 @@
           "bytes": 157,
           "refs": [
             "src/editor/entry-keys.ts",
-            "src/entries/engine.ts"
+            "src/entries/engine.ts",
+            "src/main.ts"
           ],
-          "refCount": 7,
+          "refCount": 16,
           "testedBy": []
         }
       ],
@@ -1807,12 +2250,14 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 270,
+      "lines": 300,
       "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe marker row also carries a persistent creation-day link when the recorded\nday differs from the day-note filename. Same-day and historical undated\nentries need no label. The date is not repeated in the clock widget.",
       "obsidian": true,
       "imports": [
         "src/core/color",
         "src/core/day",
+        "src/core/entries",
+        "src/entries/clock",
         "src/entries/session",
         "src/ui/day-link",
         "src/ui/dcn",
@@ -1826,11 +2271,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 111,
-          "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number, openDayLink?: OpenDayLink ): DecorationSet",
+          "line": 129,
+          "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, openDayLink?: OpenDayLink ): DecorationSet",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "4a22fd3cbd",
-          "bytes": 4675,
+          "hash": "677d22762f",
+          "bytes": 5254,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1840,16 +2285,18 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 248,
-          "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, openDayLink?: OpenDayLink ): Extension",
+          "line": 277,
+          "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, openDayLink?: OpenDayLink ): Extension",
           "doc": "Publishes the entry decorations as one state field.",
-          "hash": "11faf9599e",
-          "bytes": 775,
+          "hash": "87102dd404",
+          "bytes": 805,
           "refs": [
             "src/main.ts"
           ],
           "refCount": 2,
-          "testedBy": []
+          "testedBy": [
+            "tests/stopped-clock-render.test.ts"
+          ]
         }
       ],
       "classes": [
@@ -1867,7 +2314,7 @@
     {
       "file": "src/editor/entry-field.ts",
       "layer": "editor",
-      "lines": 40,
+      "lines": 62,
       "doc": "The entry index as editor state: one parse per document change, shared by the\ndecorations, the keys and the engine, so every surface agrees on structure.",
       "obsidian": false,
       "imports": [
@@ -1889,7 +2336,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 9,
+          "refCount": 10,
           "testedBy": [
             "tests/entry-field.test.ts"
           ]
@@ -1909,13 +2356,46 @@
             "src/main.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 17,
+          "refCount": 20,
           "testedBy": []
+        },
+        {
+          "name": "InputObservation",
+          "kind": "interface",
+          "line": 33,
+          "signature": "export interface InputObservation",
+          "doc": "The writer's input, as observed at the moment it happened: which entry it\nlanded in, and when.\n\nThe clock starts on the identity and the time of the input itself, never on\nwhere the caret happens to be when the deferred listener runs — a caret that\nmoved on in the meantime must not attach the keystroke to another entry, and\nthe moment recorded must be the moment of typing, not of bookkeeping.",
+          "hash": "b291dcccaa",
+          "bytes": 82,
+          "refs": [
+            "src/editor/entry-keys.ts",
+            "src/entries/engine.ts"
+          ],
+          "refCount": 10,
+          "testedBy": []
+        },
+        {
+          "name": "capturedInput",
+          "kind": "const",
+          "line": 44,
+          "signature": "export const capturedInput = Annotation.define<InputObservation>()",
+          "doc": "Marks the one transaction that carries an entry's first text together with\nits recorded beginning. Its value is the observation, so the listener starts\nthe clock from the same facts the plan was built from.",
+          "hash": "668f7e8fec",
+          "bytes": 67,
+          "refs": [
+            "src/editor/entry-keys.ts",
+            "src/entries/engine.ts"
+          ],
+          "refCount": 6,
+          "testedBy": [
+            "tests/entry-keys.test.ts",
+            "tests/start-entry.test.ts"
+          ]
         },
         {
           "name": "entryIndexField",
           "kind": "const",
-          "line": 25,
+          "line": 47,
           "signature": "export const entryIndexField = StateField.define<EntryIndex>(",
           "doc": "The shared parse: one per document change, read by every surface.",
           "hash": "dddd4ebfd0",
@@ -1927,20 +2407,21 @@
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts"
           ],
-          "refCount": 11,
+          "refCount": 15,
           "testedBy": [
             "tests/close-decorations.test.ts",
             "tests/entry-decorations.test.ts",
             "tests/entry-field.test.ts",
             "tests/entry-keys.test.ts",
             "tests/plugin.test.ts",
-            "tests/start-entry.test.ts"
+            "tests/start-entry.test.ts",
+            "tests/stopped-clock-render.test.ts"
           ]
         },
         {
           "name": "entryIndexExtension",
           "kind": "function",
-          "line": 37,
+          "line": 59,
           "signature": "export function entryIndexExtension(): Extension",
           "doc": "Registers the field every other editor extension reads.",
           "hash": "09068be63f",
@@ -1958,7 +2439,7 @@
     {
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
-      "lines": 370,
+      "lines": 483,
       "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its duration at the left corner, its moment at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nA different creation day labels the top-right corner. The decoration draws it\n— never this layer, which paints no text — and its background cuts the rail.",
       "obsidian": true,
       "imports": [
@@ -1976,19 +2457,33 @@
         {
           "name": "FrameHost",
           "kind": "interface",
-          "line": 50,
+          "line": 57,
           "signature": "export interface FrameHost",
           "doc": "What the layer may ask the plugin: settings, the session, the model, and a fallback path.",
-          "hash": "0cbb7c436e",
-          "bytes": 164,
+          "hash": "89ef29dd36",
+          "bytes": 259,
           "refs": [],
           "refCount": 0,
           "testedBy": []
         },
         {
+          "name": "remeasureFrames",
+          "kind": "function",
+          "line": 165,
+          "signature": "export function remeasureFrames(view: EditorView): void",
+          "doc": "Re-measures on the next frame, once.\n\nThe pending tray is a block widget, so it can be created after the frames\nhave already measured the note. Mounting it pokes this; nothing per-second\ndoes, because a clock tick is not geometry.",
+          "hash": "1d710e984b",
+          "bytes": 91,
+          "refs": [
+            "src/editor/portal-widget.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
           "name": "entryFrameExtension",
           "kind": "function",
-          "line": 361,
+          "line": 474,
           "signature": "export function entryFrameExtension(host: FrameHost): Extension",
           "doc": "Draws one box per entry in a layer inside the scroller.",
           "hash": "049f956468",
@@ -2006,16 +2501,18 @@
         "weaver-entry-head",
         "weaver-frame",
         "weaver-frame-label",
-        "weaver-frame-layer"
+        "weaver-frame-layer",
+        "weaver-portal"
       ],
       "dataAttrs": [
-        "data-weaver-n"
+        "data-weaver-n",
+        "data-weaver-portal-tray"
       ]
     },
     {
       "file": "src/editor/entry-keys.ts",
       "layer": "editor",
-      "lines": 223,
+      "lines": 493,
       "doc": "The two keys an entry owns, and the two edit events that keep the stopwatch\nhonest.\n\n`Mod-Shift-E` starts an entry from inside any editor as well as from the app.\nIt is not `Mod-Enter`: Obsidian's core \"Open link under cursor in new tab\"\nowns that chord, and its scope runs before every plugin keymap.\n\n`Enter` is two-way and stateless: on an open entry — `-` being written or `=`\npaused — it settles the duration to `+` and stops the clock; on a settled\nentry it opens a child one dimension deeper under it. `Shift-Enter` is the\nnewline, on a desk; `Enter` settles everywhere, so a phone's soft keyboard has\nno newline gesture and an entry's prose is one paragraph there.\n\nOn a phone the clock row is pinned to the bottom of the writing band after\nevery keystroke, so the stopwatch stays visible above the soft keyboard\nwithout the writer ever scrolling to find it.",
       "obsidian": false,
       "imports": [
@@ -2032,7 +2529,7 @@
         {
           "name": "ENTRY_KEYS",
           "kind": "const",
-          "line": 38,
+          "line": 49,
           "signature": "export const ENTRY_KEYS = [\"Mod-Shift-E\", \"Enter\"] as const",
           "doc": "Every chord an entry claims, for review; `entryKeysExtension` binds each one.\n\n`Mod-Shift-E`, not `Mod-Enter`: Obsidian's core \"Open link under cursor in new\ntab\" owns `Mod+Enter` and its scope runs in the document's capture phase, so\nneither a `Prec.highest` editor binding nor a command hotkey ever sees that\nchord. `Mod+Shift+E` belongs to no other command, so it reaches us.",
           "hash": "07f4cc042f",
@@ -2048,10 +2545,10 @@
         {
           "name": "EntryKeyHost",
           "kind": "interface",
-          "line": 41,
+          "line": 52,
           "signature": "export interface EntryKeyHost",
           "doc": "What a key handler may ask for: the session and the five entry edits.",
-          "hash": "402e1f199f",
+          "hash": "b5f8189eba",
           "bytes": 302,
           "refs": [],
           "refCount": 0,
@@ -2062,19 +2559,21 @@
         {
           "name": "EntryEditHost",
           "kind": "interface",
-          "line": 53,
+          "line": 71,
           "signature": "export interface EntryEditHost extends EntryKeyHost",
-          "doc": "The same host plus `afterEdit`, for the listeners that start and pause a clock.",
-          "hash": "985aa1b9c4",
-          "bytes": 154,
+          "doc": "The same host plus the two edit hooks: `captureInput` decides whether this\ninput is the first text of an awaiting entry and, when it is, writes the text\nand the entry's beginning in one transaction; `captureComposition` finishes\nthat beginning after an IME commits, or resumes an entry that already has\none; `afterEdit` starts and pauses the clock from the input the editor\nobserved, not from a later caret.",
+          "hash": "14d2943f03",
+          "bytes": 410,
           "refs": [],
           "refCount": 0,
-          "testedBy": []
+          "testedBy": [
+            "tests/entry-keys.test.ts"
+          ]
         },
         {
           "name": "enterableEntry",
           "kind": "function",
-          "line": 67,
+          "line": 94,
           "signature": "export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry | null",
           "doc": "The entry the caret is in.\n\nOne rule on every platform: the caret is inside an entry and the view can\nwrite to it. What `Enter` then does depends on the entry's own state, not on\nwhere the caret sits inside it — `Enter` settles an open entry and descends\nfrom a settled one, and `Shift-Enter` remains the newline.",
           "hash": "62fd70c4e5",
@@ -2088,7 +2587,7 @@
         {
           "name": "handleEnterKey",
           "kind": "function",
-          "line": 75,
+          "line": 102,
           "signature": "export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean",
           "doc": "`true` when the key was handled, which stops Obsidian's own binding.",
           "hash": "05f01a81d6",
@@ -2102,7 +2601,7 @@
         {
           "name": "handleStartKey",
           "kind": "function",
-          "line": 90,
+          "line": 117,
           "signature": "export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean",
           "doc": "Starts an entry at the tip of today's note, from inside the editor too.\n\nAlways handled: the chord is `Mod-Shift-E`, which no other command claims, so\nclaiming it here cannot take anything away from the writer.",
           "hash": "db6335a145",
@@ -2116,7 +2615,7 @@
         {
           "name": "shouldPinStopwatch",
           "kind": "function",
-          "line": 100,
+          "line": 127,
           "signature": "export function shouldPinStopwatch(input:",
           "doc": "All four must hold: a phone, the live session, the caret on the entry's last\nprose line, and a clock row to pin. Each one alone is not enough, which is\nwhat keeps the view still while reading the middle of a long entry.",
           "hash": "eefa36e514",
@@ -2130,7 +2629,7 @@
         {
           "name": "maybePinStopwatch",
           "kind": "function",
-          "line": 110,
+          "line": 137,
           "signature": "export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean",
           "doc": "Pins the stopwatch under the caret on a phone; returns true when it did.",
           "hash": "8c4691af26",
@@ -2142,7 +2641,7 @@
         {
           "name": "entryKeysExtension",
           "kind": "function",
-          "line": 144,
+          "line": 171,
           "signature": "export function entryKeysExtension(host: EntryKeyHost): Extension",
           "doc": "Binds `Mod-Shift-E` and `Enter` at the highest precedence.",
           "hash": "c3bcb35918",
@@ -2154,18 +2653,89 @@
           "testedBy": []
         },
         {
+          "name": "inputObservation",
+          "kind": "function",
+          "line": 194,
+          "signature": "export function inputObservation( transactions: readonly Transaction[], context:",
+          "doc": "What the writer's input was, read from the transactions themselves.\n\nA capture transaction carries its own observation, so the clock starts from\nthe same path, entry and timestamp the beginning was written from. Any other\ninput is observed at the transaction's own selection — never the caret as it\nis when the deferred listener finally runs — with the moment of the input.\n\n`null` means this edit was not the writer's text: a `delete`, selection\nrepair, undo, redo, the vault reloading the note, or a preedit composition\nchange. None of those may start a clock or be mistaken for a first keystroke.",
+          "hash": "233a704ca9",
+          "bytes": 776,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/entry-keys.test.ts",
+            "tests/start-entry.test.ts"
+          ]
+        },
+        {
+          "name": "compositionCommit",
+          "kind": "function",
+          "line": 239,
+          "signature": "export function compositionCommit(host: Pick<EntryEditHost, \"entries\">):",
+          "doc": "The composition commit, as a pair of DOM handlers.\n\nAn IME composition's text reaches the document natively — CodeMirror applies\nthe preedit, and the commit often arrives with no further document change at\nall — so the beginning cannot come from the text input handler alone. These\nhandlers observe the composition's end and finish the beginning afterwards:\nmetadata only (the text is already the writer's), timestamped at the commit,\nnamed `input.type.compose` so history joins it into the composition's own undo\ngroup. A cancelled composition leaves the document as it was, which is why the\ncommitted text has to still be there before anything is stamped.\n\nEverything the commit is about is captured when the composition *starts*: the\nnote, the replaced range, and the entry that range belongs to. A deferred\ncallback then cannot be retargeted by a caret that moved in the meantime —\nthe committed text must sit exactly where the composition was, in that same\nentry, or nothing is stamped. Identical prose elsewhere in the note is not\nevidence that this composition committed it.\n\nExported so a test can drive it without a browser's IME.",
+          "hash": "e67bc8e0b1",
+          "bytes": 218,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/entry-keys.test.ts"
+          ]
+        },
+        {
+          "name": "replacedDocument",
+          "kind": "function",
+          "line": 317,
+          "signature": "export function replacedDocument(transactions: readonly Transaction[]): boolean",
+          "doc": "True when this update replaced the document without the writer typing: an\nundo, a redo, or a write that carries no input event of its own (a reload, a\nrewrite from another surface). A deletion and an in-progress composition are\nthe writer's own editing, and are not replacements.",
+          "hash": "53624c731a",
+          "bytes": 417,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/entry-keys.test.ts"
+          ]
+        },
+        {
+          "name": "PendingInput",
+          "kind": "interface",
+          "line": 335,
+          "signature": "export interface PendingInput",
+          "doc": "What one document update observed, and the generation of the document it was\nobserved in.",
+          "hash": "c0c0d49c1d",
+          "bytes": 95,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "InputLedger",
+          "kind": "class",
+          "line": 350,
+          "signature": "export class InputLedger",
+          "doc": "The input observations waiting to be acted on after the update finishes.\n\nA deferred callback runs after the document may have moved on — an undo, a\nredo, a reload, another view's write. Those are document replacements without\ninput, so they end the generation: a captured observation still in flight\ncannot start a clock on the text that replaced its own. A later input starts\na new generation with its own timestamp, so typing that follows an undo is\nstill honored.",
+          "hash": "1a2781654e",
+          "bytes": 389,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/entry-keys.test.ts"
+          ]
+        },
+        {
           "name": "entryEditExtension",
           "kind": "function",
-          "line": 156,
+          "line": 374,
           "signature": "export function entryEditExtension(host: EntryEditHost): Extension",
           "doc": "Turns edits and interruptions into session starts and pauses.",
-          "hash": "4e53d8fc45",
-          "bytes": 2480,
+          "hash": "60b8507693",
+          "bytes": 4184,
           "refs": [
             "src/main.ts"
           ],
           "refCount": 2,
-          "testedBy": []
+          "testedBy": [
+            "tests/entry-keys.test.ts"
+          ]
         }
       ],
       "classes": [],
@@ -2174,7 +2744,7 @@
     {
       "file": "src/editor/frame-effects.ts",
       "layer": "editor",
-      "lines": 62,
+      "lines": 86,
       "doc": "What a drawn frame can be doing, and which single effect shows it.\n\nA box carries at most one effect class at a time, chosen by precedence, so two\nstates never animate over each other. That is the whole rule: adding an effect\nis one entry in `FRAME_EFFECTS` and one block in `styles.css`. Nothing in\n`entry-frame.ts` changes, and no surface learns a new name.\n\nPure and Obsidian-free: the frame layer asks what to show, and the stylesheet\ndecides what showing it looks like.",
       "obsidian": false,
       "imports": [],
@@ -2185,8 +2755,8 @@
           "line": 14,
           "signature": "export interface FrameActivity",
           "doc": "The states the frame layer can observe about one entry.",
-          "hash": "ab5464d64c",
-          "bytes": 77,
+          "hash": "172b4c4535",
+          "bytes": 122,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -2194,7 +2764,7 @@
         {
           "name": "FrameEffect",
           "kind": "interface",
-          "line": 22,
+          "line": 26,
           "signature": "export interface FrameEffect",
           "doc": "One frame effect: the class it paints, when it applies, and what outranks what.",
           "hash": "098a744005",
@@ -2206,11 +2776,11 @@
         {
           "name": "FRAME_EFFECTS",
           "kind": "const",
-          "line": 38,
+          "line": 52,
           "signature": "export const FRAME_EFFECTS: readonly FrameEffect[] = [",
-          "doc": "Every effect a frame can show.\n\n`is-whispering` outranks `is-live` on purpose: a draft is liveness, and the\nmodel speculating over that draft is a request in flight, so both are true at\nonce — and the transient fact is the one worth the animation. One box, one\nmotion, and it answers \"what is happening now?\".",
-          "hash": "e95f9b0e6d",
-          "bytes": 255,
+          "doc": "Every effect a frame can show.\n\nPrecedence, highest first, is a statement about transience:\n\n- `is-aligned` (30) is one 800 ms acknowledgment of a captured alignment. The\n  recognition is the news; it outranks everything and then yields, because the\n  plugin removes the acknowledgment from the activity after it has played.\n- `is-whispering` (20) is a request in flight: the model speculating over the\n  draft is more transient than the draft itself.\n- `is-portal-live` (15) is a captured portal entry being written. It is a\n  narrower fact than \"an entry is live\" — the entry came through a portal, and\n  its frame says so with a slow colour pulse rather than the ordinary travel.\n- `is-live` (10) is the ordinary running clock, and stays exactly as it was.\n\nA paused portal entry is static: `is-portal-live` requires `live`, so a\ncaptured portal that is not being written carries no animation at all.",
+          "hash": "9ce8e0101f",
+          "bytes": 477,
           "refs": [
             "src/editor/entry-frame.ts"
           ],
@@ -2222,7 +2792,7 @@
         {
           "name": "frameEffect",
           "kind": "function",
-          "line": 52,
+          "line": 76,
           "signature": "export function frameEffect(activity: FrameActivity): FrameEffect | null",
           "doc": "The one effect a box shows for this activity, or null when nothing is happening.",
           "hash": "6b669bb17e",
@@ -2240,26 +2810,136 @@
       "dataAttrs": []
     },
     {
+      "file": "src/editor/portal-widget.ts",
+      "layer": "editor",
+      "lines": 510,
+      "doc": "Pending portals in Live Preview: one block tray at the end of today's note.\n\nThe tray is a block widget supplied by a `StateField`, because a plugin cannot\nprovide block decorations of its own. It sits after every recorded entry, so\nordinary writing naturally pushes it down, and on a genuinely empty note it is\nstill drawn — a portal is not an entry and does not need one to exist. Source\nmode stays raw text: the field yields nothing when Live Preview is off.\n\nThe tray's *existence* is state; its *contents* are not. The widget compares\nequal to itself for as long as it exists, so a document change, a second write,\na countdown, or another portal's expiry never rebuilds the element under the\nwriter's hands. Which portals are shown inside it is reconciled directly from\nthe controller, and each face is a `PortalSurface`: the same DOM builder the\nReading view mounts.\n\nSeconds never travel through CodeMirror. The tray subscribes once to the\nplugin's shared `EntryClock`, paints each face's labels in place, and dispatches\nonly when the controller reports a lifecycle change — a portal appearing,\nopening, being prepared, or going away. The controller is the only source of\ntruth for candidates and the hold; this layer never schedules, never writes, and\nnever reads a file.\n\nFocus is deliberate. A control gesture or `focusPortal` prepares the hold and\nmoves focus into the one prepared receptacle; nothing here focuses by itself.\nEscape releases the hold and returns focus to where it was, or to the editor\nwhen that target is gone.",
+      "obsidian": true,
+      "imports": [
+        "src/core/portals",
+        "src/entries/clock",
+        "src/entries/portals",
+        "src/settings",
+        "src/ui/portal",
+        "src/editor/entry-frame",
+        "@codemirror/state",
+        "@codemirror/view",
+        "obsidian"
+      ],
+      "exports": [
+        {
+          "name": "PortalWidgetHost",
+          "kind": "interface",
+          "line": 54,
+          "signature": "export interface PortalWidgetHost",
+          "doc": "Everything the tray may ask the plugin: the schedule, the clock, and the writer.",
+          "hash": "dc6a573b9e",
+          "bytes": 254,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-widget.test.ts"
+          ]
+        },
+        {
+          "name": "PortalTray",
+          "kind": "class",
+          "line": 105,
+          "signature": "export class PortalTray",
+          "doc": "The per-view writing tray.\n\nExported because the extension is a thin composition of it: tests and the\nfield share one object, so there is no second implementation of the surface\nlifecycle to drift.",
+          "hash": "4a455b1970",
+          "bytes": 8637,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-widget.test.ts"
+          ]
+        },
+        {
+          "name": "portalExtension",
+          "kind": "function",
+          "line": 447,
+          "signature": "export function portalExtension(host: PortalWidgetHost): Extension",
+          "doc": "The block tray for Live Preview: the field, its decorations, and its tray.",
+          "hash": "931ef0c902",
+          "bytes": 1037,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "focusPortal",
+          "kind": "function",
+          "line": 487,
+          "signature": "export function focusPortal(view: EditorView, id: string): boolean",
+          "doc": "Prepares an already-rendered portal and focuses its receptacle.\n\nThis is the one entry point for other surfaces: Reading and the navigator\nswitch the leaf and then ask here, so the focus and the DOM are the Live\nPreview tray's own. Never called by time passing.",
+          "hash": "2673e40dc0",
+          "bytes": 116,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/portal-widget.test.ts"
+          ]
+        },
+        {
+          "name": "trayDecorations",
+          "kind": "function",
+          "line": 497,
+          "signature": "export function trayDecorations(host: PortalWidgetHost, state: EditorState): DecorationSet",
+          "doc": "The tray's block position: after every entry, including on an empty note.\n\nExported as the field's pure half, so the Live Preview / source-mode rule and\nthe empty-note case are checked without mounting an editor.",
+          "hash": "bf4cb4ffd7",
+          "bytes": 570,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-widget.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
       "file": "src/editor/stopwatch-widget.ts",
       "layer": "editor",
-      "lines": 161,
-      "doc": "The rendered clock row.\n\nThe row is the frame's bottom edge, and its two ends are its two labels: the\nduration at the left corner, the moment at the right. The widget renders the\nrow the file holds — the duration from its sigil and milliseconds, then the\nmoment the parser read — and a half the row does not carry is not drawn: a\nmoment-only row has no clock at its left corner, and a duration-only row has\nno moment at its right. Each half carries its own background, so the rail is cut\ntwice and stays visible in the gap between them.\n\nEach half is three white digit spans around two dimension-coloured colons — the\nsame grammar the marker and the date label are drawn in, so the whole frame\nreads as one type. The sigil is followed by a real space, exactly as the file\nwrites it. The day link does not live here: the date labels the top-right\ncorner and is drawn by the decoration.\n\nWhile the session is live the widget ticks itself: it mutates the duration\nhalf's three digit spans every second and dispatches nothing, so the document,\nthe undo history and the decoration set are all untouched by the clock, and the\nmoment's digits — which never change — are never written to.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the liveness, the colour, the moment — `updateDOM`\nrewrites that DOM in place instead of rebuilding it, which is what used to make\nthe line hop a pixel on every keystroke.\n\n`n` is the entry it belongs to, so the frame layer can find the row by its\nstamp instead of by a DOM position. The ticker is keyed by the element, so\nwhichever surface owns the element owns the one interval.",
+      "lines": 273,
+      "doc": "The rendered clock row.\n\nThe row is the frame's bottom edge, and its two ends are its two labels: the\nduration at the left corner, the moment at the right. The widget renders the\nrow the file holds — the duration from its sigil and milliseconds, then the\nmoment the parser read — and a half the row does not carry is not drawn: a\nmoment-only row has no clock at its left corner, and a duration-only row has\nno moment at its right. Each half carries its own background, so the rail is cut\ntwice and stays visible in the gap between them.\n\nEach half is three white digit spans around two dimension-coloured colons — the\nsame grammar the marker and the date label are drawn in, so the whole frame\nreads as one type. The sigil is followed by a real space, exactly as the file\nwrites it. The day link does not live here: the date labels the top-right\ncorner and is drawn by the decoration.\n\nThree states decide what the two halves show:\n\n- `fixed` draws exactly what the file holds, and ticks not at all.\n- `awaiting` is a draft that has no moment yet: the left corner still reads zero\n  and the right corner is the wall clock, because that is the time the first\n  input will record. Nothing is written to the note.\n- `running` is the live session for this entry: the left corner is the shared\n  snapshot's duration, the right corner the moment the text already recorded.\n\nThe clock itself belongs to `EntryClock`, not this widget: the widget subscribes\nwhile it is mounted and unsubscribes when it is not. Subscribing paints the last\nsnapshot without advancing it, so a redraw, a second pane, or an adopted element\nnever moves the digits and never restarts the elapsed count.\n\nThe clock never moves the line. `eq` ignores the elapsed time, so a per\nkeystroke refresh of the decoration set finds the widget unchanged and leaves\nthe DOM, and the line's measured height, alone. When something a redraw must\nshow does change — the sigil, the mode, the colour, the moment — `updateDOM`\nrewrites that DOM in place instead of rebuilding it, which is what used to make\nthe line hop a pixel on every keystroke.\n\n`n` is the entry it belongs to, so the frame layer can find the row by its\nstamp instead of by a DOM position.",
       "obsidian": false,
       "imports": [
+        "src/core/clock",
         "src/core/duration",
+        "src/entries/clock",
         "src/ui/dcn",
         "src/editor/duration-ticker",
         "@codemirror/view"
       ],
       "exports": [
         {
+          "name": "ClockMode",
+          "kind": "type",
+          "line": 52,
+          "signature": "export type ClockMode = \"fixed\" | \"awaiting\" | \"running\"",
+          "doc": "What the row's two halves are showing: the file, a draft's wall clock, a live session.",
+          "hash": "dcd858eaef",
+          "bytes": 57,
+          "refs": [
+            "src/editor/entry-decorations.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
           "name": "DurationWidgetInput",
           "kind": "interface",
-          "line": 42,
+          "line": 55,
           "signature": "export interface DurationWidgetInput",
           "doc": "Everything the widget renders from; none of it changes while the clock ticks.",
-          "hash": "7000253dc7",
-          "bytes": 182,
+          "hash": "eb59e61fcb",
+          "bytes": 231,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -2269,17 +2949,18 @@
         {
           "name": "DurationWidget",
           "kind": "class",
-          "line": 57,
+          "line": 82,
           "signature": "export class DurationWidget extends WidgetType",
           "doc": "The clock row as a widget: two labels, digits that tick without a transaction.",
-          "hash": "3acb27bdc1",
-          "bytes": 3082,
+          "hash": "96fea98494",
+          "bytes": 6008,
           "refs": [
             "src/editor/entry-decorations.ts"
           ],
           "refCount": 2,
           "testedBy": [
             "tests/entry-decorations.test.ts",
+            "tests/stopped-clock-render.test.ts",
             "tests/stopwatch-widget.test.ts"
           ]
         }
@@ -2318,7 +2999,9 @@
           "refs": [],
           "refCount": 0,
           "testedBy": [
+            "tests/entry-keys.test.ts",
             "tests/start-entry.test.ts",
+            "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts",
             "tests/writer.test.ts"
           ]
@@ -2334,7 +3017,9 @@
           "refs": [],
           "refCount": 0,
           "testedBy": [
+            "tests/entry-keys.test.ts",
             "tests/start-entry.test.ts",
+            "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts",
             "tests/writer.test.ts"
           ]
@@ -2366,7 +3051,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 8,
+          "refCount": 11,
           "testedBy": []
         },
         {
@@ -2381,7 +3066,7 @@
             "src/entries/engine.ts",
             "src/entries/writer.ts"
           ],
-          "refCount": 6,
+          "refCount": 7,
           "testedBy": []
         },
         {
@@ -2395,8 +3080,72 @@
           "refs": [
             "src/entries/engine.ts"
           ],
-          "refCount": 2,
+          "refCount": 3,
           "testedBy": []
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/entries/clock.ts",
+      "layer": "entries",
+      "lines": 131,
+      "doc": "The one clock a running stopwatch is read through.\n\nEvery surface that draws a ticking clock — the entry's own row, a second pane\nshowing the same entry, the raw clock row it pauses into — reads this one\ninstance, so there is one sample per second and one snapshot to stop from. A\nwidget never owns a timer: it subscribes, paints, and unsubscribes.\n\nA tick samples the real time once, floors the session's elapsed milliseconds to\nwhole seconds, paints every subscriber synchronously, and only then commits that\npainted value to the session. Committing after the paint is what makes\n`displayed()` mean \"what is on screen\" rather than \"what the wall clock said\".\n\nSubscribing paints the last snapshot without advancing it: adoption, a redraw\nor a second view must never move the digits. The timer runs while someone is\npainting or while a session is live — an unmounted stopwatch still advances the\nshared snapshot, so the next surface shows the right second and a stop uses it.\n\nThe tick is scheduled for the nearest of the next wall second and the next\nsession second, from the actual time each wakeup, so a delayed callback\nreconciles itself instead of drifting or replaying skipped seconds.",
+      "obsidian": false,
+      "imports": [
+        "src/entries/session"
+      ],
+      "exports": [
+        {
+          "name": "ClockSnapshot",
+          "kind": "interface",
+          "line": 27,
+          "signature": "export interface ClockSnapshot",
+          "doc": "The last instant painted, and the duration that was painted with it.",
+          "hash": "bf70b71623",
+          "bytes": 77,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "ClockListener",
+          "kind": "type",
+          "line": 35,
+          "signature": "export type ClockListener = (now: number, durationMs: number) => void",
+          "doc": "Called once per tick with the sampled instant and the painted duration.",
+          "hash": "b5589332f4",
+          "bytes": 70,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "EntryClock",
+          "kind": "class",
+          "line": 41,
+          "signature": "export class EntryClock",
+          "doc": "One sampled, synchronously painted stopwatch shared by every mounted surface.",
+          "hash": "d2ae8c0ef0",
+          "bytes": 2252,
+          "refs": [
+            "src/editor/duration-ticker.ts",
+            "src/editor/entry-decorations.ts",
+            "src/editor/portal-widget.ts",
+            "src/editor/stopwatch-widget.ts",
+            "src/main.ts",
+            "src/reading/entry-processor.ts",
+            "src/reading/portals.ts"
+          ],
+          "refCount": 17,
+          "testedBy": [
+            "tests/entry-clock.test.ts",
+            "tests/entry-decorations.test.ts",
+            "tests/entry-processor.test.ts",
+            "tests/portal-widget.test.ts",
+            "tests/stopwatch-widget.test.ts"
+          ]
         }
       ],
       "classes": [],
@@ -2438,7 +3187,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 7,
+          "refCount": 9,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -2454,7 +3203,7 @@
           "refs": [
             "src/entries/engine.ts"
           ],
-          "refCount": 3,
+          "refCount": 4,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -2466,18 +3215,21 @@
     {
       "file": "src/entries/engine.ts",
       "layer": "entries",
-      "lines": 822,
+      "lines": 1381,
       "doc": "The editor path that changes an entry.\n\nEvery surface that changes an entry goes through here or through\n`writer.ts`, so the rules live in one place: `+` is final, `N` is only\nappended, `B` is the branch id, and a write never guesses — the plan is built\nfrom the exact text the attempt is about to replace, by `writer.ts`, and\nskipped when the entry it was aiming at is gone.\n\nA move — start, descend, jump — pushes the place it left onto the plugin's\nreturn stack before it goes, and carries `programmaticWrite`, so no move starts\na clock.",
       "obsidian": true,
       "imports": [
+        "src/core/alignments",
         "src/core/day",
         "src/core/duration",
         "src/core/entries",
         "src/core/insert",
         "src/core/navigator-stack",
+        "src/core/portals",
         "src/core/whisper",
         "src/editor/editor-path",
         "src/editor/entry-field",
+        "src/editor/portal-widget",
         "src/editor/view-registry",
         "src/main",
         "src/model/whisper-model",
@@ -2494,11 +3246,11 @@
         {
           "name": "EntryEngine",
           "kind": "class",
-          "line": 82,
+          "line": 112,
           "signature": "export class EntryEngine",
           "doc": "The only writer of entry text: every surface changes an entry through one of its methods.",
-          "hash": "e95259ecae",
-          "bytes": 20330,
+          "hash": "92cea8c527",
+          "bytes": 36795,
           "refs": [
             "src/main.ts"
           ],
@@ -2510,21 +3262,93 @@
       "dataAttrs": []
     },
     {
+      "file": "src/entries/portals.ts",
+      "layer": "entries",
+      "lines": 308,
+      "doc": "Portal lifecycle: which openings are showing now, which one is prepared, and\nwhich have already been entered in this plugin session.\n\nThe controller is a pure derivation of an injected clock plus the note's own\nhistory — it never writes, never touches the editor, and never reads a file.\nEverything it knows about a note arrives with a `source` string, so a caller\ncan only be shown a portal that the note's readable history has no record of.\nA note whose history cannot be read still shows its openings: the refusal\nbelongs to the capture, which can keep the writer's text.\n\nStatus is always recomputed from the actual instant, never accumulated from\ntimer callbacks: a delayed timeout, a backwards clock correction, or a laptop\nwaking after noon must all produce the same answer as a fresh derivation. The\none timer it keeps is a minute-boundary wakeup, because that is the only\ninstant at which the eleven-minute window can gain or lose a candidate.",
+      "obsidian": false,
+      "imports": [
+        "src/core/alignments",
+        "src/core/portals"
+      ],
+      "exports": [
+        {
+          "name": "PortalHost",
+          "kind": "interface",
+          "line": 37,
+          "signature": "export interface PortalHost",
+          "doc": "Everything the controller may know about the world outside itself.\n\nInjected rather than imported so a test can move time without changing the\nsystem clock, and so the plugin's main module stays the only owner of vault\nand workspace access. `todayPath` answers with the path the day note *would*\nhave, whether or not it exists yet: a passive schedule must never create it.",
+          "hash": "2b30895bb4",
+          "bytes": 239,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-controller.test.ts",
+            "tests/portal-widget.test.ts"
+          ]
+        },
+        {
+          "name": "PortalStatus",
+          "kind": "type",
+          "line": 53,
+          "signature": "export type PortalStatus = \"approaching\" | \"open\" | \"held\" | \"expired\"",
+          "doc": "A portal's relationship to now; `held` survives the opening's own minute.",
+          "hash": "dd28308536",
+          "bytes": 71,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "PortalHold",
+          "kind": "interface",
+          "line": 56,
+          "signature": "export interface PortalHold",
+          "doc": "The one prepared portal, pinned to the note that was showing it.",
+          "hash": "6f9f6b5973",
+          "bytes": 93,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "PortalController",
+          "kind": "class",
+          "line": 70,
+          "signature": "export class PortalController",
+          "doc": "Owns the held portal, the session's entered set, and the announced set.\n\nAnnouncements are remembered for the lifetime of this instance, which is\nexactly what keeps a backwards clock correction from speaking twice about the\nsame opening. A portal recorded in the note — or entered once already — never\nbecomes a candidate again, so a capture cannot be repeated.",
+          "hash": "de96315c9a",
+          "bytes": 5745,
+          "refs": [
+            "src/editor/portal-widget.ts",
+            "src/main.ts"
+          ],
+          "refCount": 5,
+          "testedBy": [
+            "tests/portal-controller.test.ts",
+            "tests/portal-widget.test.ts"
+          ]
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
       "file": "src/entries/session.ts",
       "layer": "entries",
-      "lines": 47,
-      "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
+      "lines": 105,
+      "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.\n\nTwo readings of the same session, and they are not interchangeable. `elapsed`\nis the raw sample a clock takes; `displayed` is the last whole second a surface\nactually painted. Stopping writes `displayed`, never a fresh sample: what the\nwriter saw is what the row keeps, so a delayed timer can never make a visible\n`00:00:07` become `00:00:09`.",
       "obsidian": false,
       "imports": [],
       "exports": [
         {
           "name": "ActiveEntry",
           "kind": "interface",
-          "line": 10,
+          "line": 16,
           "signature": "export interface ActiveEntry",
-          "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.",
-          "hash": "6b6647f7b6",
-          "bytes": 109,
+          "doc": "The live stopwatch: at most one entry is being written at a time.\n\nThe baseline is what the entry's own clock row already holds, so a draft\nresumed the next morning continues from where it stopped instead of restarting\nat zero. Settled entries never resume: editing a typo in a `+` entry changes\nnothing.\n\nTwo readings of the same session, and they are not interchangeable. `elapsed`\nis the raw sample a clock takes; `displayed` is the last whole second a surface\nactually painted. Stopping writes `displayed`, never a fresh sample: what the\nwriter saw is what the row keeps, so a delayed timer can never make a visible\n`00:00:07` become `00:00:09`.",
+          "hash": "526ceeb7cf",
+          "bytes": 131,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -2532,24 +3356,29 @@
         {
           "name": "EntrySession",
           "kind": "class",
-          "line": 19,
+          "line": 32,
           "signature": "export class EntrySession",
           "doc": "At most one live stopwatch; every field here is device-local.",
-          "hash": "850ab8bcca",
-          "bytes": 706,
+          "hash": "cf0c428ded",
+          "bytes": 1294,
           "refs": [
             "src/editor/entry-decorations.ts",
             "src/editor/entry-frame.ts",
             "src/editor/entry-keys.ts",
+            "src/entries/clock.ts",
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 12,
+          "refCount": 14,
           "testedBy": [
+            "tests/entry-clock.test.ts",
             "tests/entry-decorations.test.ts",
             "tests/entry-keys.test.ts",
+            "tests/entry-processor.test.ts",
             "tests/navigator.test.ts",
-            "tests/session.test.ts"
+            "tests/portal-widget.test.ts",
+            "tests/session.test.ts",
+            "tests/stopwatch-widget.test.ts"
           ]
         }
       ],
@@ -2638,9 +3467,10 @@
           "hash": "8785cbac11",
           "bytes": 491,
           "refs": [
+            "src/core/insert.ts",
             "src/main.ts"
           ],
-          "refCount": 3,
+          "refCount": 5,
           "testedBy": [
             "tests/writer.test.ts"
           ]
@@ -2652,10 +3482,11 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 362,
+      "lines": 573,
       "doc": "Weaver: a day note is a linear list of entries.\n\nAn entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS HH:MM:SS`.\nThe note and the navigator are the whole surface: nothing else navigates, and\nevery write of a day note goes through one writer.",
       "obsidian": true,
       "imports": [
+        "src/core/alignments",
         "src/core/clock",
         "src/core/close",
         "src/core/day",
@@ -2664,13 +3495,17 @@
         "src/core/insert",
         "src/core/navigator-stack",
         "src/editor/close-decorations",
+        "src/editor/editor-path",
         "src/editor/entry-decorations",
         "src/editor/entry-field",
         "src/editor/entry-frame",
         "src/editor/entry-keys",
+        "src/editor/portal-widget",
         "src/editor/view-registry",
+        "src/entries/clock",
         "src/entries/day-note",
         "src/entries/engine",
+        "src/entries/portals",
         "src/entries/session",
         "src/entries/writer",
         "src/model/whisper-model",
@@ -2678,6 +3513,7 @@
         "src/notices",
         "src/reading/close-processor",
         "src/reading/entry-processor",
+        "src/reading/portals",
         "src/settings",
         "src/settings-tab",
         "src/ui/css",
@@ -2689,23 +3525,26 @@
         {
           "name": "WeaverPlugin",
           "kind": "class",
-          "line": 58,
+          "line": 76,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the day-stats listener.",
-          "hash": "1d8227b08d",
-          "bytes": 8776,
+          "hash": "9880d4dee0",
+          "bytes": 15538,
           "refs": [
             "src/entries/engine.ts",
+            "src/reading/portals.ts",
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 6,
+          "refCount": 8,
           "testedBy": [
             "tests/navigator.test.ts",
             "tests/platform-classes.test.ts",
             "tests/plugin.test.ts",
+            "tests/reading-portals.test.ts",
             "tests/settings-tab.test.ts",
             "tests/start-entry.test.ts",
+            "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts"
           ]
         }
@@ -2925,7 +3764,7 @@
     {
       "file": "src/notices.ts",
       "layer": "root",
-      "lines": 133,
+      "lines": 166,
       "doc": "Every user-facing string Weaver shows, so wording stays consistent.",
       "obsidian": false,
       "imports": [
@@ -2944,7 +3783,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 16,
+          "refCount": 21,
           "testedBy": []
         },
         {
@@ -2958,7 +3797,7 @@
           "refs": [
             "src/main.ts"
           ],
-          "refCount": 2,
+          "refCount": 3,
           "testedBy": []
         },
         {
@@ -2969,8 +3808,10 @@
           "doc": "How long a warning that something was only half done stays up.",
           "hash": "8d507ab080",
           "bytes": 38,
-          "refs": [],
-          "refCount": 0,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 4,
           "testedBy": []
         },
         {
@@ -3057,13 +3898,73 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 7,
+          "refCount": 9,
           "testedBy": []
+        },
+        {
+          "name": "noticePortal",
+          "kind": "function",
+          "line": 34,
+          "signature": "export function noticePortal(time: string, remainingSeconds: number): string",
+          "doc": "A portal's one invitation. It usually arrives at the eleven-minute boundary,\nbut an app that was asleep may wake later; the remaining time is then spoken\nas what is actually left rather than as the time that has passed.",
+          "hash": "54a2a7db61",
+          "bytes": 439,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/notices.test.ts"
+          ]
+        },
+        {
+          "name": "noticePortalRefused",
+          "kind": "function",
+          "line": 48,
+          "signature": "export function noticePortalRefused(reason: string): string",
+          "doc": "A portal's first text could not become an entry: the note's own history could\nnot be read, or the write had nowhere to land. The receptacle keeps the text,\nso nothing the writer typed is lost while the cause is repaired.",
+          "hash": "179eaa2ca7",
+          "bytes": 143,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "NOTICE_PORTAL_UNAVAILABLE",
+          "kind": "const",
+          "line": 53,
+          "signature": "export const NOTICE_PORTAL_UNAVAILABLE = `Weaver: that portal is no longer open. $",
+          "doc": "The refusal when an explicit Prepare names an opening that is no longer live.",
+          "hash": "44763fb7bf",
+          "bytes": 108,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 4,
+          "testedBy": []
+        },
+        {
+          "name": "NOTICE_STOP_FAILED",
+          "kind": "const",
+          "line": 59,
+          "signature": "export const NOTICE_STOP_FAILED = \"Weaver: the stopped time could not be saved; the clock is held where it stopped. Check the vault is writable, then stop again.\"",
+          "doc": "A stop could not be written. The clock is held at the second it stopped on,\nso nothing is lost: check the vault is writable, then stop again.",
+          "hash": "252ae22ad0",
+          "bytes": 165,
+          "refs": [
+            "src/entries/engine.ts"
+          ],
+          "refCount": 3,
+          "testedBy": [
+            "tests/start-entry.test.ts"
+          ]
         },
         {
           "name": "NOTICE_WHISPERING",
           "kind": "const",
-          "line": 30,
+          "line": 63,
           "signature": "export const NOTICE_WHISPERING = \"Whispering the day…\"",
           "doc": "The moment a whole-day whisper pass begins.",
           "hash": "2553b5b8b9",
@@ -3079,7 +3980,7 @@
         {
           "name": "NOTICE_WHISPER_UNREACHABLE",
           "kind": "const",
-          "line": 33,
+          "line": 66,
           "signature": "export const NOTICE_WHISPER_UNREACHABLE = \"No whisper endpoint is reachable from this device.\"",
           "doc": "The refusal when this device cannot reach a whisper endpoint at all.",
           "hash": "5232f08006",
@@ -3095,7 +3996,7 @@
         {
           "name": "WhisperPass",
           "kind": "interface",
-          "line": 36,
+          "line": 69,
           "signature": "export interface WhisperPass",
           "doc": "What a whole-day whisper pass had to work with, and what became of it.",
           "hash": "fcc70a4701",
@@ -3107,7 +4008,7 @@
         {
           "name": "whisperFailurePhrase",
           "kind": "function",
-          "line": 59,
+          "line": 92,
           "signature": "export function whisperFailurePhrase(failure: WhisperFailure): string",
           "doc": "A failure as one clause, so the log and the notice cannot disagree.",
           "hash": "103b410380",
@@ -3122,7 +4023,7 @@
         {
           "name": "noticeWhispered",
           "kind": "function",
-          "line": 90,
+          "line": 123,
           "signature": "export function noticeWhispered(pass: WhisperPass): string",
           "doc": "What a whole-day pass earned.\n\nThe count alone was not enough: \"nothing to whisper\" is a claim about the note,\nand a pass whose every request was refused was saying it about 21 unwhispered\nentries. A pass now names what it wrote, out of what it tried, and why the rest\ndid not land.",
           "hash": "5db347c708",
@@ -3138,7 +4039,7 @@
         {
           "name": "NAVIGATOR_HINT_KEYS",
           "kind": "const",
-          "line": 113,
+          "line": 146,
           "signature": "export const NAVIGATOR_HINT_KEYS = \"↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close\"",
           "doc": "The navigator's footer on a desk: the whole key map, where it is pressed.",
           "hash": "6f69584a30",
@@ -3152,7 +4053,7 @@
         {
           "name": "NAVIGATOR_HINT_TOUCH",
           "kind": "const",
-          "line": 117,
+          "line": 150,
           "signature": "export const NAVIGATOR_HINT_TOUCH = \"tap to jump · tap the caret row to descend · ✕ twice deletes\"",
           "doc": "The navigator's footer on a phone: the same three gestures, as taps.",
           "hash": "3b46c0c908",
@@ -3166,7 +4067,7 @@
         {
           "name": "noticeCloseFrontmatter",
           "kind": "function",
-          "line": 120,
+          "line": 153,
           "signature": "export function noticeCloseFrontmatter(action: string): string",
           "doc": "The refusal for a write aimed at a note with an unclosed frontmatter block.",
           "hash": "08906f3861",
@@ -3180,7 +4081,7 @@
         {
           "name": "noticeCloseCodeBlock",
           "kind": "function",
-          "line": 125,
+          "line": 158,
           "signature": "export function noticeCloseCodeBlock(action: string): string",
           "doc": "The same refusal for an unclosed code block.",
           "hash": "616981c27f",
@@ -3194,7 +4095,7 @@
         {
           "name": "noticeLegacyFormat",
           "kind": "function",
-          "line": 130,
+          "line": 163,
           "signature": "export function noticeLegacyFormat(action: string): string",
           "doc": "The refusal for a note that still carries the old marker's clock.",
           "hash": "25537adedd",
@@ -3250,15 +4151,18 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 275,
-      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. A link to\nthe entry's recorded day is appended at the frame's top-right corner: the day\nits clock row holds, else the day-note filename, so a historical undated row\nstill names the note's day and a newly dated row names its own. The label\nnever reads the wall clock, and the clock row's two halves stay time-only —\nthe date is drawn once, at the top-right. The clock row's halves\nare digit and punctuation runs, exactly as in the editor.",
+      "lines": 306,
+      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. A persistent\ntop-right link labels a recorded creation day only when it differs from the\nday-note filename. Awaiting and historical undated entries carry no date link.\nThe label never reads the wall clock, and the clock row's two halves stay\ntime-only: digit and punctuation runs, exactly as in the editor.",
       "obsidian": true,
       "imports": [
+        "src/core/clock",
         "src/core/color",
         "src/core/day",
         "src/core/duration",
         "src/core/entries",
         "src/core/whisper",
+        "src/editor/duration-ticker",
+        "src/entries/clock",
         "src/ui/day-link",
         "src/ui/dcn",
         "obsidian"
@@ -3267,11 +4171,11 @@
         {
           "name": "createEntryProcessor",
           "kind": "function",
-          "line": 110,
-          "signature": "export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor",
-          "doc": "Builds the post processor that frames entries in Reading view. It reads the\nrendered paragraphs and their source section — no settings or vault access —\nand takes only the opener the frame's day link needs.",
-          "hash": "ffa390ccef",
-          "bytes": 7776,
+          "line": 132,
+          "signature": "export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClock): MarkdownPostProcessor",
+          "doc": "Builds the post processor that frames entries in Reading view. Section source\npreserves signed-list extraction; an optional shared clock paints awaiting\nmoments with section-owned subscription cleanup, without writing note bytes.",
+          "hash": "4a073f0ce2",
+          "bytes": 8383,
           "refs": [
             "src/main.ts"
           ],
@@ -3298,9 +4202,40 @@
       ]
     },
     {
+      "file": "src/reading/portals.ts",
+      "layer": "reading",
+      "lines": 302,
+      "doc": "Portals in Reading view: one tray at the end of each daily note that is open,\ndrawn from the same surface the editor uses.\n\nReading is a read-only view of a note, so the tray never writes: it shows the\nsame pending portal frames the Live Preview shows, and its Prepare action\nswitches the *same* leaf to Live Preview and focuses the same portal id. That\nis deliberate — one writing implementation, one set of keyboard and IME\nbehaviours — rather than a second editor living inside the reading surface.\n\nThe tray is a lifecycle component of the view, not of a paragraph: it is\nattached once per whole daily-note view and appended after everything the\nMarkdown renderer produced, so it appears whether the note has zero entries\nor many, and never twice because a post processor ran twice. Source text is\nread from the vault, never written, and an asynchronous read that loses its\nview or is replaced by a newer one is discarded rather than applied.\n\nSeconds come from the plugin's one shared `EntryClock`: this component owns no\ntimer of its own. A preview re-render can discard an appended tray without any\nworkspace event, so each mounted tray watches its own view for detachment and\nrebuilds itself — the view is the authority, not a clock tick.",
+      "obsidian": true,
+      "imports": [
+        "src/core/portals",
+        "src/main",
+        "src/ui/portal",
+        "obsidian"
+      ],
+      "exports": [
+        {
+          "name": "PortalReadingTray",
+          "kind": "class",
+          "line": 61,
+          "signature": "export class PortalReadingTray",
+          "doc": "Owns every Reading-view portal tray for the plugin's life.\n\n`start` wires the signals a tray depends on — the portal lifecycle, the note's\ntext, and the set of visible views; each mounted tray joins the plugin's one\nclock, and `destroy` removes every tray, so a view replacement or an unload\nleaves no orphaned subscription or DOM.",
+          "hash": "39ce26dd03",
+          "bytes": 7424,
+          "refs": [
+            "src/main.ts"
+          ],
+          "refCount": 3,
+          "testedBy": []
+        }
+      ],
+      "classes": [],
+      "dataAttrs": []
+    },
+    {
       "file": "src/settings-tab.ts",
       "layer": "root",
-      "lines": 279,
+      "lines": 290,
       "doc": "The settings surface: five groups, every control applied live.\n\nThe tab owns no rules of its own — it writes the settings model and calls\n`commit()`, so the effect of a control is always `settings.ts` plus `css.ts`.",
       "obsidian": true,
       "imports": [
@@ -3315,8 +4250,8 @@
           "line": 22,
           "signature": "export class WeaverSettingTab extends PluginSettingTab",
           "doc": "Settings UI, in five groups: what is written, where the day note is, how an\nentry looks, what reads it, and the rest.\n\nEvery control writes through `commit()` so changes apply live.",
-          "hash": "a6763aa550",
-          "bytes": 8846,
+          "hash": "1da43cc192",
+          "bytes": 9457,
           "refs": [
             "src/main.ts"
           ],
@@ -3334,7 +4269,7 @@
     {
       "file": "src/settings.ts",
       "layer": "root",
-      "lines": 245,
+      "lines": 253,
       "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
       "obsidian": false,
       "imports": [],
@@ -3345,21 +4280,22 @@
           "line": 15,
           "signature": "export interface WeaverSettings",
           "doc": "Weaver settings model.\n\nThis module is deliberately free of any `obsidian` import so the\nnormalization rules can be unit-tested in plain Node. The settings tab lives\nin `settings-tab.ts`.\n\nA field's name is the product's word for the thing: `entrySize`, never\n`headingSize`. `heading` is Markdown syntax here, and a setting that draws an\nentry is not about syntax. The v2 spellings survive in exactly one place —\n`LEGACY_SETTING_KEYS` — because a vault's saved `data.json` is data, not code,\nand renaming a field must not silently reset it.",
-          "hash": "8b0d4f9823",
-          "bytes": 571,
+          "hash": "18d23f0427",
+          "bytes": 601,
           "refs": [
             "src/editor/entry-frame.ts",
+            "src/editor/portal-widget.ts",
             "src/entries/day-note.ts",
             "src/main.ts",
             "src/ui/css.ts"
           ],
-          "refCount": 10,
+          "refCount": 12,
           "testedBy": []
         },
         {
           "name": "WeaverData",
           "kind": "interface",
-          "line": 64,
+          "line": 70,
           "signature": "export interface WeaverData",
           "doc": "What is on disk: a version and one settings object.",
           "hash": "b361c9aab0",
@@ -3373,17 +4309,19 @@
         {
           "name": "DEFAULT_SETTINGS",
           "kind": "const",
-          "line": 70,
+          "line": 76,
           "signature": "export const DEFAULT_SETTINGS: WeaverSettings =",
           "doc": "Every field's value before a vault says otherwise.",
-          "hash": "6c4ca50d1c",
-          "bytes": 508,
+          "hash": "a3ccb180cf",
+          "bytes": 532,
           "refs": [
             "src/settings-tab.ts"
           ],
           "refCount": 7,
           "testedBy": [
             "tests/day-note.test.ts",
+            "tests/portal-widget.test.ts",
+            "tests/reading-portals.test.ts",
             "tests/settings.test.ts",
             "tests/start-entry.test.ts"
           ]
@@ -3391,7 +4329,7 @@
         {
           "name": "isValidEntrySize",
           "kind": "function",
-          "line": 98,
+          "line": 105,
           "signature": "export function isValidEntrySize(value: string): boolean",
           "doc": "True for a CSS length Weaver will accept as an entry size.",
           "hash": "97ce16a28a",
@@ -3406,7 +4344,7 @@
         {
           "name": "isValidWhisperEndpoint",
           "kind": "function",
-          "line": 105,
+          "line": 112,
           "signature": "export function isValidWhisperEndpoint(value: string): boolean",
           "doc": "True for an absolute http(s) endpoint with no whitespace.",
           "hash": "d607fb756d",
@@ -3420,7 +4358,7 @@
         {
           "name": "whisperReachable",
           "kind": "function",
-          "line": 120,
+          "line": 127,
           "signature": "export function whisperReachable(endpoint: string, mobile: boolean): boolean",
           "doc": "True when this device can reach a whisper endpoint at all.\n\n`data.json` syncs, so a loopback endpoint travels with the vault and means *the\nreader's own device*. On a phone that is guaranteed to reach nothing, so the\nphone does not ask: capture is untouched, rendering is complete, and the\naddress the writer sets is one both machines can reach.",
           "hash": "a1844eb0f0",
@@ -3436,11 +4374,11 @@
         {
           "name": "normalizeSettings",
           "kind": "function",
-          "line": 185,
+          "line": 192,
           "signature": "export function normalizeSettings(data: unknown): WeaverSettings",
           "doc": "Normalizes any persisted payload into a complete, clamped settings object.\nUnknown fields are dropped; invalid values fall back to the defaults; a v2\nfield name keeps its value under the v3 name.",
-          "hash": "9b768882e2",
-          "bytes": 1644,
+          "hash": "c605a342e5",
+          "bytes": 1723,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -3450,7 +4388,7 @@
         {
           "name": "normalizeData",
           "kind": "function",
-          "line": 230,
+          "line": 238,
           "signature": "export function normalizeData(data: unknown): WeaverData",
           "doc": "Normalizes persisted plugin data. A bare settings object written by an earlier\nbuild is wrapped instead of being discarded, and every payload is reported as\nthe current version — the migration is the normalization.",
           "hash": "33f8ccdc56",
@@ -3470,8 +4408,8 @@
     {
       "file": "src/ui/css.ts",
       "layer": "ui",
-      "lines": 72,
-      "doc": "The generated stylesheet: the five numbers a note is drawn with, and the two\nemphasis colours. Nothing is generated per level — depth rides on the\n`--weaver-d` custom property a line carries, so a deeper entry costs nothing.",
+      "lines": 80,
+      "doc": "The generated stylesheet: the five numbers a note is drawn with, the two\nemphasis colours, and the six anchor colours. Nothing is generated per level —\ndepth rides on the `--weaver-d` custom property a line carries, so a deeper\nentry costs nothing.\n\nThe anchor colours are emitted as custom properties for the portal's\nmulticolour rail, which is the only surface that needs the palette as a\nwhole. It reads `--weaver-anchor-1` … `--weaver-anchor-6` rather than\nrestating the hex values in the stylesheet: one palette, one place to change\nit.",
       "obsidian": false,
       "imports": [
         "src/core/color",
@@ -3481,7 +4419,7 @@
         {
           "name": "STYLE_ID",
           "kind": "const",
-          "line": 11,
+          "line": 18,
           "signature": "export const STYLE_ID = \"weaver-style\"",
           "doc": "The id of the one `<style>` element the settings are injected into.",
           "hash": "cce7a8e075",
@@ -3493,11 +4431,11 @@
         {
           "name": "buildCss",
           "kind": "function",
-          "line": 14,
+          "line": 21,
           "signature": "export function buildCss(settings: WeaverSettings): string",
           "doc": "The whole generated stylesheet for these settings.",
-          "hash": "f25017d500",
-          "bytes": 1420,
+          "hash": "3731087775",
+          "bytes": 1503,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -3505,7 +4443,7 @@
         {
           "name": "applyCss",
           "kind": "function",
-          "line": 56,
+          "line": 64,
           "signature": "export function applyCss(settings: WeaverSettings): void",
           "doc": "Writes the stylesheet into a single `<style>` element in `<head>`. Reusing one\nelement keeps the DOM stable across settings changes.",
           "hash": "12a6a86fff",
@@ -3519,7 +4457,7 @@
         {
           "name": "removeCss",
           "kind": "function",
-          "line": 69,
+          "line": 77,
           "signature": "export function removeCss(): void",
           "doc": "Removes the injected stylesheet on unload.",
           "hash": "4bc00b673a",
@@ -3675,9 +4613,10 @@
           "bytes": 556,
           "refs": [
             "src/editor/stopwatch-widget.ts",
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/portal.ts"
           ],
-          "refCount": 6,
+          "refCount": 10,
           "testedBy": []
         }
       ],
@@ -3692,28 +4631,31 @@
     {
       "file": "src/ui/navigator.ts",
       "layer": "ui",
-      "lines": 454,
-      "doc": "The navigator: today's entries, the return stack, and the three gestures.\n\nOne component serves both platforms. Desktop gets a card over the note and the\nkey map in its footer; a phone gets the same card as a full-screen sheet, where\na row is a tap target and the footer names the taps. Nothing else navigates:\nthere is no second list, no query, and no rectangle drawn on the note.\n\nIt is a self-mounted overlay rather than a `Modal` for one reason: it must\nnever take a `Scope`. A scope is what swallowed `⌘,` and stopped Obsidian's own\nsettings from opening. Keys are handled on the card in the capture phase, and\nevery chord this card does not claim reaches Obsidian untouched.\n\nNothing here caches offsets across a write: every action re-reads the document,\nbecause a write moves every line under it.",
+      "lines": 811,
+      "doc": "The navigator: today's entries, the return stack, today's portal history, and\nthe gestures that move between them.\n\nOne component serves both platforms. Desktop gets a card over the note and the\nkey map in its footer; a phone gets the same card as a full-screen sheet, where\na row is a tap target and the footer names the taps. Nothing else navigates:\nthere is no second list, no query, and no rectangle drawn on the note.\n\nThe portal section is the human-facing half of the note's `weaver-alignments`\nblock. It lists facts — an opening that was really entered — beside the day's\nremaining schedule, in one chronology. A schedule row is reconstructed for the\ncurrent local day and never written; a recorded row keeps the opening's\noriginal offset and the actual beginning, so travel cannot rewrite what\nhappened. This is a list, not a scoreboard: no percentage, no missed count, and\nno targets.\n\nIt is a self-mounted overlay rather than a `Modal` for one reason: it must\nnever take a `Scope`. A scope is what swallowed `⌘,` and stopped Obsidian's own\nsettings from opening. Keys are handled on the card in the capture phase, and\nevery chord this card does not claim reaches Obsidian untouched.\n\nNothing here caches offsets across a write: every action re-reads the document,\nbecause a write moves every line under it. The card is open only while the\nwriter is choosing; it owns exactly one controller subscription and one\ndocument listener, both removed on close, and neither is a timer.",
       "obsidian": false,
       "imports": [
+        "src/core/clock",
         "src/core/color",
         "src/core/entries",
         "src/core/navigator-stack",
+        "src/core/portal-history",
         "src/editor/entry-field",
         "src/main",
         "src/notices",
         "src/ui/dcn",
+        "@codemirror/state",
         "@codemirror/view"
       ],
       "exports": [
         {
           "name": "Navigator",
           "kind": "class",
-          "line": 42,
+          "line": 82,
           "signature": "export class Navigator",
-          "doc": "The card: today's entries, the return stack, and the three gestures.",
-          "hash": "2d455a315d",
-          "bytes": 11921,
+          "doc": "The card: today's entries, the return stack, portals, and the gestures.",
+          "hash": "facec75295",
+          "bytes": 21933,
           "refs": [
             "src/main.ts"
           ],
@@ -3724,6 +4666,7 @@
         }
       ],
       "classes": [
+        "weaver-alignments",
         "weaver-navigator",
         "weaver-navigator-append",
         "weaver-navigator-card",
@@ -3737,6 +4680,15 @@
         "weaver-navigator-label",
         "weaver-navigator-list",
         "weaver-navigator-open",
+        "weaver-navigator-portal",
+        "weaver-navigator-portal-label",
+        "weaver-navigator-portal-moment",
+        "weaver-navigator-portal-time",
+        "weaver-navigator-portal-unavailable",
+        "weaver-navigator-portals-all",
+        "weaver-navigator-portals-error",
+        "weaver-navigator-portals-note",
+        "weaver-navigator-portals-toggle",
         "weaver-navigator-row",
         "weaver-navigator-stop",
         "weaver-navigator-time",
@@ -3818,6 +4770,184 @@
       ],
       "classes": [],
       "dataAttrs": []
+    },
+    {
+      "file": "src/ui/portal.ts",
+      "layer": "ui",
+      "lines": 723,
+      "doc": "The pending portal, drawn once for every surface that can show one.\n\nA portal is not an entry: it has no marker, no `n`, and no bytes in the note\nuntil its first text is accepted. Its frame therefore carries its own small\nvocabulary — a rail label, a countdown, the wall clock, and one control — and\nthis module is the only place that vocabulary is built. Live Preview mounts a\nsurface with a writing receptacle; Reading mounts the same surface without\none, because Reading must never write. Everything a surface knows arrives\nfrom its owner: it owns no timer, reads no file, and never dispatches.\n\nThe writing receptacle is a deliberate, temporary input position, not a second\neditor. It exists for exactly one insertion: the first nonempty text at or\nafter the opening. Until the opening it accepts nothing and buffers nothing —\na blocked attempt says why once, quietly, instead of announcing every key. A\nheld key repeating across the boundary stays blocked until its key is released\nand pressed again, so leaning on a key cannot spend an opening. Once the text\nis handed over, the owner writes it into the real entry and focus moves to the\nreal caret; this element never echoes what it did not accept.\n\nA refused handoff is the one case where text stays here. The surface keeps the\nrecovered text in place and says that the entry could not be started, so the\nwriter can try again without retyping. It shows no celebration and starts\nnothing.\n\nThe wall clock is painted into the same digit runs as every other clock row,\none second at a time, from the instant the owner samples. No tick is a\ntransaction, and no tick moves the frame.",
+      "obsidian": false,
+      "imports": [
+        "src/core/clock",
+        "src/core/portals",
+        "src/editor/duration-ticker",
+        "src/ui/dcn"
+      ],
+      "exports": [
+        {
+          "name": "PortalDisplayPhase",
+          "kind": "type",
+          "line": 37,
+          "signature": "export type PortalDisplayPhase = \"approaching\" | \"open\" | \"held\" | \"expired\"",
+          "doc": "The phase a face shows; `held` is a prepared opening past its own minute.",
+          "hash": "2d3dc15264",
+          "bytes": 77,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "PortalSurfaceMode",
+          "kind": "type",
+          "line": 40,
+          "signature": "export type PortalSurfaceMode = \"write\" | \"reading\"",
+          "doc": "Writing mounts the receptacle; Reading only offers the deliberate switch.",
+          "hash": "4702554269",
+          "bytes": 52,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "PortalSurfaceOptions",
+          "kind": "interface",
+          "line": 43,
+          "signature": "export interface PortalSurfaceOptions",
+          "doc": "What the owner supplies: the facts, the gestures, and nothing else.",
+          "hash": "b4b84fa94b",
+          "bytes": 323,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "PORTAL_REFUSAL",
+          "kind": "const",
+          "line": 68,
+          "signature": "export const PORTAL_REFUSAL = \"Could not start this entry\"",
+          "doc": "A refusal with no more specific cause.",
+          "hash": "ed68b9e21a",
+          "bytes": 59,
+          "refs": [
+            "src/editor/portal-widget.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "portalTimeLabel",
+          "kind": "function",
+          "line": 81,
+          "signature": "export function portalTimeLabel(portal: PortalInstant): string",
+          "doc": "The rail label: the opening's frozen local hour and minute, never a target.",
+          "hash": "aa092fc4a8",
+          "bytes": 131,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "portalCountdownLabel",
+          "kind": "function",
+          "line": 91,
+          "signature": "export function portalCountdownLabel(portal: PortalInstant, now: number, prepared = false): string",
+          "doc": "The bottom-left label: a countdown, then the state once the minute starts.\n\n`prepared` is what distinguishes a held opening from one that has passed;\nwithout it the label never claims a hold the surface does not have.",
+          "hash": "b0f38d8006",
+          "bytes": 289,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "PortalSurface",
+          "kind": "class",
+          "line": 103,
+          "signature": "export class PortalSurface",
+          "doc": "The one portal frame: labels, one control, an optional receptacle.",
+          "hash": "43705cd33c",
+          "bytes": 17189,
+          "refs": [
+            "src/editor/portal-widget.ts",
+            "src/reading/portals.ts"
+          ],
+          "refCount": 7,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "portalTrayElement",
+          "kind": "function",
+          "line": 703,
+          "signature": "export function portalTrayElement(): HTMLElement",
+          "doc": "The empty tray element every view mounts its pending portals into.",
+          "hash": "1cd87c0b15",
+          "bytes": 206,
+          "refs": [
+            "src/editor/portal-widget.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "mountPortalTray",
+          "kind": "function",
+          "line": 711,
+          "signature": "export function mountPortalTray(container: HTMLElement): HTMLElement",
+          "doc": "Creates and appends the tray a view renders its pending portals in.",
+          "hash": "69aacc92e7",
+          "bytes": 154,
+          "refs": [
+            "src/reading/portals.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        },
+        {
+          "name": "mountPortalSurface",
+          "kind": "function",
+          "line": 718,
+          "signature": "export function mountPortalSurface(container: HTMLElement, options: PortalSurfaceOptions): PortalSurface",
+          "doc": "Mounts one pending portal into a tray, in the tray's own order.",
+          "hash": "4850d3a472",
+          "bytes": 211,
+          "refs": [
+            "src/editor/portal-widget.ts",
+            "src/reading/portals.ts"
+          ],
+          "refCount": 4,
+          "testedBy": [
+            "tests/portal-surface.test.ts"
+          ]
+        }
+      ],
+      "classes": [
+        "weaver-frame-label",
+        "weaver-portal",
+        "weaver-portal-clock",
+        "weaver-portal-countdown",
+        "weaver-portal-footer",
+        "weaver-portal-input",
+        "weaver-portal-label",
+        "weaver-portal-lock",
+        "weaver-portal-prepare",
+        "weaver-portal-refusal",
+        "weaver-portal-tray"
+      ],
+      "dataAttrs": [
+        "data-weaver-portal",
+        "data-weaver-portal-tray"
+      ]
     }
   ],
   "settings": [
@@ -3827,6 +4957,16 @@
       "readers": [
         "src/main.ts",
         "src/settings-tab.ts"
+      ]
+    },
+    {
+      "field": "portalsEnabled",
+      "value": "true",
+      "readers": [
+        "src/editor/portal-widget.ts",
+        "src/main.ts",
+        "src/settings-tab.ts",
+        "src/ui/navigator.ts"
       ]
     },
     {
@@ -3898,6 +5038,8 @@
       "value": "true",
       "readers": [
         "src/editor/entry-frame.ts",
+        "src/editor/portal-widget.ts",
+        "src/reading/portals.ts",
         "src/settings-tab.ts"
       ]
     },
@@ -4023,10 +5165,29 @@
       "weaver-navigator-label",
       "weaver-navigator-list",
       "weaver-navigator-open",
+      "weaver-navigator-portal",
+      "weaver-navigator-portal-label",
+      "weaver-navigator-portal-moment",
+      "weaver-navigator-portal-time",
+      "weaver-navigator-portal-unavailable",
+      "weaver-navigator-portals-all",
+      "weaver-navigator-portals-error",
+      "weaver-navigator-portals-note",
+      "weaver-navigator-portals-toggle",
       "weaver-navigator-row",
       "weaver-navigator-time",
       "weaver-navigator-title",
       "weaver-phone",
+      "weaver-portal",
+      "weaver-portal-clock",
+      "weaver-portal-countdown",
+      "weaver-portal-footer",
+      "weaver-portal-input",
+      "weaver-portal-label",
+      "weaver-portal-lock",
+      "weaver-portal-prepare",
+      "weaver-portal-refusal",
+      "weaver-portal-tray",
       "weaver-settings"
     ],
     "definedByScript": [
@@ -4044,6 +5205,7 @@
       "weaver-unequal"
     ],
     "unstyled": [
+      "weaver-alignments",
       "weaver-duration-clock",
       "weaver-navigator-entry",
       "weaver-navigator-stop",

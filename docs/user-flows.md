@@ -8,8 +8,10 @@ there is nothing to do.
 1. `⌘⇧E`, or *Start an entry* from the palette or the toolbar. Today's note is
    created if it does not exist; otherwise it is opened.
 2. An empty root entry is started at the tip: `{ 1.k.m }`, one blank prose line,
-   then its clock row `HH:MM:SS - 00:00:00`, and the caret on the blank line. `k` is
-   one past the day's depth-1 entries; `m` is one past its largest sequence.
+   then its clock row `- 00:00:00`, and the caret on the blank line. `k` is
+   one past the day's depth-1 entries; `m` is one past its largest sequence. The
+   row carries only a duration: the entry is awaiting its first text, and the
+   date and moment are the time the writer types, not the time the block was made.
 
 Writes: the marker and the clock row, plus the frontmatter block when the note is
 created. Undo: one step, the whole entry. The write goes through the editor when the
@@ -20,14 +22,24 @@ revealed in a tab of its own, never replacing the tab you are in.
 
 ## Flow: write
 
-1. Type. Your own input in the entry starts the session with the draft's stored
-   duration as the baseline. The vault reloading a note, and Weaver's own writes,
-   start nothing: an entry nobody has typed in has no time in it.
-2. The rendered duration reads `- HH:MM:SS` and ticks; the file still says
-   `- 00:00:00` in the clock row.
+1. Type. In an awaiting entry the first text and its recorded beginning are one
+   transaction: the day and moment come from that input's own timestamp, so an
+   entry made before midnight and typed after it records the day it was written
+   in. One undo takes the text and the beginning back together; a redo restores
+   them without restarting a clock. Undoing the beginning of a running entry ends
+   its clock without writing anything, and the redo that follows never revives
+   it. Later input is ordinary editor input. An IME
+   composition stays native while it is preedit: only the committed text is
+   captured, with the beginning written into the composition's own undo group;
+   a cancelled composition records nothing.
+2. Your own input starts the session with the draft's stored duration as the
+   baseline. The vault reloading a note, and Weaver's own writes, start nothing:
+   an entry nobody has typed in has no time in it.
 
-Writes: nothing until the writing stops. The ticking widget mutates its own digit
-spans, so no transaction and no undo entry is created by the clock.
+Writes: nothing until the writing stops, beyond the first text's one transaction.
+The ticking widget mutates its own digit spans, so no transaction and no undo
+entry is created by the clock; the file's duration half still says `- 00:00:00`
+until a stop.
 
 ## Flow: pause
 
@@ -41,11 +53,16 @@ spans, so no transaction and no undo entry is created by the clock.
 Writes: the duration half of the clock row of the entry the clock was on, through
 the same one writer as every other day-note write — the open editor when there is
 one, `Vault.process` otherwise, re-read first and skipped if the entry is gone. The
+number written is the last second the clock painted, not a fresh reading taken as
+the clock stops: the row keeps exactly the digits that were on screen. The
 moment keeps its own characters, so the row cannot move. Nothing is written when the
 second has not changed — that guard is why a caret move costs at most one rewrite
 per second. Not added to the undo history: a pause is not an edit you asked for.
 
-Refused, silently, when the entry has been deleted or settled in the meantime.
+Refused, silently, when the entry has been deleted or settled in the meantime. A
+write that fails says so and holds the clock at the second it stopped on: the stop
+is not lost, a retry writes the same digits, and only fresh typing restarts the
+count from there.
 
 ## Flow: settle, then descend
 
@@ -59,8 +76,10 @@ Refused, silently, when the entry has been deleted or settled in the meantime.
 
 Writes: the duration (one transaction), then the child's marker and clock row (a
 second, single change: an insert renumbers nothing). Each is undoable on its own.
-The child's own clock row reads `HH:MM:SS - 00:00:00`, and its stopwatch does not
-start until the first keystroke.
+The duration written is the last second on screen: `⏎` never refreshes the clock,
+so settling cannot move a visible digit. The child's own clock row reads
+`- 00:00:00`, and its stopwatch does not start until the first keystroke, which
+also records its date and moment.
 
 A settled entry is final: `⏎` there descends, it never rewrites the `+` half.
 Refused (nothing written, `⏎` not handled) only when the caret is not in an entry.

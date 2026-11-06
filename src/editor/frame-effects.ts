@@ -16,6 +16,10 @@ export interface FrameActivity {
   live: boolean;
   /** True while a whisper request for this entry has been pending long enough to be a wait. */
   reading: boolean;
+  /** True while this entry was captured through a portal (validated against recorded history). */
+  portal: boolean;
+  /** True for the short acknowledgment after a captured portal alignment was recognised. */
+  aligned: boolean;
 }
 
 /** One frame effect: the class it paints, when it applies, and what outranks what. */
@@ -30,16 +34,36 @@ export interface FrameEffect {
 /**
  * Every effect a frame can show.
  *
- * `is-whispering` outranks `is-live` on purpose: a draft is liveness, and the
- * model speculating over that draft is a request in flight, so both are true at
- * once — and the transient fact is the one worth the animation. One box, one
- * motion, and it answers "what is happening now?".
+ * Precedence, highest first, is a statement about transience:
+ *
+ * - `is-aligned` (30) is one 800 ms acknowledgment of a captured alignment. The
+ *   recognition is the news; it outranks everything and then yields, because the
+ *   plugin removes the acknowledgment from the activity after it has played.
+ * - `is-whispering` (20) is a request in flight: the model speculating over the
+ *   draft is more transient than the draft itself.
+ * - `is-portal-live` (15) is a captured portal entry being written. It is a
+ *   narrower fact than "an entry is live" — the entry came through a portal, and
+ *   its frame says so with a slow colour pulse rather than the ordinary travel.
+ * - `is-live` (10) is the ordinary running clock, and stays exactly as it was.
+ *
+ * A paused portal entry is static: `is-portal-live` requires `live`, so a
+ * captured portal that is not being written carries no animation at all.
  */
 export const FRAME_EFFECTS: readonly FrameEffect[] = [
+  {
+    className: "is-aligned",
+    precedence: 30,
+    active: (activity) => activity.aligned
+  },
   {
     className: "is-whispering",
     precedence: 20,
     active: (activity) => activity.reading
+  },
+  {
+    className: "is-portal-live",
+    precedence: 15,
+    active: (activity) => activity.portal && activity.live
   },
   {
     className: "is-live",

@@ -53,7 +53,7 @@ appears in copy — depth reads `1D`…`nD`.
 | Loop | Trigger | What moves | Lives in |
 | --- | --- | --- | --- |
 | Start | `⌘⇧E` — *Start an entry* | An empty root entry at the tip of today's note, with `- 00:00:00`. Works inside an editor too. | Evidence |
-| Write | The first keystroke in a draft | The session's clock; the file keeps `-`. | Session |
+| Write | The first committed text in an awaiting draft | The input's date and moment, once, and the session's clock; later input resumes without redating. | Evidence and session |
 | Settle | `⏎` on an open entry | `-` or `=` becomes `+`, once, and the clock stops. Nothing else moves. | Evidence |
 | Descend | `⏎` again, on a settled entry, or *Descend into a child entry* from the palette or toolbar | A child opens one dimension deeper with the caret in its prose. | Evidence |
 | Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
@@ -75,10 +75,11 @@ something.**
 
 Evidence is what a reader of the vault would find and understand without the
 plugin: marker lines, prose, clock rows, `✓` close lines, whisper rows, and the
-frontmatter fields `date`, `travels`, `depth` and `duration`. Evidence is written
-by a command, by `⏎`, by leaving the note, and — once, after the writing ended — by
-the model. A whisper is the third evidence write of an entry and the only evidence
-the writer did not author.
+frontmatter fields `date`, `travels`, `depth`, `duration` and `weaver-alignments`.
+Evidence is written by a command, first committed text, `⏎`, leaving the note,
+and — once, after the writing ended — the model. Portal history records actual
+beginnings, never passive invitations or missed attempts. A whisper is the only
+reading the writer did not author.
 
 Session is where this installation is working right now: which entry is being
 written, its baseline, the return stack, the caret. Session state is
@@ -88,6 +89,11 @@ time become the clock row; settle (`+`) and pause (`=`) are its two intents. A
 whisper crosses a different boundary — the model's reading of text that is already
 evidence — and it crosses it once, guarded by a fingerprint of the text it read.
 
+An approaching portal is session, not evidence: it has no entry sequence.
+Preparation only holds a place for first text. The actual first input crosses
+into evidence atomically as prose, a recorded beginning and its history event.
+Alignment is a reading of exact recorded seconds, never a target, score or obligation.
+
 Two consequences follow, and both are implemented as such:
 
 - **The clock's own writes are `=` only.** A pause writes the open entry's elapsed
@@ -96,10 +102,11 @@ Two consequences follow, and both are implemented as such:
   the writer's own input and on nothing else — the vault reloading a note starts
   nothing — and it stops at every interruption of writing: a caret move, a blur, a
   wheel, a finger, another leaf, a card opening.
-- **Creation date and time are written once.** New entries record both in their
-  clock row, even when added to an older note. Undated historical entries inherit
-  the filename day. Reading, resuming, pausing and settling never redate an entry,
-  and opening yesterday's file never rewrites it.
+- **Beginning date and time are written once, on first input.** A new root or child
+  has only a duration until text is committed. The same observed input instant
+  records both day and moment, even in an older note or across midnight. Historical
+  undated moments inherit the filename day and remain untouched. Reading, resuming,
+  pausing and settling never redate an entry; an untouched settled entry stays momentless.
 
 ## Progression
 

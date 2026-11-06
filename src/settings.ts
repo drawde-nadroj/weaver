@@ -16,6 +16,12 @@ export interface WeaverSettings {
   // Writing
   /** Rewrite the day note's `travels`, `depth` and `duration` fields. */
   writeDayCounters: boolean;
+  /**
+   * Offer upcoming portals: local minutes on the :00/:11/:22/:33/:44/:55
+   * schedule and the mirrored HH:HH of each hour, announced eleven minutes
+   * ahead and enterable at the opening second.
+   */
+  portalsEnabled: boolean;
 
   // Day
   /** Fallback folder, used only when the Daily Notes plugin cannot be read. */
@@ -69,6 +75,7 @@ export interface WeaverData {
 /** Every field's value before a vault says otherwise. */
 export const DEFAULT_SETTINGS: WeaverSettings = {
   writeDayCounters: true,
+  portalsEnabled: true,
 
   dayNoteFolder: "Chronomancer",
   dayNoteFormat: "YYYY.MM.DD",
@@ -190,6 +197,7 @@ export function normalizeSettings(data: unknown): WeaverSettings {
 
   return {
     writeDayCounters: bool(raw.writeDayCounters, DEFAULT_SETTINGS.writeDayCounters),
+    portalsEnabled: bool(raw.portalsEnabled, DEFAULT_SETTINGS.portalsEnabled),
 
     dayNoteFolder: text(raw.dayNoteFolder, DEFAULT_SETTINGS.dayNoteFolder),
     dayNoteFormat: text(raw.dayNoteFormat, DEFAULT_SETTINGS.dayNoteFormat),

@@ -6,23 +6,28 @@
  * every write of a day note goes through one writer.
  */
 
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile, type MarkdownView } from "obsidian";
 
-import { formatClock } from "./core/clock";
+import { readAlignments } from "./core/alignments";
+import { formatClock, pad2 } from "./core/clock";
 import { parseClose, planCloseDay } from "./core/close";
 import { applyDayStats, recountDay } from "./core/day-stats";
 import { dayKey } from "./core/day";
-import { parseEntries } from "./core/entries";
+import { entryBySeq, parseEntries } from "./core/entries";
 import { applyPlanToSource } from "./core/insert";
 import type { Stop } from "./core/navigator-stack";
 import { closeDecorationsExtension } from "./editor/close-decorations";
+import { editorPathOf } from "./editor/editor-path";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
 import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, programmaticWrite, refreshEntriesEffect } from "./editor/entry-field";
+import { portalExtension } from "./editor/portal-widget";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
+import { EntryClock } from "./entries/clock";
 import { EntryEngine } from "./entries/engine";
 import { resolveDayNote } from "./entries/day-note";
+import { PortalController } from "./entries/portals";
 import { EntrySession } from "./entries/session";
 import { minimalChange, rewriteDay } from "./entries/writer";
 import { NoModel, OmLxModel, type WhisperModel } from "./model/whisper-model";
@@ -33,10 +38,12 @@ import {
   NOTICE_NO_DAY_NOTE,
   NOTICE_NOOP_MS,
   NOTICE_REFUSAL_MS,
-  noticeLegacyFormat
+  noticeLegacyFormat,
+  noticePortal
 } from "./notices";
 import { createCloseProcessor } from "./reading/close-processor";
 import { createEntryProcessor } from "./reading/entry-processor";
+import { PortalReadingTray } from "./reading/portals";
 import { normalizeData, whisperReachable, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
@@ -45,6 +52,17 @@ import { isMobile, isPhone, isTablet } from "./ui/platform";
 
 /** Hand edits in the day note settle for this long before the stats follow. */
 const DAY_STATS_DELAY_MS = 2000;
+
+/** How long a captured exact-second alignment shows its one acknowledgement. */
+const ALIGNED_ACK_MS = 800;
+
+/**
+ * The local stamp an alignment record writes: `2026-11-05T22:55:00-08:00`.
+ * A record is only trusted for an entry when its beginning names the very day
+ * and moment the entry's clock row holds — after a hand edit, a deletion or a
+ * reused `N`, proximity is not evidence.
+ */
+const LOCAL_STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$/;
 
 const BODY_CLASSES = [
   "weaver-no-emphasis",
@@ -60,6 +78,10 @@ export default class WeaverPlugin extends Plugin {
   settings: WeaverSettings = this.data.settings;
 
   session = new EntrySession();
+  /** The one clock every stopwatch surface reads; owned for the plugin's life. */
+  clock!: EntryClock;
+  /** Ephemeral portal lifecycle: the held opening, its notices, its candidates. */
+  portals!: PortalController;
   entries!: EntryEngine;
   /** The model that reads settled entries, and the cache it reads them into. */
   whisper!: WhisperRunner;
@@ -68,6 +90,17 @@ export default class WeaverPlugin extends Plugin {
 
   private navigator: Navigator | null = null;
   private dayStatsTimer: number | null = null;
+  /** Reading-view portal trays: one lifecycle component for every preview view. */
+  private portalReading: PortalReadingTray | null = null;
+  /**
+   * Which entries of which note were entered from a portal, validated against
+   * the note's own readable history: `path` → entry `N`s whose recorded
+   * beginning still matches their clock row.
+   */
+  private readonly portalEntries = new Map<string, Set<number>>();
+  /** The acknowledgement window per entry: `path` → `N` → expiry instant. */
+  private readonly alignedUntil = new Map<string, Map<number, number>>();
+  private readonly alignedTimers = new Set<number>();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -75,6 +108,31 @@ export default class WeaverPlugin extends Plugin {
     applyCss(this.settings);
 
     this.session = new EntrySession();
+    // One clock per plugin: a session, one timer, and every surface subscribed
+    // to the same painted second. `Date.now` is injected so the sampling is
+    // testable, and `onunload` cancels what it scheduled.
+    this.clock = new EntryClock(this.session, () => Date.now());
+    // The portal lifecycle depends only on the injected host, so it is built
+    // before the engine that will later hand it first input. It owns the held
+    // opening and the single invitation per announcement, deriving every state
+    // from actual time rather than counting timer callbacks. Main only
+    // reconciles it; pending frames are rendered from its candidates by the
+    // editor surface.
+    this.portals = new PortalController({
+      now: () => Date.now(),
+      enabled: () => this.settings.portalsEnabled,
+      todayPath: (at) => resolveDayNote(this.app, this.settings, new Date(at)).path,
+      activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
+      visible: () => document.visibilityState !== "hidden",
+      invite: (portal, remainingSeconds) => {
+        new Notice(
+          noticePortal(`${pad2(portal.hour)}:${pad2(portal.minute)}`, remainingSeconds),
+          NOTICE_NOOP_MS
+        );
+      }
+    });
+    this.portals.reconcile();
+
     this.entries = new EntryEngine(this);
     this.whisper = new WhisperRunner({
       // Read fresh every call: a changed endpoint or model takes effect at once.
@@ -87,13 +145,13 @@ export default class WeaverPlugin extends Plugin {
       // when an entry starts or stops waiting.
       onChange: () => this.repaintFrames()
     });
-
     this.registerEditorExtension([
       viewRegistryExtension,
       entryIndexExtension(),
       entryDecorationsExtension(
         () => this.session,
         () => this.app.workspace.getActiveFile()?.path ?? "",
+        () => this.clock,
         (target, sourcePath) => {
           void this.app.workspace.openLinkText(target, sourcePath, false);
         }
@@ -103,25 +161,79 @@ export default class WeaverPlugin extends Plugin {
         settings: () => this.settings,
         session: () => this.session,
         reading: (path, n) => this.whisper.pendingFor(path, n),
+        // An entry is "from a portal" only while the note's readable history
+        // still names this entry's own recorded beginning; the acknowledgement
+        // is the short window after capture, and both are repainted when they
+        // change.
+        portal: (path, n) => this.portalEntries.get(path)?.has(n) === true,
+        aligned: (path, n) => {
+          const until = this.alignedUntil.get(path)?.get(n);
+          return until !== undefined && Date.now() < until;
+        },
         fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? ""
+      }),
+      portalExtension({
+        controller: this.portals,
+        clock: this.clock,
+        settings: () => this.settings,
+        capture: (view, id, text, at) => this.entries.capturePortal(view, id, text, at),
+        lastFailure: (id) => this.entries.portalFailure(id)
       }),
       entryKeysExtension(this),
       entryEditExtension(this)
     ]);
 
+    // Frames ask whether an entry came from a portal; the answer is read from
+    // the notes that are already open, before the first paint that needs it.
+    this.app.workspace.onLayoutReady(() => {
+      this.repaintFrames();
+    });
+
     this.registerMarkdownPostProcessor(
       createEntryProcessor((target, sourcePath) => {
         void this.app.workspace.openLinkText(target, sourcePath, false);
-      })
+      }, this.clock)
     );
     this.registerMarkdownPostProcessor(createCloseProcessor());
 
+    // One lifecycle owner for Reading-view portals: it watches the visible
+    // preview views, never the post-processor callbacks, so a tray cannot be
+    // attached twice for one note.
+    this.portalReading = new PortalReadingTray(this);
+    this.portalReading.start();
+
     this.registerEvent(
-      this.app.vault.on("modify", (file) => this.scheduleDayStats(file instanceof TFile ? file : null))
+      this.app.vault.on("modify", (file) => {
+        this.scheduleDayStats(file instanceof TFile ? file : null);
+        // Hand edits and reloads can add or remove a recorded beginning; the
+        // validated association is cheap to re-derive from what is open.
+        this.syncPortalEntries();
+      })
     );
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.entries.pause(new Date())));
+    let portalLeaf = this.app.workspace.activeLeaf;
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => {
+        // A mode switch in the same leaf retains preparation. Departing to
+        // another leaf releases it even when both panes show the same note.
+        if (leaf !== portalLeaf) this.portals.release();
+        portalLeaf = leaf;
+        void this.entries.pause();
+      })
+    );
     this.registerDomEvent(document, "visibilitychange", () => {
-      if (document.visibilityState === "hidden") this.entries.pause(new Date());
+      if (document.visibilityState === "hidden") {
+        // Stop before the window is gone: the hidden session must keep the
+        // second that was on screen, not one sampled on the way out. A hidden
+        // app also cannot hold or announce a portal.
+        this.portals.release();
+        void this.entries.pause();
+        return;
+      }
+      // A hidden app missed ticks rather than seconds; resampling reconciles
+      // the one snapshot every surface will paint, without replaying a backlog,
+      // and portal state is derived from the instant rather than a notice queue.
+      this.portals.reconcile();
+      this.clock.refresh();
     });
 
     this.registerCommands();
@@ -131,7 +243,17 @@ export default class WeaverPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.portalReading?.destroy();
+    this.portalReading = null;
+    this.portals.release();
+    this.portals.destroy();
+    this.clock.destroy();
     this.whisper.clear();
+
+    for (const timer of this.alignedTimers) window.clearTimeout(timer);
+    this.alignedTimers.clear();
+    this.alignedUntil.clear();
+    this.portalEntries.clear();
 
     if (this.dayStatsTimer !== null) {
       window.clearTimeout(this.dayStatsTimer);
@@ -196,6 +318,12 @@ export default class WeaverPlugin extends Plugin {
     applyCss(this.settings);
     // An answer from the previous endpoint or model must not be served.
     this.whisper.clear();
+    // The toggle is honoured here: turning portals off drops the hold and the
+    // pending surfaces, without touching entries or recorded history.
+    this.portals.reconcile();
+    // Reading surfaces carry their frame setting at mount, so they are rebuilt
+    // when it changes rather than keeping an old look.
+    this.portalReading?.settingsChanged();
 
     for (const view of registeredEditorViews()) {
       view.dispatch({ effects: refreshEntriesEffect.of(undefined) });
@@ -203,13 +331,13 @@ export default class WeaverPlugin extends Plugin {
   }
 
   /**
-   * Opens the navigator over today's entries, on the note as it is on screen.
-   *
-   * The engine speaks for a missing note — one refusal, in one place — so this
-   * returns quietly when there is nothing to show.
+   * Re-measures the open notes, so a frame effect that changed on its own is drawn.
    */
-  /** Re-measures the open notes, so a frame effect that changed on its own is drawn. */
   repaintFrames(): void {
+    // The frame's portal query reads validated history; every repaint refreshes
+    // it from the live documents first, so an undo that removed a record is
+    // reflected in the same paint.
+    this.syncPortalEntries();
     for (const view of registeredEditorViews()) {
       view.dispatch({
         effects: refreshEntriesEffect.of(undefined),
@@ -218,6 +346,89 @@ export default class WeaverPlugin extends Plugin {
     }
   }
 
+  /**
+   * Records that an entry was just entered from a portal, and starts its one
+   * acknowledgement if the input landed on an exact second.
+   *
+   * The association is added directly because the capture that produced it is
+   * the evidence; the next history sync re-derives the same answer from the
+   * note. The acknowledgement expires after {@link ALIGNED_ACK_MS} and repaints
+   * once — it is a moment, not a state the frame keeps.
+   */
+  portalEntered(path: string, n: number, aligned: boolean): void {
+    let entries = this.portalEntries.get(path);
+    if (entries === undefined) {
+      entries = new Set();
+      this.portalEntries.set(path, entries);
+    }
+    entries.add(n);
+
+    if (!aligned) {
+      this.repaintFrames();
+      return;
+    }
+
+    const rows = this.alignedUntil.get(path) ?? new Map<number, number>();
+    rows.set(n, Date.now() + ALIGNED_ACK_MS);
+    this.alignedUntil.set(path, rows);
+
+    const timer = window.setTimeout(() => {
+      this.alignedTimers.delete(timer);
+      const current = this.alignedUntil.get(path);
+      if (current === undefined) return;
+      current.delete(n);
+      if (current.size === 0) this.alignedUntil.delete(path);
+      this.repaintFrames();
+    }, ALIGNED_ACK_MS + 20);
+    this.alignedTimers.add(timer);
+
+    this.repaintFrames();
+  }
+
+  /**
+   * Re-derives the portal association from the live open documents.
+   *
+   * The note's own history is the only evidence: a record is trusted for an
+   * entry only when its recorded beginning names the same day and moment the
+   * entry's clock row holds, so a manually edited row, a deleted entry, and a
+   * reused `N` are all rejected. Unreadable history contributes nothing rather
+   * than an empty history, and nothing here writes.
+   */
+  syncPortalEntries(): void {
+    this.portalEntries.clear();
+    for (const view of registeredEditorViews()) {
+      const path = editorPathOf(view);
+      if (path === null) continue;
+
+      const source = view.state.doc.toString();
+      const history = readAlignments(source);
+      if (!history.ok) continue;
+
+      const index = parseEntries(source);
+      const entries = new Set<number>();
+      for (const record of history.records) {
+        if (record.entry === null) continue;
+        const began = LOCAL_STAMP.exec(record.began);
+        if (began === null) continue;
+        const entry = entryBySeq(index, record.entry);
+        if (entry === null || entry.day !== began[1] || entry.time !== began[2]) continue;
+        entries.add(record.entry);
+      }
+      if (entries.size > 0) this.portalEntries.set(path, entries);
+    }
+  }
+
+  /** Explicit preparation preserves a Reading surface's owning leaf when supplied. */
+  async preparePortal(id: string, owner?: MarkdownView): Promise<void> {
+    await this.entries.revealPortal(id, owner);
+  }
+
+  /**
+   * Opens the navigator over today's entries, on the note as it is on screen.
+   *
+   * The engine speaks for a missing note — one refusal, in one place — so this
+   * returns quietly when there is nothing to show.
+   */
   async openNavigator(): Promise<void> {
     const view = await this.entries.revealToday(new Date());
     if (view === null || this.navigator?.isOpen === true) return;

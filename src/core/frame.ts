@@ -32,6 +32,33 @@ export interface FrameColumn {
   right: number;
 }
 
+/** The pane and the content it holds, in one coordinate space. */
+export interface FrameColumnInput {
+  /** The pane's own edges. */
+  pane: FrameColumn;
+  /** The content's own edges: the text column the labels hang off. */
+  content: FrameColumn;
+  /** One label inset of air outside the text, both sides. */
+  gutter: number;
+}
+
+/**
+ * The column every frame in a view may occupy: from the pane's left edge to one
+ * label inset past the content's right, and never past the pane's own right.
+ *
+ * One column serves the drawn boxes and the pending portal tray alike. The
+ * right edge is the content's edge plus one gutter of air, clamped to the pane;
+ * the left edge is the pane's own, because the box below it sits the same gutter
+ * outside the text. A narrow pane is clamped here rather than in each caller, so
+ * a portal can never be narrower than the entries above it.
+ */
+export function frameColumn(input: FrameColumnInput): FrameColumn {
+  return {
+    left: input.pane.left,
+    right: Math.min(input.content.right + input.gutter, input.pane.right)
+  };
+}
+
 /** What a box needs: the column, the text's left edge, and the label inset. */
 export interface FrameBoxInput {
   /** pane-left … column-right, in scroller coordinates. */
@@ -59,6 +86,40 @@ export function frameBox(input: FrameBoxInput): FrameBox {
   const left = Math.max(input.column.left, (input.textLeft ?? input.column.left) - input.gutter);
   const width = Math.max(0, input.column.right - left);
   return { left, width, drawn: input.textLeft !== null };
+}
+
+/**
+ * A pending tray's placement inside the note's content.
+ *
+ * The tray is a child of the content in the normal flow, so the frame's box
+ * becomes one negative left margin and one explicit width. Nothing else about
+ * the pending portal is an entry: this is the only geometry it shares.
+ */
+export interface TrayFrame {
+  /** The box's left edge, relative to the content's own text edge. */
+  marginLeft: number;
+  width: number;
+}
+
+/**
+ * Where the pending tray sits, or `null` before anything has been measured.
+ *
+ * A pending portal is a root, so its text edge is the note's own — never a
+ * child's indent, and never the width of the first entry it happens to follow.
+ */
+export function trayFrame(input: {
+  column: FrameColumn;
+  /** The note's own left text edge, in whatever space the column is measured. */
+  textLeft: number;
+  gutter: number;
+}): TrayFrame | null {
+  const box = frameBox({
+    column: input.column,
+    textLeft: input.textLeft,
+    gutter: input.gutter
+  });
+  if (!box.drawn || box.width <= 0) return null;
+  return { marginLeft: box.left - input.textLeft, width: box.width };
 }
 
 /** The three rails: this entry's two, and where the next entry's top one sits. */

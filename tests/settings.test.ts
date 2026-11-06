@@ -20,6 +20,14 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ frameFollowsIndent: "no" }).frameFollowsIndent).toBe(true);
   });
 
+  it("offers portals by default, and only a real false turns them off", () => {
+    expect(DEFAULT_SETTINGS.portalsEnabled).toBe(true);
+    expect(normalizeSettings(null).portalsEnabled).toBe(true);
+    expect(normalizeSettings({ portalsEnabled: false }).portalsEnabled).toBe(false);
+    expect(normalizeSettings({ portalsEnabled: "no" }).portalsEnabled).toBe(true);
+    expect(normalizeSettings({ portalsEnabled: 0 }).portalsEnabled).toBe(true);
+  });
+
   it("frames every entry unless the vault says otherwise", () => {
     expect(DEFAULT_SETTINGS.entryFrames).toBe(true);
     expect(normalizeSettings(null).entryFrames).toBe(true);

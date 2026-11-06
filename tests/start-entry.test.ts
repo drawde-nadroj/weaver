@@ -1,14 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { history, redo, undo } from "@codemirror/commands";
 import { editorInfoField, TFile, type MarkdownFileInfo } from "obsidian";
 
 import WeaverPlugin from "../src/main";
 import { parseEntries } from "../src/core/entries";
 import { dayNotePath } from "../src/core/day";
-import { entryIndexField } from "../src/editor/entry-field";
+import { capturedInput, entryIndexField } from "../src/editor/entry-field";
+import { inputObservation } from "../src/editor/entry-keys";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
-import { NOTICE_NEEDS_EDITING, NOTICE_NEEDS_ENTRY, noticeLegacyFormat } from "../src/notices";
+import { NOTICE_NEEDS_EDITING, NOTICE_NEEDS_ENTRY, NOTICE_STOP_FAILED, noticeLegacyFormat } from "../src/notices";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { FakeEditor } from "../test-support/editor";
 import {
@@ -32,6 +34,13 @@ async function start(files: TFile[]): Promise<{ plugin: WeaverPlugin; app: Retur
   const app = createApp(files);
   const plugin = instantiatePlugin(WeaverPlugin, app);
   await plugin.onload();
+
+  // A portal invitation is a real notice, and one is always within its lead
+  // window; this suite is about what the entry itself earns, so portals are off.
+  plugin.settings.portalsEnabled = false;
+  plugin.portals.reconcile();
+  clearNotices();
+
   return { plugin, app };
 }
 
@@ -54,6 +63,49 @@ function viewOf(path: string, doc: string, anchor = 0): EditorView {
   return { state, dispatch: () => {}, focus: () => {} } as unknown as EditorView;
 }
 
+/**
+ * A view double carrying CodeMirror's real history extension, so undo and redo
+ * run through the machinery an editor uses. `dispatch` accepts both a spec and
+ * the transaction a command returns.
+ */
+function historyView(
+  file: TFile,
+  doc: string,
+  anchor: number
+): EditorView & { state: EditorState } {
+  const state = EditorState.create({
+    doc,
+    selection: { anchor },
+    extensions: [
+      entryIndexField,
+      editorInfoField.init(() => ({ file }) as unknown as MarkdownFileInfo),
+      history()
+    ]
+  });
+
+  const view = {
+    state,
+    dispatch(
+      this: { state: EditorState },
+      spec: Transaction | Parameters<EditorState["update"]>[0]
+    ): void {
+      this.state = spec instanceof Transaction ? spec.state : this.state.update(spec).state;
+    },
+    focus(): void {},
+    scrollDOM: { scrollTop: 0 }
+  };
+
+  return view as unknown as EditorView & { state: EditorState };
+}
+
+/**
+ * A stop releases its session after the write settles, so a test that triggered
+ * one indirectly waits for the promise chain instead of for a duration.
+ */
+async function stopLanded(): Promise<void> {
+  for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+}
+
 beforeEach(() => {
   resetHarness();
   clearNotices();
@@ -67,7 +119,9 @@ describe("starting an entry", () => {
 
     expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
     expect(reading(app, DAY)).toContain("travels: 0");
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 2026-10-27 13:27:43");
+    // A new entry is awaiting its first text: duration and no moment, because
+    // the moment is the time the writer typed, not the time the block was made.
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00");
 
     plugin.onunload();
   });
@@ -85,14 +139,19 @@ describe("starting an entry", () => {
     plugin.onunload();
   });
 
-  it("leaves the clock stopped on the entry it just wrote", async () => {
+  it("leaves the entry awaiting its first text, with no clock running", async () => {
     const { plugin, app } = await start([]);
 
     await plugin.entries.startEntry(AT_1337);
 
     // No clock before the first keystroke: a write is not typing.
     expect(plugin.session.active()).toBeNull();
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00 2026-10-27 13:27:43");
+    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00");
+    const awaited = parseEntries(reading(app, DAY)).entries[0];
+    expect(awaited?.state).toBe("draft");
+    expect(awaited?.duration?.ms).toBe(0);
+    expect(awaited?.time).toBeNull();
+    expect(awaited?.day).toBeNull();
 
     plugin.onunload();
   });
@@ -112,7 +171,7 @@ describe("starting an entry", () => {
 
     const text = reading(app, DAY);
     expect(text).toContain("{ 3.1.3 }");
-    expect(text.endsWith("- 00:00:00 2026-10-27 13:27:43\n")).toBe(true);
+    expect(text.endsWith("- 00:00:00\n")).toBe(true);
     expect(text.startsWith("{ 1.1.1 }")).toBe(true);
 
     plugin.onunload();
@@ -140,7 +199,8 @@ describe("deleting the entry being written", () => {
     const { plugin, app } = await start([file]);
 
     plugin.session.start(DAY, 1, 65_000, AT_1337.getTime());
-    plugin.entries.afterEdit(viewOf(DAY, ""), false);
+    plugin.entries.afterEdit(viewOf(DAY, ""), null);
+    await stopLanded();
 
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toBe("");
@@ -160,7 +220,8 @@ describe("deleting the entry being written", () => {
     const { plugin, app } = await start([file]);
 
     plugin.session.start(DAY, 2, 65_000, AT_1337.getTime());
-    plugin.entries.afterEdit(viewOf(DAY, survived, survived.indexOf("first")), false);
+    plugin.entries.afterEdit(viewOf(DAY, survived, survived.indexOf("first")), null);
+    await stopLanded();
 
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toBe(survived);
@@ -174,11 +235,71 @@ describe("when the clock may start", () => {
 
   it("starts on the writer's own typing, at the file's stored time", async () => {
     const { plugin } = await start([createFile(DAY, DRAFT)]);
+    const typedAt = AT_1337.getTime();
 
-    plugin.entries.afterEdit(viewOf(DAY, DRAFT, DRAFT.indexOf("prose")), true);
+    plugin.entries.afterEdit(viewOf(DAY, DRAFT, DRAFT.indexOf("prose")), {
+      path: DAY,
+      seq: 1,
+      at: typedAt
+    });
 
     expect(plugin.session.active()?.seq).toBe(1);
     expect(plugin.session.active()?.baselineMs).toBe(60_000);
+    // The baseline is the moment of the keystroke, not when the deferred
+    // listener got around to running.
+    expect(plugin.session.active()?.resumedAt).toBe(typedAt);
+
+    plugin.onunload();
+  });
+
+  it("keeps the input's entry even when the caret has moved on", async () => {
+    const two = [DRAFT, "", "{ 2.1.2 }", "other", "- 00:00:00 10:05:00"].join("\n");
+    const { plugin } = await start([createFile(DAY, two)]);
+
+    // The input landed in entry 1; the deferred callback runs with the caret
+    // already sitting in entry 2.
+    plugin.entries.afterEdit(viewOf(DAY, two, two.indexOf("other")), {
+      path: DAY,
+      seq: 1,
+      at: AT_1337.getTime()
+    });
+
+    expect(plugin.session.active()?.seq).toBe(1);
+
+    plugin.onunload();
+  });
+
+  it("starts nothing on an entry that has no recorded beginning", async () => {
+    // The shape left by an undo of the first text: a duration-only row. A
+    // deferred observation can still arrive for it, and it must not start.
+    const awaiting = ["{ 1.1.1 }", "", "- 00:00:00"].join("\n");
+    const { plugin } = await start([createFile(DAY, awaiting)]);
+    const view = viewOf(DAY, awaiting, awaiting.indexOf("- 00:00:00") - 1);
+
+    plugin.entries.afterEdit(view, { path: DAY, seq: 1, at: AT_1337.getTime() });
+
+    expect(plugin.session.active()).toBeNull();
+
+    plugin.onunload();
+  });
+
+  it("does not start from an observation whose beginning was undone", async () => {
+    const awaiting = ["{ 1.1.1 }", "", "- 00:00:00"].join("\n");
+    const file = createFile(DAY, awaiting);
+    const { plugin } = await start([file]);
+    const caret = awaiting.indexOf("- 00:00:00") - 1;
+    const view = historyView(file, awaiting, caret);
+
+    expect(plugin.entries.captureInput(view, caret, caret, "a", AT_1337.getTime())).toBe(true);
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(awaiting);
+
+    // The capture's deferred callback arrives after the undo: the entry has no
+    // beginning to measure, so it starts nothing.
+    plugin.entries.afterEdit(view, { path: DAY, seq: 1, at: AT_1337.getTime() });
+
+    expect(plugin.session.active()).toBeNull();
+    expect(view.state.doc.toString()).toBe(awaiting);
 
     plugin.onunload();
   });
@@ -186,12 +307,444 @@ describe("when the clock may start", () => {
   it("starts nothing when the vault reloads a draft nobody typed into", async () => {
     const { plugin, app } = await start([createFile(DAY, DRAFT)]);
 
-    plugin.entries.afterEdit(viewOf(DAY, DRAFT, DRAFT.indexOf("prose")), false);
+    plugin.entries.afterEdit(viewOf(DAY, DRAFT, DRAFT.indexOf("prose")), null);
 
     expect(plugin.session.active()).toBeNull();
     // Nothing running means nothing written, however long the window is open.
-    plugin.entries.pause(AT_1337);
+    await plugin.entries.pause();
     expect(reading(app, DAY)).toBe(DRAFT);
+
+    plugin.onunload();
+  });
+});
+
+describe("capturing an entry's beginning", () => {
+  // A newly started entry: a marker, a blank prose line, and a duration-only
+  // clock row. This shape is the durable "awaiting first input" state.
+  const AWAIT = ["{ 1.1.1 }", "", "- 00:00:00"].join("\n");
+  const CARET = AWAIT.indexOf("- 00:00:00") - 1;
+  const BEGUN = AT_1337.getTime();
+
+  it("writes the first text and the date/moment in one transaction", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin, app } = await start([file]);
+    const view = liveEditor(file, AWAIT, CARET);
+
+    expect(plugin.entries.captureInput(view, CARET, CARET, "h", BEGUN)).toBe(true);
+
+    expect(view.state.doc.toString()).toBe(
+      ["{ 1.1.1 }", "h", "- 00:00:00 2026-10-27 13:27:43"].join("\n")
+    );
+    // The caret follows the text the writer just typed.
+    expect(view.state.selection.main.head).toBe(CARET + 1);
+    // Nothing was written through the vault: this is the editor's transaction.
+    expect(reading(app, DAY)).toBe(AWAIT);
+
+    plugin.onunload();
+  });
+
+  it("captures once: later input in the same entry stays native", async () => {
+    const captured = ["{ 1.1.1 }", "h", "- 00:00:00 2026-10-27 13:27:43"].join("\n");
+    const file = createFile(DAY, captured);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, captured, captured.indexOf("h") + 1);
+
+    const caret = view.state.selection.main.head;
+    expect(plugin.entries.captureInput(view, caret, caret, "i", BEGUN)).toBe(false);
+    expect(view.state.doc.toString()).toBe(captured);
+
+    plugin.onunload();
+  });
+
+  it("leaves prose that already has a moment alone", async () => {
+    const written = ["{ 1.1.1 }", "first", "- 00:01:00 2026-10-27 09:00:00"].join("\n");
+    const file = createFile(DAY, written);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, written, written.indexOf("first"));
+
+    const caret = written.indexOf("first") + 5;
+    expect(plugin.entries.captureInput(view, caret, caret, "!", BEGUN)).toBe(false);
+    expect(view.state.doc.toString()).toBe(written);
+
+    plugin.onunload();
+  });
+
+  it("maps the beginning back through a longer replacement", async () => {
+    // A historical awaiting draft: it already has prose, and the first input
+    // replaces a selection with text of a different length. The plan's offsets
+    // are post-input; the transaction is applied to the pre-input document, so
+    // they have to be mapped back across a gap of +14 characters.
+    const awaiting = ["{ 1.1.1 }", "first", "- 00:01:00"].join("\n");
+    const file = createFile(DAY, awaiting);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, awaiting, awaiting.indexOf("first"));
+    const from = awaiting.indexOf("first");
+    const to = from + "first".length;
+
+    expect(
+      plugin.entries.captureInput(view, from, to, "a much longer first", BEGUN)
+    ).toBe(true);
+
+    expect(view.state.doc.toString()).toBe(
+      ["{ 1.1.1 }", "a much longer first", "- 00:01:00 2026-10-27 13:27:43"].join("\n")
+    );
+    expect(view.state.selection.main.head).toBe(from + "a much longer first".length);
+
+    plugin.onunload();
+  });
+
+  it("never stamps a settled entry", async () => {
+    const settled = ["{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
+    const file = createFile(DAY, settled);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, settled, settled.indexOf("first"));
+
+    expect(plugin.entries.captureInput(view, 0, 0, "x", BEGUN)).toBe(false);
+    expect(view.state.doc.toString()).toBe(settled);
+
+    plugin.onunload();
+  });
+
+  it("leaves an input aimed at the clock row native", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, AWAIT, AWAIT.indexOf("- 00:00:00"));
+
+    // Typing from inside the row would land on the metadata being appended.
+    expect(plugin.entries.captureInput(view, CARET + 1, CARET + 1, "x", BEGUN)).toBe(false);
+    expect(view.state.doc.toString()).toBe(AWAIT);
+
+    plugin.onunload();
+  });
+
+  it("ignores an empty input", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, AWAIT, CARET);
+
+    expect(plugin.entries.captureInput(view, CARET, CARET, "", BEGUN)).toBe(false);
+    expect(view.state.doc.toString()).toBe(AWAIT);
+
+    plugin.onunload();
+  });
+
+  it("records the day of the input, not the day the note was made", async () => {
+    // Created at 23:59:58, typed just after midnight: the row carries the new
+    // day and the moment, and the note stays where it is.
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, AWAIT, CARET);
+    const afterMidnight = new Date(2026, 9, 28, 0, 0, 3).getTime();
+
+    expect(plugin.entries.captureInput(view, CARET, CARET, "late", afterMidnight)).toBe(true);
+
+    expect(view.state.doc.toString()).toBe(
+      ["{ 1.1.1 }", "late", "- 00:00:00 2026-10-28 00:00:03"].join("\n")
+    );
+
+    // The clock starts from the same input, at zero, never from the block's
+    // creation time.
+    plugin.entries.afterEdit(view, { path: DAY, seq: 1, at: afterMidnight });
+    expect(plugin.session.active()?.baselineMs).toBe(0);
+    expect(plugin.session.active()?.resumedAt).toBe(afterMidnight);
+
+    plugin.onunload();
+  });
+
+  it("carries a paste's input type into the merged transaction", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const dispatched: Transaction[] = [];
+    const view = {
+      state: EditorState.create({
+        doc: AWAIT,
+        selection: { anchor: CARET },
+        extensions: [
+          editorInfoField.init(() => ({ file }) as unknown as MarkdownFileInfo)
+        ]
+      }),
+      dispatch(this: { state: EditorState }, spec: Parameters<EditorState["update"]>[0]): void {
+        const transaction = this.state.update(spec);
+        dispatched.push(transaction);
+        this.state = transaction.state;
+      },
+      focus(): void {},
+      scrollDOM: { scrollTop: 0 }
+    } as unknown as EditorView;
+
+    expect(plugin.entries.captureInput(view, CARET, CARET, "pasted", BEGUN, "input.paste")).toBe(
+      true
+    );
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.annotation(Transaction.userEvent)).toBe("input.paste");
+    expect(dispatched[0]?.annotation(capturedInput)).toEqual({
+      path: DAY,
+      seq: 1,
+      at: BEGUN
+    });
+    // The pasted text lands exactly once, next to the recorded beginning.
+    expect((view.state.doc.toString().match(/pasted/g) ?? []).length).toBe(1);
+    expect(view.state.doc.toString()).toBe(
+      ["{ 1.1.1 }", "pasted", "- 00:00:00 2026-10-27 13:27:43"].join("\n")
+    );
+    expect(view.state.selection.main.head).toBe(CARET + "pasted".length);
+
+    plugin.onunload();
+  });
+
+  it("undoes the first text and its beginning together, and a redo does not restart a clock", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = historyView(file, AWAIT, CARET);
+
+    expect(plugin.entries.captureInput(view, CARET, CARET, "hello", BEGUN)).toBe(true);
+    const captured = view.state.doc.toString();
+    expect(captured).toContain("hello");
+    expect(captured).toContain("- 00:00:00 2026-10-27 13:27:43");
+
+    // Real CodeMirror history: one undo takes the text and the recorded
+    // beginning back together, leaving the awaiting row it started from.
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(AWAIT);
+
+    const redone: Transaction[] = [];
+    expect(
+      redo({
+        state: view.state,
+        dispatch: (tr) => {
+          redone.push(tr);
+          view.dispatch(tr);
+        }
+      })
+    ).toBe(true);
+
+    expect(view.state.doc.toString()).toBe(captured);
+    // Redo is not input: it carries no captured observation, so replaying the
+    // beginning cannot silently start a session.
+    if (redone.length === 0) throw new Error("expected a redo transaction");
+    const redoTransaction = redone[0]!;
+    expect(redoTransaction.annotation(capturedInput)).toBeUndefined();
+    const observation = inputObservation([redoTransaction], {
+      path: DAY,
+      index: parseEntries(view.state.doc.toString()),
+      composing: false,
+      now: () => Date.now()
+    });
+    expect(observation).toBeNull();
+    plugin.entries.afterEdit(view, observation);
+    expect(plugin.session.active()).toBeNull();
+
+    plugin.onunload();
+  });
+
+  it("ends a running session when undo removes the beginning, and redo does not revive it", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin, app } = await start([file]);
+    const view = historyView(file, AWAIT, CARET);
+
+    // The runtime path: the capture's own transaction starts the clock through
+    // the observer, with no manual clearing anywhere.
+    expect(plugin.entries.captureInput(view, CARET, CARET, "a", BEGUN)).toBe(true);
+    plugin.entries.afterEdit(view, { path: DAY, seq: 1, at: BEGUN });
+    expect(plugin.session.active()?.seq).toBe(1);
+    const captured = view.state.doc.toString();
+
+    // Undo takes the text and the moment together; the entry is awaiting again.
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    plugin.entries.afterEdit(view, null);
+
+    expect(view.state.doc.toString()).toBe(AWAIT);
+    // The clock ends without writing: the duration-only row is the evidence,
+    // and the vault still holds exactly the awaiting entry.
+    expect(plugin.session.active()).toBeNull();
+    expect(reading(app, DAY)).toBe(AWAIT);
+    expect(noticeMessages()).toEqual([]);
+
+    // Redo restores the beginning, but replaying it is not input: no clock.
+    expect(redo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    plugin.entries.afterEdit(view, null);
+
+    expect(view.state.doc.toString()).toBe(captured);
+    expect(plugin.session.active()).toBeNull();
+
+    plugin.onunload();
+  });
+});
+
+describe("a committed composition", () => {
+  const AWAIT = ["{ 1.1.1 }", "", "- 00:00:00"].join("\n");
+  const CARET = AWAIT.indexOf("- 00:00:00") - 1;
+
+  it("stamps nothing while the composition is still preedit", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = historyView(file, AWAIT, CARET);
+
+    // The IME's preedit reaches the document exactly as CodeMirror names it:
+    // input, but not text the writer has committed.
+    view.dispatch({
+      changes: { from: CARET, insert: "に" },
+      selection: { anchor: CARET + 1 },
+      userEvent: "input.type.compose.start"
+    });
+
+    expect(view.state.doc.toString()).toContain("に");
+    expect(parseEntries(view.state.doc.toString()).entries[0]?.time).toBeNull();
+    expect(parseEntries(view.state.doc.toString()).entries[0]?.day).toBeNull();
+
+    plugin.onunload();
+  });
+
+  it("records the beginning in the composition's own undo group", async () => {
+    const file = createFile(DAY, AWAIT);
+    const { plugin } = await start([file]);
+    const view = historyView(file, AWAIT, CARET);
+    const committedAt = AT_1337.getTime();
+
+    view.dispatch({
+      changes: { from: CARET, insert: "に" },
+      selection: { anchor: CARET + 1 },
+      userEvent: "input.type.compose.start"
+    });
+
+    // The commit adds metadata only: the text is already the writer's.
+    expect(
+      plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: committedAt })
+    ).toBe(true);
+
+    const captured = view.state.doc.toString();
+    expect(captured).toBe(
+      ["{ 1.1.1 }", "に", "- 00:00:00 2026-10-27 13:27:43"].join("\n")
+    );
+
+    // One undo takes the composed text and its recorded beginning back together.
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(AWAIT);
+
+    expect(redo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(captured);
+
+    plugin.onunload();
+  });
+
+  it("stamps only the entry the composition committed into", async () => {
+    const two = ["{ 1.1.1 }", "", "- 00:00:00", "{ 1.2.1 }", "", "- 00:00:00"].join("\n");
+    const file = createFile(DAY, two);
+    const { plugin } = await start([file]);
+    const view = historyView(file, two, two.indexOf("- 00:00:00") - 1);
+
+    expect(
+      plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: AT_1337.getTime() })
+    ).toBe(true);
+
+    const text = view.state.doc.toString();
+    const lines = text.split("\n");
+    expect(lines[2]).toBe("- 00:00:00 2026-10-27 13:27:43");
+    expect(lines[5]).toBe("- 00:00:00");
+    expect(parseEntries(text).entries.map((entry) => entry.time)).toEqual(["13:27:43", null]);
+
+    plugin.onunload();
+  });
+
+  it("keeps a recorded beginning as it is, and resumes the clock from the commit", async () => {
+    const captured = ["{ 1.1.1 }", "に", "- 00:00:00 2026-10-27 13:27:43"].join("\n");
+    const file = createFile(DAY, captured);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, captured, captured.indexOf("に") + 1);
+    const committedAt = AT_1337.getTime();
+
+    // No metadata is needed: the entry already recorded its beginning, and the
+    // committed text is already in the document. The commit is still real input.
+    expect(plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: committedAt })).toBe(
+      true
+    );
+    expect(view.state.doc.toString()).toBe(captured);
+    expect(plugin.session.active()?.seq).toBe(1);
+    expect(plugin.session.active()?.resumedAt).toBe(committedAt);
+
+    plugin.onunload();
+  });
+
+  it("resumes a paused draft from its own second when the commit changed no document", async () => {
+    const paused = ["{ 1.1.1 }", "に", "= 00:00:04 2026-10-27 13:27:43"].join("\n");
+    const file = createFile(DAY, paused);
+    const { plugin } = await start([file]);
+    const view = historyView(file, paused, paused.indexOf("に") + 1);
+    const committedAt = AT_1337.getTime();
+
+    expect(plugin.session.active()).toBeNull();
+
+    // The composition's text is already the writer's, and `=` says the writer
+    // stopped at four seconds. The commit is nonetheless the fresh input that
+    // resumes the clock; there is no further document change to observe it by.
+    expect(plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: committedAt })).toBe(
+      true
+    );
+
+    expect(view.state.doc.toString()).toBe(paused);
+    expect(plugin.session.active()?.seq).toBe(1);
+    expect(plugin.session.active()?.baselineMs).toBe(4000);
+    expect(plugin.session.active()?.resumedAt).toBe(committedAt);
+
+    // No metadata was rewritten, so the commit added no undo step of its own.
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(false);
+
+    plugin.onunload();
+  });
+
+  it("resumes a held stopwatch when the committed composition is the fresh input", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 2026-10-27 13:27:43"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin, app } = await start([file]);
+    const view = historyView(file, open, open.indexOf("prose") + 3);
+
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+
+    // A stop whose write failed: the row still holds the draft, and the session
+    // is held at the second on screen.
+    const vault = app.vault as unknown as { process: unknown };
+    const real = vault.process;
+    vault.process = () => {
+      throw new Error("disk full");
+    };
+    try {
+      await plugin.entries.pause();
+    } finally {
+      vault.process = real;
+    }
+    expect(plugin.session.frozen()).toBe(true);
+    const committedAt = AT_1337.getTime();
+
+    expect(plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: committedAt })).toBe(
+      true
+    );
+
+    // Resumed from the held second, at the commit's own instant, and nothing was
+    // rewritten: the row is still the draft it was.
+    expect(view.state.doc.toString()).toBe(open);
+    expect(plugin.session.frozen()).toBe(false);
+    expect(plugin.session.active()?.baselineMs).toBe(7000);
+    expect(plugin.session.active()?.resumedAt).toBe(committedAt);
+
+    // The commit added no history of its own: there is nothing to undo.
+    expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(false);
+
+    plugin.onunload();
+  });
+
+  it("never starts a clock on a settled entry's committed composition", async () => {
+    const settled = ["{ 1.1.1 }", "に", "+ 00:00:09 2026-10-27 13:27:43"].join("\n");
+    const file = createFile(DAY, settled);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, settled, settled.indexOf("に") + 1);
+
+    expect(
+      plugin.entries.captureComposition(view, { path: DAY, seq: 1, at: AT_1337.getTime() })
+    ).toBe(false);
+    expect(view.state.doc.toString()).toBe(settled);
+    expect(plugin.session.active()).toBeNull();
 
     plugin.onunload();
   });
@@ -202,7 +755,7 @@ describe("writing a duration", () => {
     const file = createFile(DAY, ["{ 1.1.1 }", "prose", "- 00:01:00 10:00:00"].join("\n"));
     const { plugin, app } = await start([file]);
 
-    plugin.entries.publish(DAY, 1, "+", 342_000, true);
+    await plugin.entries.publish(DAY, 1, "+", 342_000, true);
 
     expect(reading(app, DAY)).toContain("+ 00:05:42");
 
@@ -214,7 +767,7 @@ describe("writing a duration", () => {
     const file = createFile(DAY, source);
     const { plugin, app } = await start([file]);
 
-    plugin.entries.publish(DAY, 9, "+", 1000, true);
+    await plugin.entries.publish(DAY, 9, "+", 1000, true);
 
     expect(reading(app, DAY)).toBe(source);
 
@@ -226,10 +779,159 @@ describe("writing a duration", () => {
     const { plugin, app } = await start([file]);
 
     plugin.session.start(DAY, 1, 4000, AT_1337.getTime());
-    plugin.entries.pause(AT_1337);
+    await plugin.entries.pause();
 
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toContain("= 00:00:04");
+
+    plugin.onunload();
+  });
+
+  // The writer sees whole seconds; the stop keeps exactly those. A raw clock
+  // sample taken at the keystroke could already be almost a second further on,
+  // so these fixtures commit the painted second and leave the raw reading past it.
+  it("settles with the painted second, not a late raw sample", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, open, open.indexOf("prose"));
+
+    plugin.session.start(DAY, 1, 0, AT_1337.getTime());
+    // 7.9 seconds of raw reading, 7 seconds painted.
+    plugin.session.commitDisplay(7900);
+
+    const entry = parseEntries(open).entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    plugin.entries.settle(view, entry);
+
+    expect(view.state.doc.toString()).toContain("+ 00:00:07");
+    expect(plugin.session.active()).toBeNull();
+
+    plugin.onunload();
+  });
+
+  it("settles at the painted second when a delayed tick left raw elapsed ahead", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin } = await start([file]);
+    const view = liveEditor(file, open, open.indexOf("prose"));
+
+    // The timer missed a turn: raw elapsed is 9.4 seconds while the screen
+    // still shows 7.
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+
+    const entry = parseEntries(open).entries[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    plugin.entries.settle(view, entry);
+
+    expect(view.state.doc.toString()).toContain("+ 00:00:07");
+
+    plugin.onunload();
+  });
+
+  it("pauses at the painted second, not a fresh sample", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin, app } = await start([file]);
+
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+    await plugin.entries.pause();
+
+    expect(plugin.session.active()).toBeNull();
+    expect(reading(app, DAY)).toContain("= 00:00:07");
+
+    plugin.onunload();
+  });
+
+  it("holds the stopped snapshot when the write fails", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin, app } = await start([file]);
+
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+
+    const vault = app.vault as unknown as { process: unknown };
+    const real = vault.process;
+    vault.process = () => {
+      throw new Error("disk full");
+    };
+    try {
+      await plugin.entries.pause();
+    } finally {
+      vault.process = real;
+    }
+
+    // No write landed, so the stop is held, not resumed: the session survives at
+    // the painted second, and time passing while it is held changes nothing.
+    expect(plugin.session.active()?.seq).toBe(1);
+    expect(plugin.session.frozen()).toBe(true);
+    expect(plugin.session.displayed()).toBe(7000);
+    expect(plugin.session.elapsed(Date.now() + 60_000)).toBe(7000);
+    expect(reading(app, DAY)).toBe(open);
+    expect(noticeMessages()).toEqual([NOTICE_STOP_FAILED]);
+
+    // A retry writes exactly the held second, however long the failure lasted.
+    await plugin.entries.pause();
+
+    expect(reading(app, DAY)).toContain("= 00:00:07");
+    expect(plugin.session.active()).toBeNull();
+
+    plugin.onunload();
+  });
+
+  it("resumes a held stopwatch from its held second on fresh input", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin, app } = await start([file]);
+
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+
+    const vault = app.vault as unknown as { process: unknown };
+    const real = vault.process;
+    vault.process = () => {
+      throw new Error("disk full");
+    };
+    try {
+      await plugin.entries.pause();
+    } finally {
+      vault.process = real;
+    }
+
+    plugin.entries.afterEdit(viewOf(DAY, open, open.indexOf("prose")), {
+      path: DAY,
+      seq: 1,
+      at: Date.now()
+    });
+
+    expect(plugin.session.frozen()).toBe(false);
+    expect(plugin.session.active()?.baselineMs).toBe(7000);
+    expect(plugin.session.displayed()).toBe(7000);
+
+    plugin.onunload();
+  });
+
+  it("does not let a clock tick advance a held stop", async () => {
+    const open = ["{ 1.1.1 }", "prose", "- 00:00:00 10:00:00"].join("\n");
+    const file = createFile(DAY, open);
+    const { plugin, app } = await start([file]);
+
+    plugin.session.start(DAY, 1, 0, Date.now() - 9400);
+    plugin.session.commitDisplay(7000);
+    // The caret entered the clock row: hold the second, then let the clock
+    // sample as it will — the timer keeps running, but the number cannot move.
+    plugin.session.freezeDisplay();
+    plugin.clock.refresh();
+
+    expect(plugin.session.displayed()).toBe(7000);
+
+    await plugin.entries.pause();
+
+    expect(reading(app, DAY)).toContain("= 00:00:07");
+    expect(plugin.session.active()).toBeNull();
 
     plugin.onunload();
   });
@@ -267,6 +969,25 @@ describe("a note in the old format", () => {
 
       expect(view.state.doc.toString()).toBe(LEGACY);
       expect(noticeMessages()).toEqual([noticeLegacyFormat("settling this entry")]);
+      plugin.onunload();
+    });
+  });
+
+  it("keeps a running session when the settle is refused", () => {
+    const file = createFile(DAY, LEGACY);
+    return start([file]).then(({ plugin }) => {
+      const view = liveEditor(file, LEGACY, LEGACY.indexOf("prose"));
+      const entry = parseEntries(LEGACY).entries[0];
+      if (entry === undefined) throw new Error("expected an entry");
+
+      plugin.session.start(DAY, 1, 4000, AT_1337.getTime());
+      plugin.entries.settle(view, entry);
+
+      // A refusal wrote nothing, so the stopwatch is still the writer's.
+      expect(plugin.session.active()?.seq).toBe(1);
+      expect(plugin.session.displayed()).toBe(4000);
+      expect(view.state.doc.toString()).toBe(LEGACY);
+
       plugin.onunload();
     });
   });
@@ -414,5 +1135,281 @@ describe("the descent command", () => {
     expect(noticeMessages()).toEqual([NOTICE_NEEDS_EDITING]);
 
     plugin.onunload();
+  });
+});
+
+describe("entering a portal", () => {
+  // Local 22:55: an opening that is genuinely eligible (minute 55 mirrors the
+  // hour pattern), prepared ten seconds into its own minute.
+  const NOW = new Date(2026, 10, 5, 22, 55, 0, 100).getTime();
+  const OPENED = new Date(2026, 10, 5, 22, 55, 0).getTime();
+  const PORTAL = new Date(OPENED).toISOString();
+  const PORTAL_DAY = dayNotePath(new Date(NOW), {
+    folder: DEFAULT_SETTINGS.dayNoteFolder,
+    format: DEFAULT_SETTINGS.dayNoteFormat
+  });
+  const EMPTY = "";
+
+  /** A plugin whose portal clock is the injected instant, portals on. */
+  async function portalStart(files: TFile[], at: number) {
+    vi.spyOn(Date, "now").mockReturnValue(at);
+    const app = createApp(files);
+    const plugin = instantiatePlugin(WeaverPlugin, app);
+    await plugin.onload();
+    plugin.settings.portalsEnabled = true;
+    plugin.portals.reconcile();
+    clearNotices();
+    return { plugin, app };
+  }
+
+  it("turns the first text into one entry, with its history, in one undo", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin, app } = await portalStart([file], NOW);
+    const view = liveEditor(file, EMPTY, 0);
+
+    try {
+      expect(plugin.portals.candidates(PORTAL_DAY, EMPTY).map((p) => p.id)).toContain(PORTAL);
+
+      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
+
+      const text = view.state.doc.toString();
+      expect(text).toContain("weaver-alignments:");
+      expect(text).toContain(`"portal":"${PORTAL}"`);
+      expect(text).toContain("hello");
+      // The whole beginning is one entry: duration zero, the input's own day
+      // and moment, and the marker the note allocated.
+      expect(text).toContain("- 00:00:00 2026-11-05 22:55:00");
+      // The caret sits in the prose that was just written, losing no character.
+      expect(view.state.selection.main.head).toBe(text.indexOf("hello") + "hello".length);
+
+      // The opening is spent: it is not offered again, and a second capture of
+      // the same id writes nothing.
+      expect(plugin.portals.candidates(PORTAL_DAY, text).map((p) => p.id)).not.toContain(PORTAL);
+      const settled = view.state.doc.toString();
+      expect(plugin.entries.capturePortal(view, PORTAL, "twice", OPENED + 300)).toBe(false);
+      expect(view.state.doc.toString()).toBe(settled);
+
+      // The note itself was not rewritten through the vault: this transaction
+      // belongs to the editor, like every first keystroke.
+      expect(reading(app, PORTAL_DAY)).toBe(EMPTY);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("carries the input's own identity and timestamp into the transaction", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin } = await portalStart([file], NOW);
+
+    const dispatched: Transaction[] = [];
+    const view = {
+      state: EditorState.create({
+        doc: EMPTY,
+        selection: { anchor: 0 },
+        extensions: [editorInfoField.init(() => ({ file }) as unknown as MarkdownFileInfo)]
+      }),
+      dispatch(this: { state: EditorState }, spec: Parameters<EditorState["update"]>[0]): void {
+        const transaction = this.state.update(spec);
+        dispatched.push(transaction);
+        this.state = transaction.state;
+      },
+      focus(): void {},
+      scrollDOM: { scrollTop: 0 }
+    } as unknown as EditorView;
+
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
+
+      // The first transaction is the writer's input: its own text, its own
+      // entry identity, and the moment it was typed. The second places the
+      // caret without becoming a second undo step.
+      expect(dispatched).toHaveLength(2);
+      expect(dispatched[0]?.annotation(capturedInput)).toEqual({
+        path: PORTAL_DAY,
+        seq: 1,
+        at: OPENED + 200
+      });
+      expect(dispatched[0]?.annotation(Transaction.userEvent)).toBe("input.type");
+      expect(dispatched[1]?.annotation(Transaction.addToHistory)).toBe(false);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("consumes the opening once, so the same portal cannot be entered twice", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin } = await portalStart([file], NOW);
+    const view = liveEditor(file, EMPTY, 0);
+
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "first", OPENED)).toBe(true);
+      const text = view.state.doc.toString();
+      // The capture releases the prepared frame; nothing is left holding it.
+      expect(plugin.portals.held()).toBeNull();
+      expect(plugin.portals.candidates(PORTAL_DAY, text).map((p) => p.id)).not.toContain(PORTAL);
+      expect(plugin.entries.capturePortal(view, PORTAL, "second", OPENED + 1000)).toBe(false);
+      expect(view.state.doc.toString()).toBe(text);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("switches the Reading view's own leaf, not another tab on the same note", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin, app } = await portalStart([file], NOW);
+
+    const sibling = createView(app, file, null, "preview");
+    const owner = createView(app, file, null, "preview");
+    addLeafWithView(app, sibling);
+    addLeafWithView(app, owner);
+
+    const workspace = app.workspace as unknown as {
+      activeView: unknown;
+      activeLeafCalls: Array<{ view: unknown }>;
+    };
+
+    try {
+      await plugin.entries.revealPortal(PORTAL, owner);
+
+      // The writer's own surface is the one that took focus; the other tab on
+      // the same note is left exactly where it was.
+      expect(workspace.activeView).toBe(owner);
+      expect(workspace.activeLeafCalls.at(-1)?.view).toBe(owner);
+      expect(workspace.activeLeafCalls.some((leaf) => leaf.view === sibling)).toBe(false);
+      expect(plugin.portals.held()?.portal.id).toBe(PORTAL);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("refuses an owner that no longer shows the note, without switching a pane", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const elsewhere = createFile("Chronomancer/elsewhere.md", EMPTY);
+    const { plugin, app } = await portalStart([file, elsewhere], NOW);
+
+    const owner = createView(app, elsewhere, null, "preview");
+    const sameFile = createView(app, file, null, "preview");
+    addLeafWithView(app, owner);
+    addLeafWithView(app, sameFile);
+
+    const workspace = app.workspace as unknown as {
+      activeView: unknown;
+      activeLeafCalls: unknown[];
+    };
+
+    try {
+      await plugin.entries.revealPortal(PORTAL, owner);
+
+      // The owner's leaf is showing another note: neither it nor some other
+      // pane that happens to hold today's note is activated for it.
+      expect(workspace.activeLeafCalls).toEqual([]);
+      expect(workspace.activeView).not.toBe(owner);
+      expect(workspace.activeView).not.toBe(sameFile);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("refuses input before the opening, and writes nothing", async () => {
+    const before = new Date(2026, 10, 5, 22, 54, 59, 900).getTime();
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin } = await portalStart([file], before);
+    const view = liveEditor(file, EMPTY, 0);
+
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "early", before)).toBe(false);
+      expect(view.state.doc.toString()).toBe(EMPTY);
+      expect(noticeMessages()).toEqual([]);
+      // The frame is still there for the moment the opening actually arrives.
+      expect(plugin.portals.candidates(PORTAL_DAY, EMPTY).map((p) => p.id)).toContain(PORTAL);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("lets a prepared opening be entered after its own minute", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin } = await portalStart([file], NOW);
+    plugin.portals.prepare(PORTAL);
+    expect(plugin.portals.held()?.portal.id).toBe(PORTAL);
+
+    // Past the opening's minute, only the hold keeps it enterable.
+    const late = new Date(2026, 10, 5, 22, 56, 30).getTime();
+    vi.spyOn(Date, "now").mockReturnValue(late);
+    plugin.portals.reconcile();
+
+    const view = liveEditor(file, EMPTY, 0);
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "late text", late)).toBe(true);
+      expect(view.state.doc.toString()).toContain("- 00:00:00 2026-11-05 22:56:30");
+      // A held entry outside its minute records the moment but celebrates no
+      // alignment, and the hold is released with the capture.
+      expect(plugin.portals.held()).toBeNull();
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("refuses a note whose history is unreadable, names the reason, and keeps the frame", async () => {
+    const broken = ["---", "weaver-alignments:", "  nested: 1", "---", "", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
+    const file = createFile(PORTAL_DAY, broken);
+    const { plugin } = await portalStart([file], NOW);
+    const view = liveEditor(file, broken, broken.indexOf("first"));
+
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "lost", OPENED + 100)).toBe(false);
+      expect(view.state.doc.toString()).toBe(broken);
+      expect(noticeMessages()).toHaveLength(1);
+      expect(noticeMessages()[0]).toContain("portal history is unreadable");
+      // Nothing was consumed, so the writer can retry once the note is repaired.
+      expect(plugin.portals.candidates(PORTAL_DAY, broken).map((p) => p.id)).toContain(PORTAL);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("undoes the entry, its marker and its history together", async () => {
+    const file = createFile(PORTAL_DAY, EMPTY);
+    const { plugin } = await portalStart([file], NOW);
+    const view = historyView(file, EMPTY, 0);
+
+    try {
+      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
+      const captured = view.state.doc.toString();
+      expect(captured).toContain("weaver-alignments:");
+
+      expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+      expect(view.state.doc.toString()).toBe(EMPTY);
+
+      expect(redo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
+      expect(view.state.doc.toString()).toBe(captured);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("offers no portal when the note is not today's", async () => {
+    const other = "Chronomancer/2026.11.04.md";
+    const file = createFile(other, EMPTY);
+    const { plugin } = await portalStart([file], NOW);
+    const view = liveEditor(file, EMPTY, 0);
+
+    try {
+      expect(plugin.portals.candidates(other, EMPTY)).toEqual([]);
+      expect(plugin.entries.capturePortal(view, PORTAL, "nope", OPENED + 100)).toBe(false);
+      expect(view.state.doc.toString()).toBe(EMPTY);
+    } finally {
+      plugin.onunload();
+      vi.restoreAllMocks();
+    }
   });
 });

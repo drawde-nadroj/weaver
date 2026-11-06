@@ -33,7 +33,14 @@ import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
 import { dimensionColor } from "../core/color";
-import { frameBox, frameLabelInset, frameSpan, type FrameColumn } from "../core/frame";
+import {
+  frameBox,
+  frameColumn,
+  frameLabelInset,
+  frameSpan,
+  trayFrame,
+  type FrameColumn
+} from "../core/frame";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { entryIndexField } from "./entry-field";
@@ -52,6 +59,17 @@ export interface FrameHost {
   session(): EntrySession;
   /** True while a whisper request for this entry has been pending long enough to show. */
   reading(path: string, n: number): boolean;
+  /**
+   * True while this entry is known to have been captured through a portal.
+   * The answer is derived from validated recorded history, so a reused N or a
+   * renumbered entry never inherits an old portal's live treatment.
+   */
+  portal(path: string, n: number): boolean;
+  /**
+   * True for the short acknowledgment after a captured alignment is recognised.
+   * The plugin starts and clears this window itself; the frame only asks.
+   */
+  aligned(path: string, n: number): boolean;
   /** Used only when `editorInfoField` cannot name the file. */
   fallbackPath(): string;
 }
@@ -134,6 +152,20 @@ function renderedRows(view: EditorView): Map<number, RenderedRows> {
   return rows;
 }
 
+/** Every live frame layer, so a late-mounting tray can ask for one more measure. */
+const layers = new WeakMap<EditorView, EntryFrames>();
+
+/**
+ * Re-measures on the next frame, once.
+ *
+ * The pending tray is a block widget, so it can be created after the frames
+ * have already measured the note. Mounting it pokes this; nothing per-second
+ * does, because a clock tick is not geometry.
+ */
+export function remeasureFrames(view: EditorView): void {
+  layers.get(view)?.schedule();
+}
+
 class EntryFrames {
   private readonly layer: HTMLElement;
   private readonly frames = new Map<number, FrameNode>();
@@ -155,6 +187,7 @@ class EntryFrames {
     this.observer = new ResizeObserver(() => this.schedule());
     this.observer.observe(view.scrollDOM);
     this.observer.observe(view.contentDOM);
+    layers.set(view, this);
     // The first measure can run before the note has been laid out, when nothing
     // has a size yet. One more frame later there is something to measure.
     this.schedule();
@@ -183,10 +216,16 @@ class EntryFrames {
     this.clear();
     this.lefts.clear();
     this.layer.remove();
+    if (layers.get(this.view) === this) layers.delete(this.view);
   }
 
-  /** One measure per animation frame, however many updates ask for it. */
-  private schedule(): void {
+  /**
+   * One measure per animation frame, however many updates ask for it.
+   *
+   * Not private: `remeasureFrames` is this module's seam for a surface that
+   * mounts after the first measure. The class itself is not exported.
+   */
+  schedule(): void {
     if (this.destroyed || this.pending !== 0) return;
     this.pending = window.requestAnimationFrame(() => {
       this.pending = 0;
@@ -199,6 +238,49 @@ class EntryFrames {
     this.frames.clear();
   }
 
+  /**
+   * Puts the pending tray where a root entry's frame would be.
+   *
+   * The tray is the block widget's own element: a child of the content, in the
+   * flow, so the frame's box is one negative left margin and one width. A
+   * pending portal is a root, so its text edge is the content's own — never a
+   * child's indent, and never the width of the last entry it follows.
+   *
+   * The column is content-relative: the content's own text edge is zero, so
+   * scrolling cannot move the tray, and the pane's clamp is the same clamp the
+   * drawn boxes get. Nothing here runs per second — only inside `measure`.
+   */
+  private alignTray(column: FrameColumn, labelInset: number): void {
+    const tray = this.view.contentDOM.querySelector<HTMLElement>("[data-weaver-portal-tray]");
+    if (tray === null) return;
+
+    const frame = trayFrame({ column, textLeft: 0, gutter: labelInset });
+    if (frame === null) {
+      this.resetTray(tray);
+      return;
+    }
+
+    const marginLeft = `${frame.marginLeft}px`;
+    const width = `${frame.width}px`;
+    if (tray.style.marginLeft !== marginLeft) tray.style.marginLeft = marginLeft;
+    if (tray.style.width !== width) tray.style.width = width;
+    // The portal's own border box is its rail, so its padding may not narrow it.
+    if (tray.style.boxSizing !== "border-box") tray.style.boxSizing = "border-box";
+  }
+
+  /**
+   * Puts the tray back in the flow, for a view that has no pending surface to
+   * place: Source mode, where the field renders no tray at all.
+   */
+  private resetTray(tray?: HTMLElement | null): void {
+    const element =
+      tray ?? this.view.contentDOM.querySelector<HTMLElement>("[data-weaver-portal-tray]");
+    if (element === null || element === undefined) return;
+    element.style.marginLeft = "";
+    element.style.width = "";
+    element.style.boxSizing = "";
+  }
+
   private path(): string {
     const info = this.view.state.field(editorInfoField, false);
     return info?.file?.path ?? this.host.fallbackPath();
@@ -208,19 +290,13 @@ class EntryFrames {
   private measure(): void {
     const settings = this.host.settings();
     // Source mode keeps the file's own text, and the layer is not what that mode
-    // is for: no box is drawn there.
-    if (!settings.entryFrames || this.view.state.field(editorLivePreviewField, false) !== true) {
+    // is for: no box is drawn there, and no pending tray exists to place.
+    if (this.view.state.field(editorLivePreviewField, false) !== true) {
       this.clear();
+      this.resetTray();
       return;
     }
 
-    const index = this.view.state.field(entryIndexField, false);
-    if (index === undefined || index.entries.length === 0) {
-      this.clear();
-      return;
-    }
-
-    const rendered = renderedRows(this.view);
     const scroller = this.view.scrollDOM;
     const base = scroller.getBoundingClientRect();
     // `lineBlockAt` speaks document coordinates; `documentTop` is the screen-y of
@@ -232,15 +308,50 @@ class EntryFrames {
     const toY = (screenY: number): number => screenY - base.top + scroller.scrollTop;
 
     const head = this.view.contentDOM.querySelector<HTMLElement>(".weaver-entry-head");
-    const labelInset = frameLabelInset(Number.parseFloat(
-      window.getComputedStyle(head ?? this.view.contentDOM).fontSize
-    ));
+    const contentStyle = window.getComputedStyle(this.view.contentDOM);
+    // The entry's own size is what the rails are labelled at. On a note with no
+    // entry yet, the pending portal's root already carries that same size; the
+    // content's own font is the last resort.
+    const sizeSource =
+      head ??
+      this.view.contentDOM.querySelector<HTMLElement>(".weaver-portal") ??
+      this.view.contentDOM;
+    const fontSize = Number.parseFloat(window.getComputedStyle(sizeSource).fontSize);
+    const labelInset = frameLabelInset(Number.isFinite(fontSize) ? fontSize : 16);
     const content = this.view.contentDOM.getBoundingClientRect();
-    const column: FrameColumn = {
-      left: toX(base.left),
-      right: Math.min(toX(content.right) + labelInset, toX(base.right))
-    };
+    const padLeft = Number.parseFloat(contentStyle.paddingLeft) || 0;
+    const padRight = Number.parseFloat(contentStyle.paddingRight) || 0;
+    const column = frameColumn({
+      pane: { left: toX(base.left), right: toX(base.right) },
+      content: { left: toX(content.left) + padLeft, right: toX(content.right) - padRight },
+      gutter: labelInset
+    });
 
+    // The pending tray is placed first, before the early return below: a note
+    // with no entries at all is exactly the note whose portal still has to line
+    // up with the root the first entry will become. Its numbers are relative to
+    // the content's own text edge, because a laid-out child scrolls with the
+    // text rather than with the pane the overlay is clamped to.
+    if (content.width > 0) {
+      const origin = content.left + padLeft;
+      // Reuse the same padded text column in the tray's coordinates.
+      const textOrigin = toX(origin);
+      this.alignTray(
+        { left: column.left - textOrigin, right: column.right - textOrigin },
+        labelInset
+      );
+    }
+
+    const index = this.view.state.field(entryIndexField, false);
+    // With frames off there is no overlay to draw, but the tray keeps the frame
+    // column above: the portal's own frame inset then puts its prose on the same
+    // left edge as the entries, which is layout, not decoration.
+    if (!settings.entryFrames || index === undefined || index.entries.length === 0) {
+      this.clear();
+      return;
+    }
+
+    const rendered = renderedRows(this.view);
     const path = this.path();
     const session = this.host.session();
     const seen = new Set<number>();
@@ -340,7 +451,9 @@ class EntryFrames {
       // nothing.
       const chosen = frameEffect({
         live: session.activeFor(path, entry.n),
-        reading: this.host.reading(path, entry.n)
+        reading: this.host.reading(path, entry.n),
+        portal: this.host.portal(path, entry.n),
+        aligned: this.host.aligned(path, entry.n)
       });
       for (const effect of FRAME_EFFECTS) {
         node.root.classList.toggle(effect.className, effect === chosen);

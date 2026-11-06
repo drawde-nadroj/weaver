@@ -1,7 +1,14 @@
 /**
- * The generated stylesheet: the five numbers a note is drawn with, and the two
- * emphasis colours. Nothing is generated per level — depth rides on the
- * `--weaver-d` custom property a line carries, so a deeper entry costs nothing.
+ * The generated stylesheet: the five numbers a note is drawn with, the two
+ * emphasis colours, and the six anchor colours. Nothing is generated per level —
+ * depth rides on the `--weaver-d` custom property a line carries, so a deeper
+ * entry costs nothing.
+ *
+ * The anchor colours are emitted as custom properties for the portal's
+ * multicolour rail, which is the only surface that needs the palette as a
+ * whole. It reads `--weaver-anchor-1` … `--weaver-anchor-6` rather than
+ * restating the hex values in the stylesheet: one palette, one place to change
+ * it.
  */
 
 import { ANCHORS } from "../core/color";
@@ -20,7 +27,8 @@ export function buildCss(settings: WeaverSettings): string {
     "--weaver-entry-line-height: 1.35;",
     `--weaver-indent-step: ${Math.max(0, Math.round(settings.indentStep))}px;`,
     `--weaver-indent-step-mobile: ${Math.max(0, Math.round(settings.mobileIndentStep))}px;`,
-    `--weaver-indent-max-level: ${indentMax};`
+    `--weaver-indent-max-level: ${indentMax};`,
+    ...ANCHORS.map((anchor, index) => `--weaver-anchor-${index + 1}: ${anchor};`)
   ];
 
   const rules = [

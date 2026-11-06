@@ -6,6 +6,7 @@ import type { Decoration } from "@codemirror/view";
 import { entryDecorationSet } from "../src/editor/entry-decorations";
 import { entryIndexField } from "../src/editor/entry-field";
 import { DurationWidget } from "../src/editor/stopwatch-widget";
+import { EntryClock } from "../src/entries/clock";
 import { EntrySession } from "../src/entries/session";
 
 
@@ -35,9 +36,12 @@ function collect(
   session = new EntrySession(),
   path = PATH,
   openDayLink?: (target: string, sourcePath: string) => void,
-  now = NOW
+  at = NOW
 ): Found[] {
-  const set = entryDecorationSet(state, session, path, now, openDayLink);
+  // One shared clock, sampled at a fixed instant: the decoration reads the last
+  // painted snapshot, so a test never advances a real stopwatch to see digits.
+  const clock = new EntryClock(session, () => at);
+  const set = entryDecorationSet(state, session, path, clock, openDayLink);
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -195,11 +199,54 @@ describe("the entry decorations", () => {
 
     const widget = clockWidget(collect(stateAt(), session));
 
-    // Writing is always a draft, whatever sigil the file holds.
+    // Writing is always a draft, whatever sigil the file holds, and the left
+    // corner is the session's last painted second — not a sample taken here.
+    expect(widget?.input.mode).toBe("running");
     expect(widget?.input.sigil).toBe("-");
-    expect(widget?.input.active).toBe(true);
-    expect(widget?.input.ms).toBe(66_000);
+    expect(widget?.input.ms).toBe(65_000);
     expect(widget?.input.time).toBe("10:00:00");
+    widget?.destroy();
+  });
+
+  it("never rounds the live row above the second it painted", () => {
+    const session = new EntrySession();
+    session.start(PATH, 1, 0, NOW);
+    session.commitDisplay(7_000);
+
+    // 7.9 seconds of wall clock have passed, but the writer has only seen 7.
+    const widget = clockWidget(collect(stateAt(), session));
+
+    expect(widget?.input.ms).toBe(7_000);
+    widget?.destroy();
+  });
+
+  it("draws a draft that has not been written into yet as a live wall clock", () => {
+    const doc = ["{ 1.1.1 }", "prose here", "- 00:00:00"].join("\n");
+    const found = collect(stateAt(doc.indexOf("prose"), doc));
+    const widget = clockWidget(found);
+    const root = widget?.toDOM();
+
+    // The row holds a duration and nothing else: no recorded moment to paint and
+    // no day to link, because the first input is what records both.
+    expect(widget?.input.mode).toBe("awaiting");
+    expect(widget?.input.time).toBeNull();
+    expect(widget?.input.sigil).toBe("-");
+    expect(widget?.input.ms).toBe(0);
+    expect(root?.querySelector(".weaver-duration-moment")?.textContent).not.toBe("");
+    expect(dayLinkWidget(found)).toBeUndefined();
+    widget?.destroy();
+  });
+
+  it("keeps the time a draft held before its first input, beside the wall clock", () => {
+    // Paused before any moment was captured: the row still awaits its beginning,
+    // but the duration it already accumulated is real and must not read zero.
+    const doc = ["{ 1.1.1 }", "prose here", "= 00:04:12"].join("\n");
+    const widget = clockWidget(collect(stateAt(doc.indexOf("prose"), doc)));
+
+    expect(widget?.input.mode).toBe("awaiting");
+    expect(widget?.input.sigil).toBe("=");
+    expect(widget?.input.ms).toBe(252_000);
+    expect(widget?.input.time).toBeNull();
     widget?.destroy();
   });
 
@@ -208,7 +255,7 @@ describe("the entry decorations", () => {
     const widget = clockWidget(collect(stateAt(settled.indexOf("prose"), settled)));
 
     expect(widget?.input.sigil).toBe("=");
-    expect(widget?.input.active).toBe(false);
+    expect(widget?.input.mode).toBe("fixed");
     widget?.destroy();
   });
 
@@ -218,7 +265,9 @@ describe("the entry decorations", () => {
       time: "10:00:00",
       sigil: "-",
       ms: 66_000,
-      active: false,
+      mode: "fixed",
+      path: PATH,
+      clock: new EntryClock(new EntrySession(), () => NOW),
       color: "#f97316",
       d: 2
     });

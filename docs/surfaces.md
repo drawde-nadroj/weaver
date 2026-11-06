@@ -77,21 +77,37 @@ Every surface must answer three questions; one that cannot is not a surface.
 - The clock row is a block widget while the selection is elsewhere, and raw text
   while the selection touches it. Both come from a `StateField` — a block widget
   from a plugin throws.
-- The widget ticks itself whenever the session is live, whatever sigil the file
-  holds: while writing, the row's duration reads `-` whether the file says `-` or
-  not. It mutates the duration half's three digit spans every second and nothing
-  else — the query is scoped to `.weaver-duration-clock`, because the moment carries
-  `.weaver-duration-num` spans too — so there is no transaction, no re-render and no
-  undo entry.
+- The row has three states, and they decide both corners. `fixed` draws the file
+  and never ticks. `awaiting` is a draft whose clock row holds a duration and no
+  moment yet: the left corner still reads zero and the right corner carries the
+  live wall clock the first input will record. `running` is the live session for
+  this entry, whatever sigil the file holds: the left corner reads `-` and the
+  duration the session has painted, the right corner the moment already recorded.
+- No widget owns a timer. `EntryClock` (`entries/clock.ts`) is one shared clock per
+  plugin instance: a tick samples the real time once, floors the elapsed
+  milliseconds to whole seconds, paints every subscriber synchronously, and only
+  then commits that painted value to the session. A stop therefore writes the last
+  second a surface actually showed, never a fresher wall-clock sample that the
+  writer never saw.
+- A subscription paints the last snapshot before joining the tick, so a second
+  pane, an adopted element or a redraw never advances the digits and never
+  restarts the count. The timer runs at the nearest of the next wall second and
+  the next session second, derived from the actual time on every wakeup, so a
+  delayed callback reconciles instead of replaying or drifting. It keeps sampling
+  while a session is live even with no surface mounted, and stops when neither is
+  true.
+- While nothing is mounted the clock still commits, and while a row is mounted the
+  widget writes only the half that moves: the duration half's three digit spans,
+  scoped to `.weaver-duration-clock` — the moment carries `.weaver-duration-num`
+  spans too. There is no transaction, no re-render and no undo entry per second.
 - Its `eq` ignores the elapsed time, so a refresh after a keystroke finds the same
-  widget and leaves the DOM alone; the sigil, the liveness, the colour and the
-  moment are repainted in place by `updateDOM`. The row's top stays identical to
-  the pixel across a run of insertions — that hop was the old per-keystroke redraw.
-- The ticker belongs to the element, not to the widget instance: CodeMirror calls
-  `updateDOM` on the *new* widget while the previous instance may still hold an
-  interval, and one writer per element is what keeps the digits from counting
-  twice. `duration-ticker.ts` is the one writer; the frame draws no clock of its
-  own.
+  widget and leaves the DOM alone; the sigil, the mode, the colour and the moment
+  are repainted in place by `updateDOM`. The row's top stays identical to the pixel
+  across a run of insertions — that hop was the old per-keystroke redraw.
+- The subscription belongs to the element, not to the widget instance: CodeMirror
+  calls `updateDOM` on the *new* widget while the previous instance may still hold
+  a subscription, and one writer per element is what keeps the digits from counting
+  twice. Adopting an element releases the previous writer before subscribing.
 - Each half is three digit spans around two `.weaver-duration-ink` colons: digits in
   the note's own text colour, colons in the dimension's. `appendClockRuns` builds
   both halves from one grammar, the same one the marker uses, so the moment reads
@@ -118,16 +134,23 @@ Every surface must answer three questions; one that cannot is not a surface.
   order.
 - A half the row does not carry is not drawn: the frame labels only what the note
   holds, never an invented `00:00:00`.
-- New entries record creation date and time in their clock row; historical
-  undated entries inherit the filename day. A creation day different from the
-  filename day has a permanently visible top-right link in the note's date
-  style. Same-day and historical undated entries have no date link, including
-  no hidden keyboard stop. `core/day.ts` makes the shared decision;
+- New entries are written as `- 00:00:00` and gain their recorded day and moment
+  on the first text, from that input's own timestamp, so an entry made before
+  midnight and typed after it records the day it was written in. Existing dates
+  and moments are never replaced, and a settled entry never acquires one.
+  Historical undated entries inherit the filename day.
+- The recorded day is labelled only when it differs from the note's own day: a
+  creation day other than the filename day has a permanently visible top-right
+  link in the note's date style. An awaiting draft has no recorded beginning, so
+  it has no date link — the filename's day would claim a creation day the first
+  input has not chosen yet — and a captured same-day entry and a historical
+  undated entry have none either, including no hidden keyboard stop.
+  `core/day.ts` makes that shared decision in `entryDayLinkTarget`;
   `ui/day-link.ts` builds the link. The marker row positions it absolutely in
   Live Preview, and the static frame does the same in Reading view. Caret,
   hover and focus never change visibility; keyboard focus retains its outline.
-  Opening or resuming an entry never redates it. Source mode and non-day notes
-  carry no generated link.
+  The link changes no text geometry. Opening or resuming an entry never redates it.
+  Source mode and non-day notes carry no generated link.
 - The frame's labels — marker, entry-day link, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
@@ -193,9 +216,10 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - The clock row is one flex row: the duration at the box's bottom-left corner, the
   moment at the bottom-right, and the rail visible between them. Both keep
   `tabular-nums`, so a ticking second never moves the row.
-- The live entry's border carries a highlight travelling counter-clockwise once
-  every three seconds, and stops under `prefers-reduced-motion`. The labels paint
-  over it, so the shimmer travels the visible rails only.
+- An ordinary live entry's border carries a highlight travelling counter-clockwise
+  once every three seconds, stopped under `prefers-reduced-motion`. A captured
+  live portal instead uses an eight-second multicolour pulse. Paused or settled
+  portals use the ordinary static frame; prose and marker colours still follow dimension.
 - One effect at a time, chosen by precedence in `src/editor/frame-effects.ts`. While
   a whisper request for an entry has been pending for 200 ms, that box shows the
   reading effect *instead of* the travel: one ring leaves the box's centre, dies at
@@ -204,8 +228,42 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   A request that answers inside 200 ms shows nothing, so a fast model does not blink.
   Under `prefers-reduced-motion` the ring becomes a still dashed rule inside the
   box: the state still shows, and nothing moves.
+- Exact-second portal alignment shows one 800 ms acknowledgment above all other
+  effects, then yields. Precedence is alignment, whisper reading, live portal,
+  ordinary liveness; effects never stack. Reduced motion uses static treatment.
 - Frames are Live Preview only. Source mode is the file's own text, which is the
   point of it.
+
+### Pending portals, on desktop and touch
+
+`src/ui/portal.ts` builds the shared frame: an opening label at top-left and
+one transparent `.weaver-portal-footer` whose countdown and actual wall time
+straddle the bottom-left and bottom-right rails. Both labels cut the rail
+behind them; controls remain in the interior, never between clock labels.
+`src/editor/portal-widget.ts` owns one stable block tray after the note, including
+an empty note, with `data-weaver-portal` rather than an invented entry sequence.
+Live Preview uses the same root frame column and label inset as recorded
+entries; Reading uses the static frame's outer gutter span. The rails therefore
+have equal widths, including on narrow phones. Clock samples mutate labels
+directly; lifecycle changes reconcile faces by identity. Existing entry geometry
+above the tray does not change when a neighbour expires.
+
+Prepare (or Enter on an open face) deliberately holds and focuses a waiting
+input line. Early typing, paste and drop insert nothing. Release reuses the same
+button while prepared, providing touch users the same escape path as Escape;
+both restore the prior connected focus target or editor. A held repeat cannot
+cross the unlock boundary: a fresh input is required. The first text, pasted
+text or committed composition is handed synchronously to the entry engine,
+then writing continues in native CodeMirror. A refused handoff keeps the full
+recoverable text with Retry, without creating evidence or starting a stopwatch.
+
+Reading view has one whole-view tray, not one tray per paragraph.
+`src/reading/portals.ts` owns its source and lifecycle subscriptions; its explicit
+Prepare switches that leaf to Live Preview and focuses the same opening. Source
+mode stays raw Markdown. The same controls and input code run on phones, with
+44 px touch buttons and wrapped labels; a soft keyboard is not an Escape key,
+which is why Release is visible. Reduced motion stops rail motion, and disabling
+entry frames suppresses rail effects without removing labels or controls.
 
 ### The entry, in Reading view
 
@@ -222,6 +280,8 @@ Later author-written breaks and inline markup remain intact.
 A paused or moment-only clock can remain inside the marker's Markdown paragraph;
 it is extracted onto the bottom rail too, so the creation date is never repeated
 inside the prose.
+An unprocessed next marker ends the current frame too: processing two entry
+paragraphs in one render batch cannot accidentally nest their frames.
 
 The frame's edges are the rails, so the first and last children *hang half a line
 over them*: `align-self` shrink-wraps each one to its own text, and a negative

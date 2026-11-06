@@ -32,11 +32,13 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
 import { entryDayLinkTarget } from "../core/day";
+import type { Entry } from "../core/entries";
+import type { EntryClock } from "../entries/clock";
 import type { EntrySession } from "../entries/session";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
-import { DurationWidget } from "./stopwatch-widget";
+import { DurationWidget, type ClockMode } from "./stopwatch-widget";
 
 const RUNS: Record<string, Decoration> = {
   [NUM_CLASS]: Decoration.mark({ class: NUM_CLASS }),
@@ -105,6 +107,22 @@ function basenameOf(path: string): string {
 }
 
 /**
+ * A draft still waiting for its first input: its clock row holds a duration and
+ * nothing else. That duration-only row is the durable pending state, so it has no
+ * beginning to label — the day and the moment are recorded by the first keystroke,
+ * not by insertion. A zero duration or empty prose alone is never enough: a
+ * historical row that carries a moment is already someone's beginning.
+ */
+function isAwaitingDraft(entry: Entry): boolean {
+  return (
+    entry.state === "draft" &&
+    entry.duration !== null &&
+    entry.time === null &&
+    entry.day === null
+  );
+}
+
+/**
  * The decoration set for one state. Exported so a test can read it without a
  * live `EditorView`, which needs a real browser to measure.
  */
@@ -112,7 +130,7 @@ export function entryDecorationSet(
   state: EditorState,
   session: EntrySession,
   path: string,
-  now: number,
+  clock: EntryClock,
   openDayLink?: OpenDayLink
 ): DecorationSet {
   const index = state.field(entryIndexField, false);
@@ -215,12 +233,21 @@ export function entryDecorationSet(
       continue;
     }
 
-    const active = session.activeFor(path, entry.n);
-    // While writing, the row is a live draft whatever the file holds. Once
-    // settled it shows the duration the file kept — its sigil, which may be
+    const mode: ClockMode = session.activeFor(path, entry.n)
+      ? "running"
+      : isAwaitingDraft(entry)
+        ? "awaiting"
+        : "fixed";
+    // While writing, the row is a live draft whatever the file holds, and its left
+    // corner is the session's last painted snapshot — never a fresh sample taken
+    // here, which is what used to make a stop write a second the writer never saw.
+    // A draft awaiting its first input shows the duration the row holds, which is
+    // zero until it has been written into, beside the wall clock; a draft paused
+    // before its first input keeps the time it had already accumulated. Once
+    // settled the row shows the duration the file kept — its sigil, which may be
     // absent when the row carries only a moment.
-    const sigil = active ? "-" : (entry.duration?.sigil ?? null);
-    const ms = active ? session.elapsed(now) : (entry.duration?.ms ?? 0);
+    const sigil = mode === "running" ? "-" : (entry.duration?.sigil ?? null);
+    const ms = mode === "running" ? session.displayed() : (entry.duration?.ms ?? 0);
     const to = row.to < state.doc.length ? row.to + 1 : row.to;
 
     ranges.push({
@@ -233,7 +260,9 @@ export function entryDecorationSet(
           time: entry.time,
           sigil,
           ms,
-          active,
+          mode,
+          path,
+          clock,
           color: dimensionColor(entry.d),
           d: entry.d
         })
@@ -248,10 +277,11 @@ export function entryDecorationSet(
 export function entryDecorationsExtension(
   getSession: () => EntrySession,
   getPath: () => string,
+  getClock: () => EntryClock,
   openDayLink?: OpenDayLink
 ): Extension {
   const build = (state: EditorState): DecorationSet =>
-    entryDecorationSet(state, getSession(), pathOfState(state, getPath), Date.now(), openDayLink);
+    entryDecorationSet(state, getSession(), pathOfState(state, getPath), getClock(), openDayLink);
 
   const field = StateField.define<DecorationSet>({
     create: build,

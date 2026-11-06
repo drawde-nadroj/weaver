@@ -26,6 +26,39 @@ export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. ${
 /** The refusal when today's note cannot be found, created or opened. */
 export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. ${NOTICE_NOTHING_WRITTEN}`;
 
+/**
+ * A portal's one invitation. It usually arrives at the eleven-minute boundary,
+ * but an app that was asleep may wake later; the remaining time is then spoken
+ * as what is actually left rather than as the time that has passed.
+ */
+export function noticePortal(time: string, remainingSeconds: number): string {
+  const seconds = Math.ceil(remainingSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return `Portal · ${time} is open`;
+  if (seconds < 60) return `Portal · ${time} opens in ${seconds} second${seconds === 1 ? "" : "s"}`;
+
+  const minutes = Math.ceil(seconds / 60);
+  return `Portal · ${time} opens in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+/**
+ * A portal's first text could not become an entry: the note's own history could
+ * not be read, or the write had nowhere to land. The receptacle keeps the text,
+ * so nothing the writer typed is lost while the cause is repaired.
+ */
+export function noticePortalRefused(reason: string): string {
+  return `Weaver: this portal was not entered — ${reason}. Your text is kept.`;
+}
+
+/** The refusal when an explicit Prepare names an opening that is no longer live. */
+export const NOTICE_PORTAL_UNAVAILABLE = `Weaver: that portal is no longer open. ${NOTICE_NOTHING_WRITTEN}`;
+
+/**
+ * A stop could not be written. The clock is held at the second it stopped on,
+ * so nothing is lost: check the vault is writable, then stop again.
+ */
+export const NOTICE_STOP_FAILED =
+  "Weaver: the stopped time could not be saved; the clock is held where it stopped. Check the vault is writable, then stop again.";
+
 /** The moment a whole-day whisper pass begins. */
 export const NOTICE_WHISPERING = "Whispering the day…";
 

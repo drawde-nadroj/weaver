@@ -59,6 +59,17 @@ export class WeaverSettingTab extends PluginSettingTab {
           this.commit();
         });
       });
+    new Setting(containerEl)
+      .setName("Portals")
+      .setDesc(
+        "Offer upcoming local minutes: every :00, :11, :22, :33, :44 and :55, and each mirrored HH:HH. A notice arrives eleven minutes ahead; Prepare holds one open past its minute, and the first word typed at its opening second is recognised once. Turning this off hides invitations but keeps entries and history."
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.portalsEnabled).onChange((value) => {
+          this.plugin.settings.portalsEnabled = value;
+          this.commit();
+        });
+      });
   }
 
   private renderDay(containerEl: HTMLElement): void {

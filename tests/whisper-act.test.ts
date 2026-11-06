@@ -117,6 +117,12 @@ async function start(doc: string, model: WhisperModel): Promise<Running> {
   const plugin = instantiatePlugin(WeaverPlugin, app);
   await plugin.onload();
 
+  // Portal invitations belong to the portal suite: switching them off here keeps
+  // a wall-clock boundary from adding a notice or a timer to what a pass reports.
+  plugin.settings.portalsEnabled = false;
+  plugin.portals.reconcile();
+  clearNotices();
+
   plugin.whisper = new WhisperRunner({
     model: () => (plugin.settings.whisperEnabled ? model : NoModel),
     land: (path, n, key, whisper) => plugin.entries.landWhisper(path, n, key, whisper),

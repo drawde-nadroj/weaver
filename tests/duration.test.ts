@@ -17,10 +17,14 @@ describe("formatClock", () => {
     expect(formatClock(-500)).toBe("00:00:00");
   });
 
-  it("rounds to the nearest second, the smallest unit the line shows", () => {
+  it("floors to the whole second that has happened, never rounds up", () => {
     expect(formatClock(499)).toBe("00:00:00");
-    expect(formatClock(500)).toBe("00:00:01");
+    expect(formatClock(500)).toBe("00:00:00");
+    expect(formatClock(999)).toBe("00:00:00");
+    expect(formatClock(1_000)).toBe("00:00:01");
     expect(formatClock(1_499)).toBe("00:00:01");
+    expect(formatClock(1_500)).toBe("00:00:01");
+    expect(formatClock(1_999)).toBe("00:00:01");
   });
 });
 

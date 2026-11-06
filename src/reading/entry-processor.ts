@@ -11,22 +11,23 @@
  *
  * The marker's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
- * the marker stays in the DOM untouched, links and emphasis included. A link to
- * the entry's recorded day is appended at the frame's top-right corner: the day
- * its clock row holds, else the day-note filename, so a historical undated row
- * still names the note's day and a newly dated row names its own. The label
- * never reads the wall clock, and the clock row's two halves stay time-only —
- * the date is drawn once, at the top-right. The clock row's halves
- * are digit and punctuation runs, exactly as in the editor.
+ * the marker stays in the DOM untouched, links and emphasis included. A persistent
+ * top-right link labels a recorded creation day only when it differs from the
+ * day-note filename. Awaiting and historical undated entries carry no date link.
+ * The label never reads the wall clock, and the clock row's two halves stay
+ * time-only: digit and punctuation runs, exactly as in the editor.
  */
 
-import type { MarkdownPostProcessor } from "obsidian";
+import { MarkdownRenderChild, type MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
 import { entryDayLinkTarget } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseEntries, parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
+import { formatClock as wallClock } from "../core/clock";
+import type { EntryClock } from "../entries/clock";
+import { writeClockText } from "../editor/duration-ticker";
 import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 
@@ -102,16 +103,43 @@ function clockElement(parsed: ClockRow, d: number | null, labelled = false): HTM
   return root;
 }
 
+/** A rendered awaiting moment subscribes only while its Markdown section lives. */
+class AwaitingClock extends MarkdownRenderChild {
+  private unsubscribe: (() => void) | null = null;
+
+  constructor(element: HTMLElement, private readonly clock: EntryClock) {
+    super(element);
+  }
+
+  onload(): void {
+    const moment = this.containerEl.querySelector<HTMLElement>(".weaver-duration-moment");
+    if (moment === null) return;
+    const digits = appendClockRuns(moment, wallClock(new Date(this.clock.snapshot().now)));
+    this.unsubscribe = this.clock.subscribe((now) => writeClockText(digits, wallClock(new Date(now))));
+  }
+
+  onunload(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+  }
+}
+
 /**
- * Builds the post processor that frames entries in Reading view. It reads the
- * rendered paragraphs and their source section — no settings or vault access —
- * and takes only the opener the frame's day link needs.
+ * Builds the post processor that frames entries in Reading view. Section source
+ * preserves signed-list extraction; an optional shared clock paints awaiting
+ * moments with section-owned subscription cleanup, without writing note bytes.
  */
-export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor {
+export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClock): MarkdownPostProcessor {
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
     const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
     const open = openDayLink ?? (() => {});
+    const renderClock = (parsed: ClockRow, d: number | null, labelled = false): HTMLElement => {
+      const row = clockElement(parsed, d, labelled);
+      if (clock !== undefined && parsed.time === null && parsed.duration !== null &&
+          parsed.duration.sigil !== "+") context.addChild(new AwaitingClock(row, clock));
+      return row;
+    };
 
     // Obsidian renders each Markdown block separately. A canonical + or - clock
     // is a list in another section, not a paragraph beside the entry's prose.
@@ -146,7 +174,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         // A clock row on its own, with no frame to sit on — a stray line, or one
         // separated from its marker by something that is not a paragraph — is
         // drawn as the plain block it always was.
-        paragraph.replaceWith(clockElement(clock, depth));
+        paragraph.replaceWith(renderClock(clock, depth));
         continue;
       }
 
@@ -215,7 +243,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         while (paragraph.firstChild !== null) inline.appendChild(paragraph.firstChild);
         frame.appendChild(inline);
       }
-      if (containedClock !== null) frame.appendChild(clockElement(containedClock, prefix.d, true));
+      if (containedClock !== null) frame.appendChild(renderClock(containedClock, prefix.d, true));
 
       let sibling = frame.nextElementSibling;
       while (sibling !== null) {
@@ -224,6 +252,9 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         if (sibling.tagName !== "P") break;
         if (sibling.classList.contains(HEAD_CLASS)) break;
         if (sibling.classList.contains("weaver-frame")) break;
+        // The next marker may not have been decorated yet in this render batch.
+        // Its paragraph owns another frame; consuming it would nest sibling entries.
+        if (parseMarkerPrefix(sibling.textContent ?? "") !== null) break;
 
         // A whisper row is the model's reading, not the writer's prose: the class
         // overrides the colour, and `--weaver-d` stays, because the comment's rule
@@ -239,7 +270,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         const parsed = parseClockRow((sibling.textContent ?? "").trim());
         if (parsed !== null) {
           entryDay = parsed.day ?? entryDay;
-          frame.appendChild(clockElement(parsed, prefix.d, true));
+          frame.appendChild(renderClock(parsed, prefix.d, true));
           sibling.remove();
           break;
         }
@@ -257,7 +288,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
         const sourceClock = parseClockRow(sourceIndex?.lines[sourceEntry.clockLine]?.trim() ?? "");
         if (sourceClock !== null) {
           entryDay = sourceClock.day ?? entryDay;
-          frame.appendChild(clockElement(sourceClock, prefix.d, true));
+          frame.appendChild(renderClock(sourceClock, prefix.d, true));
         }
       }
 
