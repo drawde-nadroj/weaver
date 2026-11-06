@@ -163,6 +163,13 @@ Every surface must answer three questions; one that cannot is not a surface.
   The body class is `weaver-frame-fixed`. Measured at a 12 px step, level 3: on, the
   marker, prose, raw row and clock widget all at `24 px`; off, the marker, raw row and
   clock widget at `0` with only the prose at `24 px`.
+- Two spacing settings sit beside it. *Space below each Thread* is air above every
+  depth-1 entry after the note's first Thread, so a Thread's subtree does not run into
+  the next. *Space between branches* is air above each branch whose predecessor is also
+  a branch, so the first branch stays close to its root and later siblings separate.
+  `weaver-thread-start` and `weaver-branch-start` carry the decision: on the marker row
+  in Live Preview and on the static frame in Reading view. Both default to zero, and
+  both are the same number on desk and phone.
 - The marker's characters are the top rail's label, punctuation and all: one
   `.weaver-frame-label` mark over the whole marker, whose background covers the rail
   behind it. No character of the label belongs to the box instead of the text.
@@ -234,36 +241,92 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - Frames are Live Preview only. Source mode is the file's own text, which is the
   point of it.
 
-### Pending portals, on desktop and touch
+### The composer and its openings
 
-`src/ui/portal.ts` builds the shared frame: an opening label at top-left and
-one transparent `.weaver-portal-footer` whose countdown and actual wall time
-straddle the bottom-left and bottom-right rails. Both labels cut the rail
-behind them; controls remain in the interior, never between clock labels.
-`src/editor/portal-widget.ts` owns one stable block tray after the note, including
-an empty note, with `data-weaver-portal` rather than an invented entry sequence.
-Live Preview uses the same root frame column and label inset as recorded
-entries; Reading uses the static frame's outer gutter span. The rails therefore
-have equal widths, including on narrow phones. Clock samples mutate labels
-directly; lifecycle changes reconcile faces by identity. Existing entry geometry
-above the tray does not change when a neighbour expires.
+An opening is a minute, and the composer is where a thought is written. They are
+one surface, not two competing cards: `src/ui/composer.ts` owns the element, and
+`src/ui/portal.ts` draws the opening's status *inside* it — as the whole surface
+when no draft exists, and as one line of the status row when one does.
 
-Prepare (or Enter on an open face) deliberately holds and focuses a waiting
-input line. Early typing, paste and drop insert nothing. Release reuses the same
-button while prepared, providing touch users the same escape path as Escape;
-both restore the prior connected focus target or editor. A held repeat cannot
-cross the unlock boundary: a fresh input is required. The first text, pasted
-text or committed composition is handed synchronously to the entry engine,
-then writing continues in native CodeMirror. A refused handoff keeps the full
-recoverable text with Retry, without creating evidence or starting a stopwatch.
+An opening is not a permission that waits to be used. For `04:33` the interval is
+`[04:33:00, 04:34:00)`: writing that *begins* inside it was written through it, and
+finishing later changes nothing. A minute nobody entered is gone, and waking after
+a sleep replays nothing, because the eligibility is derived from the calendar
+rather than accumulated from timers.
 
-Reading view has one whole-view tray, not one tray per paragraph.
-`src/reading/portals.ts` owns its source and lifecycle subscriptions; its explicit
-Prepare switches that leaf to Live Preview and focuses the same opening. Source
-mode stays raw Markdown. The same controls and input code run on phones, with
-44 px touch buttons and wrapped labels; a soft keyboard is not an Escape key,
-which is why Release is visible. Reduced motion stops rail motion, and disabling
-entry frames suppresses rail effects without removing labels or controls.
+There is no special gesture to enter an opening. The first committed non-whitespace
+character of a root samples the instant once, freezes the beginning, and asks which
+openings that instant qualifies for; a branch qualifies for none, because only a
+root is written into a minute. Clearing every character resets the timing *and* the
+association. Clicking `Weave` therefore does one thing — opens or resumes normal
+writing in that Realm.
+
+Two rules keep that honest at the edges. An opening is a whole minute, so a one-off
+schedule configured at `05:11:04` is refused when read rather than silently snapped:
+a record names a minute, and a beginning is measured against one. And evidence never
+costs the words: when a record cannot be added to a note — an id that is not a whole
+minute, say — the thought is written without it, because the entry *is* the record
+and the alignment is extra. A note whose own history cannot be *read* is still
+refused outright, because writing over evidence that cannot be parsed is worse than
+declining to write.
+
+The strip says the opening once: its Realm, its own local `HH:MM`, and what it is
+doing — `opens in 06:05`, or `open · 00:39 left`, or `closed · writing normally`
+when it closed under an empty composer. It has two homes and is moved between them,
+never duplicated: when nothing is being written it *is* the surface, and while a
+draft is open it is one line of that draft's status row. The rainbow belongs to an
+opening that can still be entered and goes the moment its minute does;
+`portalMotion` sets its duration, and `off` pins the angle while keeping the six
+colours.
+
+`src/ui/composer.ts` is the one bottom surface, and it speaks the note's own visual
+language: the draft's dimension colour, the same rounded frame, two rails cut behind
+their labels, the duration at the bottom-left and the moment at the bottom-right,
+and the same digit grammar for an address. It is a labelled non-modal region — no
+`aria-modal`, no focus trap, no dimming — mounted in the focused window's document
+above every leaf, so a layout change cannot destroy the draft's input.
+
+- Header: one `Realm: <name>` control, which opens the navigator's Realms tab
+  without changing the destination or travelling. When viewing differs from writing,
+  one quiet line says `Writing to <realm> · viewing <realm>`, and nothing repeats it.
+- Editing: `Save ↵`, `Hide · Esc`, and a `More` menu holding `New Thread` and
+  `Discard draft`. Saving is the draft's own accent rather than a second product's
+  colour. `Shift-Enter` is a newline; a soft keyboard's Return is a save; a committed
+  IME composition is one beginning, and its confirmation `Enter` is never a save; a
+  held key never saves twice.
+- Saving: the prose is read-only and the status says `Saving…`. A distinct second
+  `Enter` dismisses, but only once the write is confirmed, and the note gains one
+  settled entry either way.
+- Resting: the saved thought is drawn from its note by `renderMarkdown`, the
+  selection is the focusable target, `Branch · N` opens a child in the next
+  dimension and `New Thread · T` a root, `More` holds `Edit in note`, and
+  `Close · Enter` — a quiet action — closes.
+- Structural motions on the saved selection: `j`/`↓` next thought, `k`/`↑` previous,
+  `h`/`←` parent, `l`/`→` first child, all in document preorder over the Thread's own
+  nodes. They are claimed only where no editable control or native button has focus,
+  so `Tab` still reaches the surface's actions.
+- `Hide` is not a dismissal: the words stay, the caret is remembered, and the clock
+  stops on the second that was on screen. A hidden draft leaves one strip,
+  `Resume · <realm> — <excerpt>`, which expands *then* restores the caret *then*
+  focuses. An untouched root has nothing to resume and closes; a chosen branch is
+  kept even while empty, because opening one was an intent.
+- Choosing a Realm or another parent with words in the draft is a *proposal*, not an
+  edit: the same draft is paused, the current and proposed parent are shown side by
+  side, `Use this parent ↵` revalidates and applies, and `Keep original · Esc`
+  changes nothing. The words, the beginning and the seconds on screen survive either
+  way, and no saved entry ever moves.
+- A failed save keeps the text, the timing and the reason; an unconfirmed one offers
+  `Check save` and never a second write. A save that completes while the surface is
+  hidden never expands it or takes focus.
+
+Its box is measured, never inherited: `floatingComposerBox` puts it in the active
+pane's text column, on the bottom edge of the visual viewport, and it grows upward by
+exactly the height it rendered — a phone's keyboard and toolbar are reserved, not
+overlapped. Opening it freezes the note's own clock first, so two clocks never run
+for one thought.
+
+Reading view draws no opening at all: a note is a record, and the surface floats
+above every leaf regardless of which one is showing.
 
 ### The entry, in Reading view
 
@@ -312,32 +375,49 @@ is a child of the frame, not of the shrink-wrapped head.
 
 ### The navigator
 
-One component, one list, on both platforms: start, descend and jump in the same
-card, with the return stack inside it.
+One component, one list, on both platforms: three tabs over the same card.
 
 - Self-mounted overlay, not a `Modal`: it must never take a `Scope`. A scope is what
   swallowed `⌘,` and stopped Obsidian's own settings from opening. Keys are handled
   on the card in the capture phase, and every chord it does not claim reaches
   Obsidian untouched.
-- The first row is `＋ start an entry`. Below it, when there are stops, a `return`
-  block: one row per place a move left — `↩ B.D.N` while that entry exists. Below
-  that, `today`: every entry in document order — `B.D.N`, clock, title, `+N`
-  children — with the caret's own entry marked `is-current` and the selection marked
-  `is-selected`.
-- Keys: `↑`/`↓` move, `⏎` jump, `⇧⏎` settle and descend under the selection, `n`
-  start, `x` delete the selection's whole subtree, `⌘[` walk back one stop, `Esc`
-  close and put the caret back where the card opened. Every handled key is
-  prevented and stopped; `⌘[` is the only chord claimed.
-- Touch: a row taps to jump, the caret's own row taps to descend, and `✕` arms on
-  the first tap and deletes on the second. The footer names the gestures the
-  platform can make.
+- `History` is one chronology for the chosen day, read from every recognised day
+  note at once — including a branch written today inside yesterday's file. A row
+  carries its address, its recorded time, and the reading or the first words, and a
+  Realm tag only when the filter is `All Realms`. Rows with no recorded moment stay
+  in their own group rather than at a fabricated midnight. The Realm filter is a
+  picker that offers `All Realms` explicitly, and the day is a date field: both keep
+  their native keys.
+- `Realms` lists every Realm with one current indicator, and two different acts:
+  `Travel` is a deliberate visit and `Write here` makes it the draft's destination
+  without moving the screen. `Manage Realms` opens Weaver's settings rather than a
+  second configuration surface.
+- `Portals` lists the openings that can still be entered, the one that closed a
+  moment ago, and the captures the notes really recorded — linked by their own note
+  path and a validated entry, so a recorded row stays listed even when its entry is
+  gone, with `Open` disabled and the reason beside it.
+- Actions belong to the selected row, not to every row: `Open`, `Continue Thread`,
+  `Branch`, and `Delete` behind a second press. There is no per-row delete control
+  and no non-actionable heading to walk past.
+- Keys: `j`/`↓` and `k`/`↑` move; `⏎` activates the selected row; `⇧⏎` and `n`
+  branch, which opens a draft under that thought and writes nothing; `t` starts a new
+  Thread; `c` continues the row's Thread; `Delete` arms and confirms; `⌘[` back and
+  `⌘]` forward work while Weaver holds focus; `Esc` cancels a confirmation and then
+  closes. On the tab list the arrows change tabs, so `h`/`l` never silently travel a
+  Realm. Every handled key is prevented and stopped.
+- Focus and selection are one model: a stable key identifies the row, a roving
+  `tabindex` puts focus on it, and mouse and keyboard update the same value. A
+  countdown tick rewrites the text of the rows that changed instead of rebuilding
+  the list, so a ticking second never steals the row the writer is on.
 - Opening pauses the stopwatch, like leaving the note. Every action re-reads the
   document: the card never caches a line number across a write.
-- The list is today's note, the same target *Start an entry* writes to. Reaching
-  another day means opening that note.
-- The stack lives in `src/core/navigator-stack.ts`: `STACK_LIMIT` bounds it, and it
-  refuses a duplicate top — the same entry and the same caret — so `⌘[` cannot
-  appear broken. A pop hands the stop back.
+- Travel is centralised in `src/main.ts`: `visitRealm` and `visitThought` capture the
+  departure, refresh the current history stop to it, and append the arrival only
+  after it succeeded. `Back` and `Forward` restore the recorded stop — the exact
+  screen, not the Realm's latest one — so the history lives in
+  `src/core/navigation.ts` as a cursor over up to sixty-four visits. A failed
+  navigation changes neither the history nor the screen, and two overlapping ones are
+  refused rather than raced.
 
 ### The close mark
 
@@ -364,8 +444,9 @@ with the caret's entry selected.
 | Frame | rails through the marker and clock rows' centres, cut behind their labels; `16 px` left and `10 px` right; the date link at the top-right on another day; follows the indent or starts fixed | same, identically: one layer, one rule, no platform branch |
 | Clock row | flex widget, ticks while live, the duration at the bottom-left corner and the moment at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
-| Navigator keys | arrows, `⏎`, `⇧⏎`, `n`, `x`, `⌘[`, `Esc` | tap to jump, tap the caret row to descend, `✕` twice to delete |
-| Toolbar | *Start an entry*, *Descend into a child entry*, *Today's entries*, *Whisper the day*, *Close the day* — every command carries an icon | the same five, added under *Manage toolbar options* |
+| Navigator keys | `j`/`k`/`↑`/`↓`, `⏎`, `⇧⏎`, `n`, `t`, `c`, `Delete`, `⌘[`, `⌘]`, `Esc` | tap a row to select it, its action buttons to act, `Delete` twice to remove |
+| Composer | bottom-anchored card in the text column with rails, dimension colour and the measured box | same surface, reserved toolbar and safe area, ≥ 44 px targets |
+| Toolbar | *Weave a Thread*, *Branch from this thought*, *Back*, *Forward*, *Navigator*, *Whisper the day*, *Close the day* — every command carries an icon | the same seven, added under *Manage toolbar options* |
 | Whisper | asked during a pause in typing and again at settle; the answer lands as its own undo | rendered identically; asked only when the endpoint is an address the phone can reach, so a default loopback endpoint generates nothing there |
 
 The phone pinning runs one pure decision — `shouldPinStopwatch` — that requires all

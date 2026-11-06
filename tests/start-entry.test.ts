@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { history, redo, undo } from "@codemirror/commands";
@@ -111,86 +111,6 @@ beforeEach(() => {
   clearNotices();
 });
 
-describe("starting an entry", () => {
-  it("creates today's note and writes the first entry at its tip", async () => {
-    const { plugin, app } = await start([]);
-
-    await plugin.entries.startEntry(AT_1337);
-
-    expect(app.vault.getAbstractFileByPath(DAY)).not.toBeNull();
-    expect(reading(app, DAY)).toContain("travels: 0");
-    // A new entry is awaiting its first text: duration and no moment, because
-    // the moment is the time the writer typed, not the time the block was made.
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00");
-
-    plugin.onunload();
-  });
-
-  it("starts in the note that already holds one", async () => {
-    const existing = createFile(DAY, ["{ 1.1.1 }", "first", "+ 00:01:00 09:00:00"].join("\n"));
-    const { plugin, app } = await start([existing]);
-
-    await plugin.entries.startEntry(AT_1337);
-
-    const text = reading(app, DAY);
-    expect(text).toContain("{ 2.1.2 }");
-    expect(text.startsWith("{ 1.1.1 }")).toBe(true);
-
-    plugin.onunload();
-  });
-
-  it("leaves the entry awaiting its first text, with no clock running", async () => {
-    const { plugin, app } = await start([]);
-
-    await plugin.entries.startEntry(AT_1337);
-
-    // No clock before the first keystroke: a write is not typing.
-    expect(plugin.session.active()).toBeNull();
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }\n\n- 00:00:00");
-    const awaited = parseEntries(reading(app, DAY)).entries[0];
-    expect(awaited?.state).toBe("draft");
-    expect(awaited?.duration?.ms).toBe(0);
-    expect(awaited?.time).toBeNull();
-    expect(awaited?.day).toBeNull();
-
-    plugin.onunload();
-  });
-
-  it("lands at the file's real end when the note grew under a stale read", async () => {
-    // A sync, a terminal, another device: the file holds two more entries than
-    // the note the starter was looking at. The plan is built from the text
-    // being written, so `N` counts the file's entries, not the stale ones.
-    const stale = ["{ 1.1.1 }", "first", "+ 00:01:00 09:00:00"].join("\n");
-    const grown = [stale, "", "", "{ 2.1.2 }", "second", "+ 00:02:00 09:30:00", ""].join("\n");
-    const file = createFile(DAY, stale);
-    const { plugin, app } = await start([file]);
-
-    (file as unknown as { content: string }).content = grown;
-
-    await plugin.entries.startEntry(AT_1337);
-
-    const text = reading(app, DAY);
-    expect(text).toContain("{ 3.1.3 }");
-    expect(text.endsWith("- 00:00:00\n")).toBe(true);
-    expect(text.startsWith("{ 1.1.1 }")).toBe(true);
-
-    plugin.onunload();
-  });
-
-  it("writes through the vault when the note is not in editing mode", async () => {
-    const file = createFile(DAY, "");
-    const { plugin, app } = await start([file]);
-    const view = createView(app, file, new FakeEditor(""), "preview");
-    (app.workspace as unknown as { activeView: unknown }).activeView = view;
-
-    await plugin.entries.startEntry(AT_1337);
-
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }");
-
-    plugin.onunload();
-  });
-});
-
 describe("deleting the entry being written", () => {
   it("settles the session, writes nothing, and starts the next entry clean", async () => {
     // The editor's deletion already reached the vault: the note no longer holds
@@ -205,10 +125,9 @@ describe("deleting the entry being written", () => {
     expect(plugin.session.active()).toBeNull();
     expect(reading(app, DAY)).toBe("");
 
-    await plugin.entries.startEntry(AT_1337);
-
-    expect(reading(app, DAY)).toContain("{ 1.1.1 }");
-    // No clock before the first keystroke in the new entry.
+    // Nothing was written by the settle, and no session survives the entry it
+    // was measuring: the next thought starts clean, in the composer.
+    expect(reading(app, DAY)).toBe("");
     expect(plugin.session.active()).toBeNull();
 
     plugin.onunload();
@@ -936,20 +855,6 @@ describe("writing a duration", () => {
     plugin.onunload();
   });
 
-  it("writes the settings' own day frontmatter when the note is created", async () => {
-    const { plugin } = await start([]);
-    plugin.settings = {
-      ...DEFAULT_SETTINGS,
-      dayNoteFolder: "Journal",
-      dayNoteFormat: "YYYY-MM-DD"
-    };
-
-    await plugin.entries.startEntry(AT_1337);
-
-    expect(plugin.app.vault.getAbstractFileByPath("Journal/2026-10-27.md")).not.toBeNull();
-
-    plugin.onunload();
-  });
 });
 
 describe("a note in the old format", () => {
@@ -992,18 +897,7 @@ describe("a note in the old format", () => {
     });
   });
 
-  it("refuses a start and says why", async () => {
-    const file = createFile(DAY, LEGACY);
-    const { plugin, app } = await start([file]);
-
-    await plugin.entries.startEntry(AT_1337);
-
-    expect(reading(app, DAY)).toBe(LEGACY);
-    expect(noticeMessages()).toEqual([noticeLegacyFormat("starting an entry")]);
-
-    plugin.onunload();
   });
-});
 
 describe("moving the caret", () => {
   const TWO = [
@@ -1018,8 +912,7 @@ describe("moving the caret", () => {
   ].join("\n");
 
   it("jumps without writing and without starting a clock", async () => {
-    // `jumpTo` reveals *today's* note, which is the machine's date, not the
-    // fixture's: the path has to be today's for the file to be the day note.
+    // `jumpTo` names the note it moves to, so the fixture path is the path.
     const today = dayNotePath(new Date(), {
       folder: DEFAULT_SETTINGS.dayNoteFolder,
       format: DEFAULT_SETTINGS.dayNoteFormat
@@ -1033,13 +926,11 @@ describe("moving the caret", () => {
 
     try {
       plugin.session.start(today, 1, 60_000, AT_1337.getTime());
-      await plugin.entries.jumpTo(2);
+      expect(await plugin.entries.jumpTo(today, 2)).toBe(true);
 
       expect(plugin.session.active()).toBeNull();
       expect(view.state.selection.main.head).toBe(TWO.indexOf("second"));
       expect(reading(app, today)).toBe(TWO);
-      // The place it left is the first row of the return stack.
-      expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
     } finally {
       unregisterEditorView(view);
       plugin.onunload();
@@ -1058,7 +949,6 @@ describe("moving the caret", () => {
 
       expect(plugin.session.active()).toBeNull();
       expect(view.state.doc.toString()).toContain("{ 1.2.2 }");
-      expect(plugin.stack.stops.map((stop) => stop.n)).toEqual([1]);
 
       plugin.onunload();
     });
@@ -1135,281 +1025,5 @@ describe("the descent command", () => {
     expect(noticeMessages()).toEqual([NOTICE_NEEDS_EDITING]);
 
     plugin.onunload();
-  });
-});
-
-describe("entering a portal", () => {
-  // Local 22:55: an opening that is genuinely eligible (minute 55 mirrors the
-  // hour pattern), prepared ten seconds into its own minute.
-  const NOW = new Date(2026, 10, 5, 22, 55, 0, 100).getTime();
-  const OPENED = new Date(2026, 10, 5, 22, 55, 0).getTime();
-  const PORTAL = new Date(OPENED).toISOString();
-  const PORTAL_DAY = dayNotePath(new Date(NOW), {
-    folder: DEFAULT_SETTINGS.dayNoteFolder,
-    format: DEFAULT_SETTINGS.dayNoteFormat
-  });
-  const EMPTY = "";
-
-  /** A plugin whose portal clock is the injected instant, portals on. */
-  async function portalStart(files: TFile[], at: number) {
-    vi.spyOn(Date, "now").mockReturnValue(at);
-    const app = createApp(files);
-    const plugin = instantiatePlugin(WeaverPlugin, app);
-    await plugin.onload();
-    plugin.settings.portalsEnabled = true;
-    plugin.portals.reconcile();
-    clearNotices();
-    return { plugin, app };
-  }
-
-  it("turns the first text into one entry, with its history, in one undo", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin, app } = await portalStart([file], NOW);
-    const view = liveEditor(file, EMPTY, 0);
-
-    try {
-      expect(plugin.portals.candidates(PORTAL_DAY, EMPTY).map((p) => p.id)).toContain(PORTAL);
-
-      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
-
-      const text = view.state.doc.toString();
-      expect(text).toContain("weaver-alignments:");
-      expect(text).toContain(`"portal":"${PORTAL}"`);
-      expect(text).toContain("hello");
-      // The whole beginning is one entry: duration zero, the input's own day
-      // and moment, and the marker the note allocated.
-      expect(text).toContain("- 00:00:00 2026-11-05 22:55:00");
-      // The caret sits in the prose that was just written, losing no character.
-      expect(view.state.selection.main.head).toBe(text.indexOf("hello") + "hello".length);
-
-      // The opening is spent: it is not offered again, and a second capture of
-      // the same id writes nothing.
-      expect(plugin.portals.candidates(PORTAL_DAY, text).map((p) => p.id)).not.toContain(PORTAL);
-      const settled = view.state.doc.toString();
-      expect(plugin.entries.capturePortal(view, PORTAL, "twice", OPENED + 300)).toBe(false);
-      expect(view.state.doc.toString()).toBe(settled);
-
-      // The note itself was not rewritten through the vault: this transaction
-      // belongs to the editor, like every first keystroke.
-      expect(reading(app, PORTAL_DAY)).toBe(EMPTY);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("carries the input's own identity and timestamp into the transaction", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin } = await portalStart([file], NOW);
-
-    const dispatched: Transaction[] = [];
-    const view = {
-      state: EditorState.create({
-        doc: EMPTY,
-        selection: { anchor: 0 },
-        extensions: [editorInfoField.init(() => ({ file }) as unknown as MarkdownFileInfo)]
-      }),
-      dispatch(this: { state: EditorState }, spec: Parameters<EditorState["update"]>[0]): void {
-        const transaction = this.state.update(spec);
-        dispatched.push(transaction);
-        this.state = transaction.state;
-      },
-      focus(): void {},
-      scrollDOM: { scrollTop: 0 }
-    } as unknown as EditorView;
-
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
-
-      // The first transaction is the writer's input: its own text, its own
-      // entry identity, and the moment it was typed. The second places the
-      // caret without becoming a second undo step.
-      expect(dispatched).toHaveLength(2);
-      expect(dispatched[0]?.annotation(capturedInput)).toEqual({
-        path: PORTAL_DAY,
-        seq: 1,
-        at: OPENED + 200
-      });
-      expect(dispatched[0]?.annotation(Transaction.userEvent)).toBe("input.type");
-      expect(dispatched[1]?.annotation(Transaction.addToHistory)).toBe(false);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("consumes the opening once, so the same portal cannot be entered twice", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin } = await portalStart([file], NOW);
-    const view = liveEditor(file, EMPTY, 0);
-
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "first", OPENED)).toBe(true);
-      const text = view.state.doc.toString();
-      // The capture releases the prepared frame; nothing is left holding it.
-      expect(plugin.portals.held()).toBeNull();
-      expect(plugin.portals.candidates(PORTAL_DAY, text).map((p) => p.id)).not.toContain(PORTAL);
-      expect(plugin.entries.capturePortal(view, PORTAL, "second", OPENED + 1000)).toBe(false);
-      expect(view.state.doc.toString()).toBe(text);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("switches the Reading view's own leaf, not another tab on the same note", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin, app } = await portalStart([file], NOW);
-
-    const sibling = createView(app, file, null, "preview");
-    const owner = createView(app, file, null, "preview");
-    addLeafWithView(app, sibling);
-    addLeafWithView(app, owner);
-
-    const workspace = app.workspace as unknown as {
-      activeView: unknown;
-      activeLeafCalls: Array<{ view: unknown }>;
-    };
-
-    try {
-      await plugin.entries.revealPortal(PORTAL, owner);
-
-      // The writer's own surface is the one that took focus; the other tab on
-      // the same note is left exactly where it was.
-      expect(workspace.activeView).toBe(owner);
-      expect(workspace.activeLeafCalls.at(-1)?.view).toBe(owner);
-      expect(workspace.activeLeafCalls.some((leaf) => leaf.view === sibling)).toBe(false);
-      expect(plugin.portals.held()?.portal.id).toBe(PORTAL);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("refuses an owner that no longer shows the note, without switching a pane", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const elsewhere = createFile("Chronomancer/elsewhere.md", EMPTY);
-    const { plugin, app } = await portalStart([file, elsewhere], NOW);
-
-    const owner = createView(app, elsewhere, null, "preview");
-    const sameFile = createView(app, file, null, "preview");
-    addLeafWithView(app, owner);
-    addLeafWithView(app, sameFile);
-
-    const workspace = app.workspace as unknown as {
-      activeView: unknown;
-      activeLeafCalls: unknown[];
-    };
-
-    try {
-      await plugin.entries.revealPortal(PORTAL, owner);
-
-      // The owner's leaf is showing another note: neither it nor some other
-      // pane that happens to hold today's note is activated for it.
-      expect(workspace.activeLeafCalls).toEqual([]);
-      expect(workspace.activeView).not.toBe(owner);
-      expect(workspace.activeView).not.toBe(sameFile);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("refuses input before the opening, and writes nothing", async () => {
-    const before = new Date(2026, 10, 5, 22, 54, 59, 900).getTime();
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin } = await portalStart([file], before);
-    const view = liveEditor(file, EMPTY, 0);
-
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "early", before)).toBe(false);
-      expect(view.state.doc.toString()).toBe(EMPTY);
-      expect(noticeMessages()).toEqual([]);
-      // The frame is still there for the moment the opening actually arrives.
-      expect(plugin.portals.candidates(PORTAL_DAY, EMPTY).map((p) => p.id)).toContain(PORTAL);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("lets a prepared opening be entered after its own minute", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin } = await portalStart([file], NOW);
-    plugin.portals.prepare(PORTAL);
-    expect(plugin.portals.held()?.portal.id).toBe(PORTAL);
-
-    // Past the opening's minute, only the hold keeps it enterable.
-    const late = new Date(2026, 10, 5, 22, 56, 30).getTime();
-    vi.spyOn(Date, "now").mockReturnValue(late);
-    plugin.portals.reconcile();
-
-    const view = liveEditor(file, EMPTY, 0);
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "late text", late)).toBe(true);
-      expect(view.state.doc.toString()).toContain("- 00:00:00 2026-11-05 22:56:30");
-      // A held entry outside its minute records the moment but celebrates no
-      // alignment, and the hold is released with the capture.
-      expect(plugin.portals.held()).toBeNull();
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("refuses a note whose history is unreadable, names the reason, and keeps the frame", async () => {
-    const broken = ["---", "weaver-alignments:", "  nested: 1", "---", "", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
-    const file = createFile(PORTAL_DAY, broken);
-    const { plugin } = await portalStart([file], NOW);
-    const view = liveEditor(file, broken, broken.indexOf("first"));
-
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "lost", OPENED + 100)).toBe(false);
-      expect(view.state.doc.toString()).toBe(broken);
-      expect(noticeMessages()).toHaveLength(1);
-      expect(noticeMessages()[0]).toContain("portal history is unreadable");
-      // Nothing was consumed, so the writer can retry once the note is repaired.
-      expect(plugin.portals.candidates(PORTAL_DAY, broken).map((p) => p.id)).toContain(PORTAL);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("undoes the entry, its marker and its history together", async () => {
-    const file = createFile(PORTAL_DAY, EMPTY);
-    const { plugin } = await portalStart([file], NOW);
-    const view = historyView(file, EMPTY, 0);
-
-    try {
-      expect(plugin.entries.capturePortal(view, PORTAL, "hello", OPENED + 200)).toBe(true);
-      const captured = view.state.doc.toString();
-      expect(captured).toContain("weaver-alignments:");
-
-      expect(undo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
-      expect(view.state.doc.toString()).toBe(EMPTY);
-
-      expect(redo({ state: view.state, dispatch: (tr) => view.dispatch(tr) })).toBe(true);
-      expect(view.state.doc.toString()).toBe(captured);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
-  });
-
-  it("offers no portal when the note is not today's", async () => {
-    const other = "Chronomancer/2026.11.04.md";
-    const file = createFile(other, EMPTY);
-    const { plugin } = await portalStart([file], NOW);
-    const view = liveEditor(file, EMPTY, 0);
-
-    try {
-      expect(plugin.portals.candidates(other, EMPTY)).toEqual([]);
-      expect(plugin.entries.capturePortal(view, PORTAL, "nope", OPENED + 100)).toBe(false);
-      expect(view.state.doc.toString()).toBe(EMPTY);
-    } finally {
-      plugin.onunload();
-      vi.restoreAllMocks();
-    }
   });
 });

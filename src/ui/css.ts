@@ -28,6 +28,8 @@ export function buildCss(settings: WeaverSettings): string {
     `--weaver-indent-step: ${Math.max(0, Math.round(settings.indentStep))}px;`,
     `--weaver-indent-step-mobile: ${Math.max(0, Math.round(settings.mobileIndentStep))}px;`,
     `--weaver-indent-max-level: ${indentMax};`,
+    `--weaver-thread-space: ${Math.max(0, Math.round(settings.threadSpacing))}px;`,
+    `--weaver-branch-space: ${Math.max(0, Math.round(settings.branchSpacing))}px;`,
     ...ANCHORS.map((anchor, index) => `--weaver-anchor-${index + 1}: ${anchor};`)
   ];
 

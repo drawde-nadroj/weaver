@@ -22,13 +22,15 @@ beforeEach(() => {
 });
 
 describe("the command surface", () => {
-  it("registers exactly the five commands, with their chords", async () => {
+  it("registers exactly the seven commands, with their chords", async () => {
     const plugin = await start();
     const commands = registeredCommands(plugin);
 
     expect(commands.map((command) => command.id)).toEqual([
       "start-entry",
       "descend",
+      "back",
+      "forward",
       "navigate",
       "whisper-day",
       "close-day"
@@ -39,16 +41,22 @@ describe("the command surface", () => {
     );
     // `Mod+Enter` is the core "open link" chord and never reaches a plugin, so
     // starting an entry owns `Mod+Shift+E` instead.
-    expect(chords[0]).toEqual(["Mod+Shift+E"]);
+    expect(chords[0]).toEqual(["Mod+Shift+Enter"]);
     expect(chords[1]).toEqual([]);
-    expect(chords[2]).toEqual(["Mod+Shift+P"]);
+    // History has no default chord: a global binding would shadow the writer's
+    // own Vim motions, so it is bindable but unbound.
+    expect(chords[2]).toEqual([]);
     expect(chords[3]).toEqual([]);
-    expect(chords[4]).toEqual([]);
+    expect(chords[4]).toEqual(["Mod+Shift+P"]);
+    expect(chords[5]).toEqual([]);
+    expect(chords[6]).toEqual([]);
 
     // Every command carries an icon, so the phone's toolbar can draw it.
     expect(commands.map((command) => command.icon)).toEqual([
       "plus",
       "arrow-down-right",
+      "arrow-left",
+      "arrow-right",
       "list",
       "sparkles",
       "check-circle"
@@ -84,6 +92,8 @@ describe("the editor layer", () => {
     expect(style?.textContent).toContain("--weaver-entry-size: 1em;");
     expect(style?.textContent).toContain("--weaver-indent-step: 18px;");
     expect(style?.textContent).toContain("--weaver-indent-max-level: 8;");
+    expect(style?.textContent).toContain("--weaver-thread-space: 0px;");
+    expect(style?.textContent).toContain("--weaver-branch-space: 0px;");
 
     plugin.onunload();
     expect(document.getElementById("weaver-style")).toBeNull();

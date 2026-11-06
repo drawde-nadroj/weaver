@@ -16,29 +16,37 @@ import { MarkdownView, Notice, TFile, type App } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { Transaction, type StateEffect } from "@codemirror/state";
 
-import { readAlignments } from "../core/alignments";
-import { dayKeyFromName } from "../core/day";
+import { dayKey, dayKeyFromName } from "../core/day";
+import { contextDayForPath, MAIN_CONTEXT_ID } from "../core/contexts";
+import {
+  freshReceiptId,
+  proseOf,
+  resolveThought,
+  rootEntryOf,
+  thoughtRefOf,
+  type CaptureInvitation,
+  type CaptureReceipt,
+  type CaptureRequest,
+  type CaptureResult,
+  type ThoughtRef
+} from "../core/capture";
 import type { DurationSigil } from "../core/duration";
 import {
   entryBySeq,
   findEntryAtOffset,
   formatMarker,
-  nextSeq,
   parseEntries,
   type Entry,
   type EntryIndex
 } from "../core/entries";
-import { portalAlignments, portalPhase } from "../core/portals";
 import {
   applyPlanToSource,
   cmChanges,
-  offsetToLineCh,
+  planCaptureEntry,
   planChildEntry,
   planDeleteEntry,
   planDuration,
   planEntryBeginning,
-  planPortalEntry,
-  planStartEntry,
   planThread,
   planWhisper,
   type InsertPlan,
@@ -57,7 +65,7 @@ import {
 } from "../core/whisper";
 import { NoModel, type WhisperFailure } from "../model/whisper-model";
 import { WHISPER_FAILURE_LIMIT } from "../model/whisper-runner";
-import { pushStop, type Stop } from "../core/navigator-stack";
+import type { NoteStop } from "../core/navigation";
 import { editorPathOf } from "../editor/editor-path";
 import {
   capturedInput,
@@ -76,7 +84,6 @@ import {
   NOTICE_NEEDS_ENTRY,
   NOTICE_NO_DAY_NOTE,
   NOTICE_PARTIAL_MS,
-  NOTICE_PORTAL_UNAVAILABLE,
   NOTICE_REFUSAL_MS,
   NOTICE_STOP_FAILED,
   NOTICE_WHISPERING,
@@ -84,15 +91,13 @@ import {
   noticeCloseCodeBlock,
   noticeCloseFrontmatter,
   noticeLegacyFormat,
-  noticePortalRefused,
   noticeWhispered,
   whisperFailurePhrase
 } from "../notices";
-import { focusPortal } from "../editor/portal-widget";
 import type WeaverPlugin from "../main";
-import { ensureDayNote, resolveDayNote } from "./day-note";
+import { ensureDayNote, resolveContextDay } from "./day-note";
 import { EntrySession } from "./session";
-import { planRewrite, rewriteDay } from "./writer";
+import { planRewrite, rewriteDay, RewriteRefused, type RewriteResult } from "./writer";
 
 /**
  * A draft that has not recorded its beginning yet: a clock row with a duration
@@ -112,14 +117,6 @@ function awaitingBeginning(index: EntryIndex, entry: Entry): boolean {
 export class EntryEngine {
   constructor(private readonly plugin: WeaverPlugin) {}
 
-  /** The last reason a portal capture was refused, per opening. */
-  private readonly portalFailures = new Map<string, string>();
-
-  /** The reason the last capture of this opening was refused, if it was. */
-  portalFailure(id: string): string | null {
-    return this.portalFailures.get(id) ?? null;
-  }
-
   private get session(): EntrySession {
     return this.plugin.session;
   }
@@ -128,42 +125,145 @@ export class EntryEngine {
     return this.plugin.app;
   }
 
-  /** Starts an entry at the tip of today's note, opening it when needed. */
-  async startEntry(now: Date): Promise<void> {
-    const resolved = resolveDayNote(this.app, this.plugin.settings, now);
+  /**
+   * Writes one settled thought into its note, and reports what it became.
+   *
+   * The destination is resolved here, inside the same call that writes: a thought
+   * belongs to the day it began, so the note is resolved from the request's own
+   * day rather than from the clock at save time, and a missing note is created
+   * only at this explicit act. A branch is written into its parent's file and
+   * never creates one — a deleted parent is a refusal, not a new note.
+   *
+   * The plan is built from the text the writer is about to replace, through
+   * `rewriteDay`, so a hand edit that landed while the composer was open cannot
+   * be overwritten by a plan made from a stale read. A refusal returns
+   * `ok: false` and nothing was written; an unconfirmable write throws, because
+   * "the note may hold this" is a different answer from "it does not".
+   */
+  async capture(
+    request: CaptureRequest,
+    onReceipt?: (receipt: CaptureReceipt) => void,
+    invitations: readonly CaptureInvitation[] = []
+  ): Promise<CaptureResult> {
+    const destination =
+      request.parent === null
+        ? resolveContextDay(this.app, this.plugin.settings, request.contextId, request.beginning.day)
+        : { ok: true as const, path: request.parent.path };
 
-    let file = resolved.file;
+    if (!destination.ok) return { ok: false, error: destination.error };
+
+    const existing = this.app.vault.getAbstractFileByPath(destination.path);
+    let file: TFile | null = existing instanceof TFile ? existing : null;
+
+    if (file === null && request.parent !== null) {
+      return { ok: false, error: "the note that holds this branch is gone; pick a parent again" };
+    }
+
     if (file === null) {
       try {
-        file = await ensureDayNote(this.app, resolved.path, now);
-      } catch {
-        // A read-only vault or a sync lock must fail loudly, never fall back to
-        // writing the entry into whatever note happens to be open.
-        new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
-        return;
+        file = await ensureDayNote(this.app, destination.path, request.beginning.day);
+      } catch (error) {
+        return {
+          ok: false,
+          error: `the note for ${request.beginning.day} could not be created (${
+            error instanceof Error ? error.message : String(error)
+          })`
+        };
       }
     }
 
-    // Source mode first, so the write lands in an editor when one can hold the
-    // file: the caret has to end up in the new entry either way.
-    const open = this.openViewFor(file);
-    if (open !== null) await this.ensureSourceMode(open);
-
-    this.pushStopFrom(findEditorViewForFile(file));
-
-    const result = await rewriteDay(
-      this.app,
-      file,
-      planRewrite((source) => planStartEntry(source, parseEntries(source))),
-      true
-    );
-
-    if (result === null) {
-      this.notifyRefusal(parseEntries(await this.app.vault.cachedRead(file)), "starting an entry");
-      return;
+    let result: RewriteResult | null;
+    try {
+      result = await rewriteDay(
+        this.app,
+        file,
+        planRewrite((source) => planCaptureEntry(source, parseEntries(source), request)),
+        true,
+        {
+          // The receipt is written before the note is touched, so a crash in the
+          // middle of the write leaves evidence a later session can check. A
+          // store that cannot hold it refuses the submission outright.
+          beforeCommit: (before, planned) => {
+            if (onReceipt === undefined) return;
+            const written = parseEntries(planned.source);
+            const allocated = this.allocated(written, planned.caret, destination.path);
+            onReceipt({
+              id: freshReceiptId(),
+              request,
+              path: destination.path,
+              thought: allocated.thought,
+              root: allocated.root,
+              before,
+              expected: planned.source,
+              invitations: [...invitations]
+            });
+          },
+          confirmPersistence: true
+        }
+      );
+    } catch (error) {
+      if (error instanceof RewriteRefused) return { ok: false, error: error.message };
+      // The document was touched and the answer is unknown: never claim a failure
+      // the writer would answer by writing the same words twice.
+      throw error;
     }
 
-    await this.revealDayNote(file, result.source, result.caret);
+    if (result === null) {
+      const index = parseEntries(await this.app.vault.cachedRead(file));
+      if (index.legacyFormat) {
+        return { ok: false, error: noticeLegacyFormat("writing this thought") };
+      }
+      if (index.unclosedFrontmatter) {
+        return { ok: false, error: noticeCloseFrontmatter("writing this thought") };
+      }
+      if (index.unclosedFence) {
+        return { ok: false, error: noticeCloseCodeBlock("writing this thought") };
+      }
+      return {
+        ok: false,
+        error:
+          request.parent === null
+            ? "this note could not take a new thought"
+            : "that thought is no longer in its note; pick a parent again"
+      };
+    }
+
+    const written = parseEntries(result.source);
+    const allocated = this.allocated(written, result.caret, destination.path, request.text);
+
+    // A whisper is asked for only now: the text is a record, and the model reads
+    // records. Nothing was asked while the draft was still being written.
+    const input = this.whisperInput(written, allocated.entry);
+    if (input !== null) this.plugin.whisper.request(destination.path, allocated.entry.n, input);
+
+    return { ok: true, thought: allocated.thought, root: allocated.root };
+  }
+
+  /**
+   * The thought a capture plan allocated, read back from the note it produced.
+   *
+   * The caret the plan leaves is inside the new entry's own prose, so it names
+   * the entry without trusting a sequence number computed elsewhere. When the
+   * entry cannot be read back at that place, the plan did not produce what it
+   * claimed — a bug worth stopping for rather than a refusable note.
+   */
+  private allocated(
+    index: EntryIndex,
+    caret: number | null,
+    path: string,
+    text?: string
+  ): { thought: ThoughtRef; root: ThoughtRef; entry: Entry } {
+    const entry = caret === null ? null : findEntryAtOffset(index, caret);
+    if (entry === null) throw new Error("the written thought could not be read back");
+    if (text !== undefined && proseOf(index, entry) !== text.trim()) {
+      throw new Error("the written thought could not be read back");
+    }
+
+    return {
+      thought: thoughtRefOf(index, entry, path),
+      root: thoughtRefOf(index, rootEntryOf(index, entry), path),
+      entry
+    };
   }
 
   /**
@@ -310,7 +410,6 @@ export class EntryEngine {
     const child = planChildEntry(source, index, parent);
     if (child === null) return;
 
-    this.pushStopFrom(view);
     this.writePlan(view, child);
     view.focus();
   }
@@ -518,181 +617,6 @@ export class EntryEngine {
   }
 
   /**
-   * Enters a portal: the first text accepted at or after its opening becomes a
-   * real root entry, with its marker, prose and clock row, and the alignment
-   * record, all in one undoable transaction.
-   *
-   * Nothing is trusted from the moment the receptacle was prepared: the owning
-   * note, the live text, the portal's candidacy and its phase are all re-read
-   * here, at the input's own timestamp. A held portal may be entered after its
-   * original minute; an untouched one may not, because its opening has passed.
-   * The portal is consumed only after the write lands, so a refused attempt
-   * leaves the frame available for the retry the writer's text is still in.
-   *
-   * Returns `false` — keeping the candidate and the writer's text — when there
-   * is no live candidate, when the instant is outside the opening, when the
-   * note's history cannot be read, or when the write throws. The refusal is
-   * spoken once, with the reason, because it is the writer who must repair the
-   * note.
-   */
-  capturePortal(view: EditorView, id: string, text: string, beganAt: number): boolean {
-    if (text.trim() === "") return false;
-
-    const path = editorPathOf(view);
-    if (path === null) return false;
-
-    const source = view.state.doc.toString();
-    const portal = this.plugin.portals
-      .candidates(path, source)
-      .find((candidate) => candidate.id === id);
-    if (portal === undefined) return false;
-
-    // Phase is re-derived from the input instant, not from the scheduled unlock:
-    // an early input inserts nothing, an untouched opening ends with its minute,
-    // and only a prepared one is still enterable afterwards.
-    const held = this.plugin.portals.held()?.portal.id === id;
-    const phase = portalPhase(portal, beganAt, held);
-    if (phase !== "open" && phase !== "held") return false;
-
-    // The reason a malformed history refuses is not in the plan's `null`; read
-    // it first so the writer is told what to fix instead of a bare no.
-    const history = readAlignments(source);
-    if (!history.ok) return this.refusePortal(id, history.error);
-
-    const index = this.indexOf(view, source);
-    // A note whose own shape cannot take an entry says why in the one place
-    // every refusal is worded.
-    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) {
-      this.notifyRefusal(index, "entering this portal");
-      return this.refusePortal(id, "this note cannot take a new entry until it is repaired", false);
-    }
-
-    const seq = nextSeq(index);
-    const plan = planPortalEntry(source, index, portal, new Date(beganAt), text);
-    if (plan === null) {
-      return this.refusePortal(id, "the note's text could not take a new entry");
-    }
-
-    // One transaction carries the marker, the first prose and the frontmatter
-    // record, so one undo takes the whole beginning back. It is named as real
-    // input rather than a Weaver write: the session starts from this very
-    // observation, at the moment the writer typed, on the entry just created.
-    try {
-      view.dispatch({
-        changes: cmChanges(plan.changes),
-        userEvent: "input.type",
-        annotations: capturedInput.of({ path, seq, at: beganAt })
-      });
-    } catch {
-      return this.refusePortal(id, "the note could not be written");
-    }
-
-    // The caret is an ordinary position in a document that already holds the
-    // new entry, so it is placed by a second, non-undoable dispatch — the same
-    // split every appending plan uses. It must land inside the new prose.
-    view.dispatch({
-      selection: { anchor: plan.selection.from },
-      effects: [EditorView.scrollIntoView(plan.selection.from, { y: "nearest" })],
-      annotations: [Transaction.addToHistory.of(false), programmaticWrite.of(true)]
-    });
-    view.focus();
-
-    // Only now: the opening is spent for this session, and the frame that
-    // showed it is removed by the controller's own emission.
-    this.plugin.portals.consume(id);
-    // An exact-second hit earns one acknowledgement and then yields; an ordinary
-    // entry — or a late, held entry outside its minute — earns nothing.
-    const aligned = portalAlignments(portal, beganAt).length > 0;
-    this.plugin.portalEntered(path, seq, aligned);
-    this.portalFailures.delete(id);
-    return true;
-  }
-
-  /**
-   * Shows a portal in the note that owns it, deliberately and on request.
-   *
-   * The hold pins the note: a portal prepared before midnight keeps its own
-   * note, so preparing it again after rollover does not move it to a new day.
-   * For an opening with no hold yet, the controller pins today's note; the note
-   * is created only here, because this is an explicit act, never a passive
-   * reveal. The leaf is switched to Live Preview — source stays raw text — and
-   * the same portal id is focused, so the one writing implementation is the one
-   * the writer types into.
-   *
-   * `owner` is the surface the writer asked from — a Reading view's own
-   * `MarkdownView`. Given one, that exact leaf is switched and focused: another
-   * tab that happens to hold the same note is not the writer's pane, and moving
-   * it would hide the surface they were reading.
-   */
-  async revealPortal(id: string, owner?: MarkdownView): Promise<void> {
-    const now = new Date(this.plugin.portals.now());
-    const resolved = resolveDayNote(this.app, this.plugin.settings, now);
-    // The note a hold is pinned to wins: an opening prepared before midnight
-    // stays with yesterday's note instead of moving to the new day.
-    const held = this.plugin.portals.held();
-    const venue = held === null ? resolved.path : held.path;
-
-    const found = this.app.vault.getAbstractFileByPath(venue);
-    let file: TFile | null = found instanceof TFile ? found : null;
-    let source = "";
-    if (file !== null) {
-      try {
-        source = await this.app.vault.cachedRead(file);
-      } catch {
-        this.refusePortal(id, "the note's portal history could not be read; reopen the note and try again");
-        return;
-      }
-    }
-
-    // Resolved from the note's own history, exactly as the frame resolved it,
-    // so an id that is no longer offered is refused rather than guessed at.
-    const portal = this.plugin.portals
-      .candidates(venue, source)
-      .find((candidate) => candidate.id === id);
-    if (portal === undefined) {
-      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
-      return;
-    }
-
-    // Prepared before the switch so the hold exists even if the surface cannot
-    // be reached; the controller pins the note the explicit act is for.
-    this.plugin.portals.prepare(id);
-
-    // Only today's note may be created by an explicit act; a pinned note that
-    // has been deleted or renamed is reported rather than replaced.
-    if (file === null && resolved.path === venue) {
-      try {
-        file = await ensureDayNote(this.app, resolved.path, now);
-      } catch {
-        new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
-        return;
-      }
-    }
-    if (file === null) {
-      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
-      return;
-    }
-
-    this.pushStopFrom(findActiveEditorView(this.app));
-    const view = await this.revealPreview(file, owner);
-    if (view === null) {
-      new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
-      return;
-    }
-
-    // Prepared after the switch: the controller pins the note that is active
-    // now, so the hold belongs to the surface that will focus it.
-    this.plugin.portals.prepare(id);
-    const prepared = this.plugin.portals.held();
-    if (prepared === null || prepared.portal.id !== id) {
-      new Notice(NOTICE_PORTAL_UNAVAILABLE, NOTICE_REFUSAL_MS);
-      return;
-    }
-
-    focusPortal(view, id);
-  }
-
-  /**
    * Keeps the live session on the entry the writer is typing in.
    *
    * `input` is what the editor observed at the moment of the input: its path,
@@ -785,21 +709,64 @@ export class EntryEngine {
   }
 
   /**
-   * Puts the caret in an entry of today's note, without starting the clock.
+   * Puts the caret in a thought of a named note, without starting the clock.
    *
-   * `restore` is a stop from the return stack: its caret and scroll position are
-   * exact, where a bare `N` only knows the entry's first prose line.
+   * This is the one jump: the navigator's rows, a return from the history, and
+   * "edit in note" all arrive here, and all of them name the note as well as the
+   * thought.
+   *
+   * `restore` is a recorded position. Its caret offset is relative to the
+   * thought's own prose, so text inserted elsewhere in the note cannot move it;
+   * when the thought it named is gone, or its own prose changed, the jump is
+   * refused rather than landing at an unrelated offset. A position outside every
+   * entry needs its own line *and* the lines around it to match exactly one
+   * place, because a note full of blank lines has many lines that look alike.
+   *
+   * The target is checked twice: against the live editor-or-vault source before
+   * anything is revealed, and again against the editor's own document afterwards,
+   * because revealing may have re-read the file. `false` means the screen must be
+   * put back, which is what lets the history keep its cursor where it was.
    */
-  async jumpTo(n: number | null, restore?: Stop): Promise<void> {
-    const editor = await this.revealToday(new Date());
-    if (editor === null) return;
+  async jumpTo(
+    path: string,
+    n: number | null,
+    restore?: NoteStop,
+    focus = true
+  ): Promise<boolean> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return false;
 
-    this.pushStopFrom(editor);
+    const preflight = await this.sourceFor(path);
+    if (preflight === null) return false;
+    const before = parseEntries(preflight);
+    if (n !== null) {
+      if (entryBySeq(before, n) === null) return false;
+      if (restore?.thought != null && resolveThought(before, restore.thought) === null) return false;
+    } else if (restore !== undefined && uniqueLine(before, restore) === null) {
+      return false;
+    }
+
+    const view = await this.revealFile(file);
+    if (view === null) return false;
+    const editor = findEditorViewForFile(file);
+    if (editor === null) return false;
+
     this.session.clear();
 
     const index = this.indexOf(editor, editor.state.doc.toString());
-    const caret = restore?.caret ?? (n === null ? null : (entryBySeq(index, n)?.proseFrom ?? null));
-    if (caret === null) return;
+    const entry = n === null ? null : entryBySeq(index, n);
+    if (n !== null && entry === null) return false;
+
+    let caret: number | null = null;
+    if (entry !== null) {
+      const offset = restore?.caretInProse ?? 0;
+      caret = Math.min(Math.max(entry.proseFrom + offset, entry.proseFrom), entry.proseTo);
+    } else if (restore !== undefined) {
+      const line = uniqueLine(index, restore);
+      caret = line === null ? null : (index.lineStarts[line] ?? null);
+    }
+
+    if (caret === null) return false;
 
     editor.dispatch({
       selection: { anchor: caret },
@@ -812,13 +779,70 @@ export class EntryEngine {
     // The scroll container is laid out for the first time in the next frame, so
     // a restored offset set now would be overwritten by the scroll into view.
     if (restore !== undefined) {
-      const { scroll } = restore;
+      const scroll = restore.scrollTop;
       requestAnimationFrame(() => {
         editor.scrollDOM.scrollTop = scroll;
       });
     }
 
-    editor.focus();
+    if (focus) editor.focus();
+    return true;
+  }
+
+  /**
+   * The place the caret is in right now, as the history remembers one.
+   *
+   * The thought and the caret's offset inside its own prose are the durable part:
+   * they survive text inserted elsewhere in the note. The line and its two
+   * neighbours are what place a caret that is outside every entry, and the leaf
+   * id is which pane it was in — two panes can show one note.
+   */
+  stopHere(): NoteStop | null {
+    const editor = findActiveEditorView(this.app);
+    if (editor === null) return null;
+    const path = editorPathOf(editor);
+    if (path === null) return null;
+
+    const index = this.indexOf(editor, editor.state.doc.toString());
+    const caret = editor.state.selection.main.head;
+    const entry = findEntryAtOffset(index, caret);
+    const view = markdownViewFor(this.app, editor);
+
+    return {
+      kind: "note",
+      path,
+      contextId: contextDayForPath(path, this.plugin.contexts())?.contextId ?? null,
+      n: entry?.n ?? null,
+      thought: entry === null ? null : thoughtRefOf(index, entry, path),
+      leafId: view === null ? null : leafIdFor(this.app, view),
+      caretInProse: entry === null ? null : Math.max(0, caret - entry.proseFrom),
+      lineText: lineAt(index, caret),
+      lineBefore: neighbourLine(index, caret, -1),
+      lineAfter: neighbourLine(index, caret, 1),
+      scrollTop: editor.scrollDOM.scrollTop,
+      mode: view?.getMode() === "preview" ? "preview" : "source"
+    };
+  }
+
+  /**
+   * A note's text, from the live editor when one holds it and the vault otherwise.
+   *
+   * The editor is asked first because it may hold writing the file does not have
+   * yet: a jump planned from the file alone could land in text the writer has
+   * already changed on screen.
+   */
+  private async sourceFor(path: string): Promise<string | null> {
+    for (const view of registeredEditorViews()) {
+      if (editorPathOf(view) === path) return view.state.doc.toString();
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return null;
+    try {
+      return await this.app.vault.cachedRead(file);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -881,18 +905,6 @@ export class EntryEngine {
     });
   }
 
-  /** Pushes the place `view` is about to leave onto the return stack. */
-  private pushStopFrom(view: EditorView | null): void {
-    if (view === null) return;
-
-    const caret = view.state.selection.main.head;
-    const current = findEntryAtOffset(this.indexOf(view, view.state.doc.toString()), caret);
-    this.plugin.stack.stops = pushStop(this.plugin.stack.stops, {
-      n: current?.n ?? null,
-      caret,
-      scroll: view.scrollDOM.scrollTop
-    });
-  }
 
   private indexOf(view: EditorView, source: string): EntryIndex {
     return view.state.field(entryIndexField, false) ?? parseEntries(source);
@@ -941,56 +953,6 @@ export class EntryEngine {
   }
 
   /**
-   * Shows a note in Live Preview: revealing its tab or opening one, then leaving
-   * the leaf in source mode with `source: false`, which is Obsidian's stored
-   * state for Live Preview. A portal is entered where its frame is drawn, so a
-   * Reading-view Prepare must switch the *same* leaf rather than open a second
-   * surface — and source mode stays raw text unless asked for here.
-   *
-   * `owner` is that same leaf when the caller has it. It is used only after
-   * proving it still shows the note and is still one of the workspace's live
-   * markdown leaves; anything else refuses rather than switching some other
-   * pane that happens to hold the same file. Without an owner — a navigator
-   * Prepare, which has no surface of its own — the note's first leaf is used.
-   */
-  private async revealPreview(file: TFile, owner?: MarkdownView): Promise<EditorView | null> {
-    const workspace = this.app.workspace;
-
-    if (owner !== undefined) {
-      const leaf = workspace
-        .getLeavesOfType("markdown")
-        .find((candidate) => candidate.view === owner);
-      if (leaf === undefined || owner.file?.path !== file.path) return null;
-      workspace.setActiveLeaf(leaf, { focus: true });
-      await workspace.revealLeaf(leaf);
-    } else {
-      const existing = workspace
-        .getLeavesOfType("markdown")
-        .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
-
-      if (existing !== undefined) {
-        workspace.setActiveLeaf(existing, { focus: true });
-        await workspace.revealLeaf(existing);
-      } else {
-        await workspace.getLeaf("tab").openFile(file);
-      }
-    }
-
-    const view = this.openViewFor(file);
-    if (view === null) return null;
-    await this.ensureLivePreview(view);
-    return findEditorViewForFile(file);
-  }
-
-  /** Leaves the note in Live Preview (`mode: "source"`, `source: false`). */
-  private async ensureLivePreview(view: MarkdownView): Promise<void> {
-    if (typeof view.setState !== "function") return;
-    const state = view.getState() as { mode?: string; source?: boolean };
-    if (state.mode === "source" && state.source !== true) return;
-    await view.setState({ ...state, mode: "source", source: false }, { history: false });
-  }
-
-  /**
    * Shows a note: revealing the tab that already holds it, or opening one of its
    * own, then putting it in source mode. `getLeaf(false)` would replace the tab
    * the writer is in.
@@ -1012,44 +974,6 @@ export class EntryEngine {
     if (view === null) return null;
     await this.ensureSourceMode(view);
     return view;
-  }
-
-  /** Shows the day note and puts the caret in the entry just written. */
-  private async revealDayNote(file: TFile, source: string, caret: number | null): Promise<void> {
-    const view = await this.revealFile(file);
-    if (caret === null || view === null || view.getMode() !== "source") return;
-
-    const position = offsetToLineCh(source, caret);
-    view.editor.setCursor(position);
-    view.editor.scrollIntoView({ from: position, to: position }, true);
-    view.editor.focus();
-  }
-
-  /**
-   * Today's day note on screen, in source mode, for a surface that edits it —
-   * the navigator. `null` when the note cannot be found, opened, or reached as an
-   * editor: the one refusal every caller would have to repeat.
-   */
-  async revealToday(now: Date): Promise<EditorView | null> {
-    const resolved = resolveDayNote(this.app, this.plugin.settings, now);
-
-    let file = resolved.file;
-    if (file === null) {
-      try {
-        file = await ensureDayNote(this.app, resolved.path, now);
-      } catch {
-        new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
-        return null;
-      }
-    }
-
-    const view = await this.revealFile(file);
-    const editor = view === null ? null : findEditorViewForFile(file);
-    if (editor === null) {
-      new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
-      return null;
-    }
-    return editor;
   }
 
   /**
@@ -1104,7 +1028,13 @@ export class EntryEngine {
     const active = this.app.workspace.getActiveFile();
     if (active !== null && dayKeyFromName(active.basename) !== null) return active;
 
-    return resolveDayNote(this.app, this.plugin.settings, new Date()).file;
+    const resolved = resolveContextDay(
+      this.app,
+      this.plugin.settings,
+      MAIN_CONTEXT_ID,
+      dayKey(new Date())
+    );
+    return resolved.ok ? resolved.file : null;
   }
 
   /**
@@ -1353,28 +1283,87 @@ export class EntryEngine {
     return true;
   }
 
-  /**
-   * Records why a portal capture could not land, and says it once.
-   *
-   * `speak` is false when the caller has already shown a more specific notice
-   * (the note's shape); the reason is still kept for the frame's own failure
-   * state, which the surface shows beside the text it preserved.
-   */
-  private refusePortal(id: string, reason: string, speak = true): false {
-    this.portalFailures.set(id, reason);
-    if (speak) new Notice(noticePortalRefused(reason), NOTICE_PARTIAL_MS);
-    return false;
+}
+
+/** The zero-based line the offset sits on, or null when it is outside the note. */
+function lineAt(index: EntryIndex, offset: number): string | null {
+  const at = lineIndexOf(index, offset);
+  return at === null ? null : (index.lines[at] ?? null);
+}
+
+/** The nearest non-empty line in one direction, trimmed, or null. */
+function neighbourLine(index: EntryIndex, offset: number, direction: -1 | 1): string | null {
+  const from = lineIndexOf(index, offset);
+  if (from === null) return null;
+
+  for (let at = from + direction; at >= 0 && at < index.lines.length; at += direction) {
+    const text = (index.lines[at] ?? "").trim();
+    if (text !== "") return text;
+  }
+  return null;
+}
+
+/** The last line start at or before `offset`. */
+function lineIndexOf(index: EntryIndex, offset: number): number | null {
+  let found: number | null = null;
+  for (let at = 0; at < index.lineStarts.length; at += 1) {
+    const start = index.lineStarts[at] ?? 0;
+    if (start > offset) break;
+    found = at;
+  }
+  return found;
+}
+
+/**
+ * The one line a remembered position belongs to, or null when it is not one.
+ *
+ * A line's own text is not an address — the same sentence can appear twice — so
+ * the line that precedes it and the line that follows it are matched too, and the
+ * position is refused unless exactly one line satisfies all three. Refusing is the
+ * point: landing at an unrelated offset is the failure this exists to prevent.
+ */
+function uniqueLine(index: EntryIndex, stop: NoteStop): number | null {
+  const wanted = stop.lineText;
+  if (wanted === null) return null;
+  const text = wanted.trim();
+
+  const candidates: number[] = [];
+  for (let at = 0; at < index.lines.length; at += 1) {
+    if ((index.lines[at] ?? "").trim() !== text) continue;
+    if (neighbourOf(index, at, -1) !== stop.lineBefore) continue;
+    if (neighbourOf(index, at, 1) !== stop.lineAfter) continue;
+    candidates.push(at);
   }
 
-  private notifyRefusal(index: EntryIndex, action: string): void {
-    if (index.legacyFormat) {
-      new Notice(noticeLegacyFormat(action), NOTICE_REFUSAL_MS);
-      return;
-    }
-    if (index.unclosedFrontmatter) {
-      new Notice(noticeCloseFrontmatter(action), NOTICE_REFUSAL_MS);
-      return;
-    }
-    new Notice(noticeCloseCodeBlock(action), NOTICE_REFUSAL_MS);
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
+}
+
+/** The nearest non-empty line beside line `at`, trimmed. */
+function neighbourOf(index: EntryIndex, at: number, direction: -1 | 1): string | null {
+  for (let line = at + direction; line >= 0 && line < index.lines.length; line += direction) {
+    const text = (index.lines[line] ?? "").trim();
+    if (text !== "") return text;
   }
+  return null;
+}
+
+/** The markdown view drawing this editor, when the host exposes the pairing. */
+function markdownViewFor(app: App, editor: EditorView): MarkdownView | null {
+  for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+    const view = leaf.view;
+    if (!(view instanceof MarkdownView)) continue;
+    const cm = (view.editor as unknown as { cm?: unknown } | undefined)?.cm;
+    if (cm === editor) return view;
+  }
+  return null;
+}
+
+/** The host leaf's own id for a view, when it has one. */
+function leafIdFor(app: App, view: MarkdownView): string | null {
+  for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+    if (leaf.view !== view) continue;
+    const id = Reflect.get(leaf, "id");
+    return typeof id === "string" && id !== "" ? id : null;
+  }
+  return null;
 }

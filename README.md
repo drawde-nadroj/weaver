@@ -40,85 +40,108 @@ pixel. The manual checks they need are at the end of this file.
 
 ## The loop
 
-1. **Start** an entry with `⌘⇧E` from anywhere, including inside an editor: it is
-   added at the tip of today's note with an empty prose line and a duration-only
-   clock row, `- 00:00:00`. The entry is awaiting its first text: it records no
-   date or moment until there is one.
-2. **Write.** The first text writes its own local date and moment into the clock
-   row in the same undoable transaction, and starts the stopwatch; the rendered
-   duration then ticks while the file's duration half still says `- 00:00:00`.
-3. **Stop writing** — move the caret away, click out of the note, scroll with the
-   wheel, open a card — and the clock pauses, writing `=` with exactly the displayed
-   duration. Unseen fractions and delayed timer callbacks never advance it on stop.
-4. **Settle** with `⏎`: the duration half becomes `+ HH:MM:SS`, preserving the displayed
-   digits; the session ends and nothing else moves. `⏎` again on that settled entry opens a child one dimension
-   deeper with the caret in its prose.
-5. **Navigate** with `⌘⇧P`: today's entries in one card, where `⏎` jumps, `⇧⏎`
-   settles and descends, `n` starts a root, `x` deletes the selection's
-   subtree, and `⌘[` walks back a stop.
+1. **Weave** a Thread with `⌘⇧⏎` from anywhere — a note, Reading view, an empty
+   workspace. One composer opens above the workspace, holding one thought; the
+   note you were in does not move, and nothing is written yet.
+2. **Write.** The first committed character freezes the thought's beginning: the
+   day and moment it was written, and a duration that counts only while you are
+   writing in the composer. Letters inside it are prose — `n` and `t` are only
+   shortcuts once the thought has been saved.
+3. **Save** with `⏎`. One transaction writes the marker, the prose and a
+   finished clock row into the daily note for the day the thought *began* — which
+   may be yesterday if you started before midnight — and `Saving…` becomes
+   `Saved`. A distinct second `⏎` closes, but only after the note has confirmed
+   the write.
+4. **Rest.** The composer now shows what you wrote, read from its note, in its own
+   dimension colour. `N` branches under it, `T` starts a new Thread in the same
+   Realm, `More` holds `Edit in note`, and `⏎`/`Esc` close.
+5. **Navigate** with `⌘⇧P`: Realms, the day's thoughts across all of them,
+   and the invitations still waiting, in one card.
 6. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
-A pause writes only when a whole second has accumulated, so moving the caret costs
-at most one line rewrite per second and the value always reads back the same.
-Editing a settled entry changes nothing: a `+` half is never rewritten.
+Writing inside a note is unchanged, and it is where an entry is still begun in
+place: the first text of an awaiting entry writes its own local date and moment
+in the same undoable transaction and starts the stopwatch. A pause writes `=`
+with exactly the displayed duration; a settled `+` half is never rewritten. The
+clock starts on the writer's own input — a typed character or a paste — and on
+nothing else: the vault reloading a note, or Weaver rewriting a line, starts no
+clock.
 
-The clock starts on the writer's own input — a typed character or a paste — and on
-nothing else. The vault reloading a note from disk, or Weaver rewriting a line,
-starts no clock: an entry nobody has touched has no time in it.
+## Destinations
 
-## Portals
+A *destination* is a folder and a filename format — `main` is the vault's own day
+note, following the core Daily Notes settings when they can be read, and the two
+fall back settings when they cannot. Add others under *Realms* in the settings: a
+name, a folder such as `Spanish/Daily`, and a format written in `YYYY`, `MM` and
+`DD`. Creating a Realm makes no folder and no file, and removing one never deletes
+its notes.
 
-Local openings fall at minutes 00, 11, 22, 33, 44 and 55, plus the
-24-hour mirror of the hour (12:12, 22:22). Overlaps are one opening.
-Several may approach together. Each appears eleven minutes early; Obsidian
-announces it while the app is visible, without operating-system alarms.
-Waking late offers the nearest current invitation, never a backlog.
+A Realm is a folder, a writing history and a remembered workspace. A thought is
+written into the Realm the composer names; *viewing* is what the workspace is
+showing, and the navigator travels there without touching the draft. A branch always
+lands in its parent's note, whatever the composer says, and a saved Thread stays
+where it is.
 
-An untouched opening expires at the end of its minute. Preparation holds one
-opening in its note; another preparation releases the previous one. Hiding
-the app, leaving the leaf or unloading releases the hold. An ordinary running
-stopwatch never holds a portal. Neither an invitation nor preparation writes
-an entry, changes the note, or creates a missing day note.
+## Openings and the composer
 
-On desktop, click Prepare or reach its button with Tab and press Enter/Space.
-On a phone, tap it to focus the waiting line; after a Reading-view switch, tap
-that line if the host has not opened the soft keyboard.
-Before opening, typing and paste insert nothing. Once open, the first character,
-paste or committed composition creates the real entry; all later writing is in
-the note's normal editor. Return settles it. There is no separate recording button.
-Escape releases preparation on a keyboard; the same control becomes Release
-for touch or pointer cancellation. A refused write retains the whole first text
-with Retry. Reading-view preparation switches the same pane to Live Preview.
+The built-in rhythm offers the local minutes :00, :11, :22, :33, :44 and :55 plus
+the mirror of each hour (:12:12, :22:22), with eleven minutes of notice, and any
+number of configured schedules may sit beside it: an hourly minute, chosen
+weekdays at a time, or one instant. Each is a *call to action*, not a gate.
 
-Recognition uses the actual first-input second: boundary at second 00, hour
-echo at second HH, minute echo at second MM. Coincident echoes are one
-acknowledgment; hidden milliseconds are never rounded into a hit. A held opening
-entered after its original minute records the actual beginning without alignment.
-There are no chosen targets, scores, streaks, obligations or recorded missed attempts.
-Turning off *Portals* removes invitations and preparation, not entries or history,
-and does not disable ordinary awaiting clocks or the displayed-duration stop rule.
+An opening lasts exactly its own minute. For `04:33` the interval is
+`[04:33:00, 04:34:00)`: writing that *begins* inside it was written through it, and
+finishing afterwards changes nothing. Text begun before the opening, or after it
+closed, is ordinary writing and gets no record. A minute nobody entered is gone —
+nothing is backfilled after a sleep, and no missed opening leaves a trace in a note.
+
+There is no gesture to enter an opening. The first committed character of a root is
+what qualifies it; a branch has no opening of its own, and clearing every character
+forgets the association. `Weave` therefore only opens or resumes normal writing in
+that Realm. `Hide` acknowledges exactly the opening on screen; the schedule's next
+one is still offered later.
+
+Recognition still uses that actual first-input second — boundary at 00, hour echo
+at HH, minute echo at MM — and a coincidence is one acknowledgment, never a rounded
+hit. Two schedules may share one minute: both are acknowledged, and the note gets
+one record, because there is one beginning. A one-off schedule must start on a whole
+minute, since that is what a record names; an instant inside a minute is refused
+when the schedule is read.
+
+The opening's rainbow is the only continuous animation in Weaver; *Invitation
+motion* sets its duration, and *off* keeps the colours still. Turning off
+*Invitations* hides every offer without touching an entry, a Thread or a recorded
+history.
 
 ## Commands
 
 | Command ID | Name | Default hotkey | Icon |
 | --- | --- | --- | --- |
-| `weaver:start-entry` | Start an entry | `Mod+Shift+E` | `plus` |
-| `weaver:descend` | Descend into a child entry | — | `arrow-down-right` |
-| `weaver:navigate` | Today's entries | `Mod+Shift+P` | `list` |
+| `weaver:start-entry` | Weave a Thread | `Mod+Shift+Enter` | `plus` |
+| `weaver:descend` | Branch from this thought | — | `arrow-down-right` |
+| `weaver:back` | Back | — | `arrow-left` |
+| `weaver:forward` | Forward | — | `arrow-right` |
+| `weaver:navigate` | Navigator | `Mod+Shift+P` | `list` |
 | `weaver:whisper-day` | Whisper the day | — | `sparkles` |
 | `weaver:close-day` | Close the day | — | `check-circle` |
 
+*Back* and *Forward* ship with no default hotkey on purpose: a global binding would
+shadow the writer's own Vim motions and Obsidian chords. Bind them to whatever you
+already reach for; `⌘[` and `⌘]` also work while a Weaver surface has focus.
+
 Every command carries an icon. Obsidian has no API that places a command on the
-mobile toolbar; add *Start an entry* and *Descend into a child entry* under
-*Manage toolbar options*.
+mobile toolbar; add *Weave a Thread* and *Navigator* under *Manage toolbar
+options*.
 
-`⌘⇧E`, not `⌘⏎`: Obsidian's core *Open link under cursor in new tab* owns
-`⌘⏎`, and its scope runs in the document's capture phase, so no plugin keymap —
-not even a `Prec.highest` one — ever sees that chord. `⌘⇧E` belongs to nothing
-else, so it works from the sidebar, from Reading view, and from inside an editor.
+`⌘⇧⏎`, not `⌘⏎`: Obsidian's core *Open link under cursor in new tab* owns `⌘⏎`,
+and its scope runs in the document's capture phase, so no plugin keymap — not even
+a `Prec.highest` one — ever sees that chord. If another plugin has claimed
+`⌘⇧⏎`, the command and the toolbar entry still work; the chord is reported as a
+collision rather than silently replaced.
 
-`⌘⇧E` is bound twice on purpose: the command covers the caret that is not in an
-editor, and CodeMirror's keymap handles the same chord inside the editor.
+`⌘⇧⏎` is bound twice on purpose: the command covers the caret that is not in an
+editor, and CodeMirror's keymap handles the same chord inside the editor. Both open
+the one composer; neither writes a byte.
 
 `⏎` is not a command, and it is two-way and stateless. The caret is in an entry, so
 `⏎` looks at that entry's own sigil: an **open** entry — `-` being written or `=`
@@ -135,44 +158,50 @@ in the editor keymap, and Vim's own normal-mode map runs before it.
 
 ## The navigator
 
-`⌘⇧P` shows today's note, put into source mode, with one card over it. On a phone
-the same card is a full-height sheet. It is the only navigation: start, descend and
-jump, with the return stack inside it.
+`⌘⇧P` opens one card over the workspace. On a phone the same card is a
+full-height sheet. It is the only navigation, and it changes nothing until you act:
+it does not reveal today's note, does not create one, and writes no file while you
+browse.
+
+Three tabs, in order:
+
+- **History** — one chronology for the selected day, read from every recognised day
+  note at once. A row carries its address (`B.D.N`), its recorded time, its Realm
+  (only when the filter is *All Realms*), and the model's reading or the first
+  words you wrote. Entries with no recorded moment stay in their own group rather
+  than at an invented midnight. The Realm filter and the day field keep their
+  native keys.
+- **Realms** — every Realm, with `Travel` (a deliberate visit, which keeps your
+  draft) and `Write here` (the composer, there, without travelling).
+- **Portals** — the openings that can still be entered, the one that just closed,
+  and the captures the notes really recorded.
 
 | Key | Effect |
 | --- | --- |
-| `↑` `↓` | move the selection (clamped, no wrap) |
-| `⏎` | put the caret in the selected entry |
-| `⇧⏎` | settle the selection if it is open, then open a child under it |
-| `n` | start a root at the tip of the day |
+| `j` `k` / `↑` `↓` | move the selection (clamped, no wrap) |
+| `⏎` | open the selected row at its own note and thought |
+| `⇧⏎` `n` | branch under the selected thought, into an empty draft |
+| `t` | start a new Thread in the workspace's destination |
+| `c` | continue the selected thought's Thread in the composer, without travelling |
 | `x` | delete the selection's whole subtree |
-| `⌘[` | walk back one stop |
-| `Esc` | close, and put the caret back where the card opened |
+| `⌘[` / `⌘]` | back / forward through the visit history |
+| `Esc` | close |
 
-On touch: a row taps to jump, the caret's own row taps to descend, and `✕` arms on
-the first tap and deletes on the second. The footer names the gestures the platform
-can make.
+On touch: a row taps to open, a destination's `Go` and `Weave` are separate
+buttons, and `✕` arms on the first tap and deletes on the second. The footer names
+the gestures the platform can make. `t` and `c` close the card *before* opening the
+composer, so focus never jumps back to the note behind it.
 
-The first row is `＋ start an entry`, then a `return` block — one row per place a move
-left — then `today`: every entry in document order, `B.D.N`, clock, title, `+N`
-children (that count is the blast radius of `x`), with the caret's own entry marked.
 `x` asks for no confirmation: the whole subtree goes in one undoable transaction,
 the surviving branches' `B` values are repaired in that same transaction, and one
-undo brings both back.
+undo brings both back. The card never takes a `Scope`, so `⌘,` and every other
+Obsidian chord reach the app while it is open.
 
-The card never takes a `Scope`, so `⌘,` and every other Obsidian chord reach the app
-while it is open. Every action re-reads the document; the card never caches a line
-number across a write. The list is today's note — the same target *Start an entry*
-writes to — so reaching another day means opening that note.
-
-A collapsed *Portals* section follows the entry rows. Expand it for actual
-beginnings, current invitations and the most recent passed opening; *Show all
-openings* reveals the day's full schedule. A passed row is a schedule fact, not
-a missed attempt or a claim that a notice was delivered. Captured rows retain
-their original offset; reconstructed schedule rows are labelled *Schedule in
-current timezone*. Enter or tap an available recorded row to jump, or an
-upcoming/open row to prepare. Deleted or mismatched beginnings say *Entry
-unavailable*. History rows never descend or delete; those gestures remain entry-only.
+The history is a cursor over up to sixty-four visits, so `⌘[` and `⌘]` walk the same
+path and a new navigation truncates only what `⌘]` could still have reached. A
+failed navigation changes neither the history nor the screen. A notes list reading
+*Entry unavailable* means a recorded beginning no longer matches the entry it named
+— a deletion, a reused number, or a hand edit — and it is never a jump target.
 
 ## Record formats
 
@@ -247,7 +276,11 @@ before its title.
 | Group | Setting | Default | Effect |
 | --- | --- | --- | --- |
 | Writing | Write day counters | on | Keep `travels`, `depth` and `duration` in the day note's frontmatter. |
-| Writing | Portals | on | Eleven-minute local opening invitations, deliberate preparation, and automatic exact-second recognition. Turning off preserves entries and history. |
+| Writing | Invitations | on | Scheduled calls to action. An opening offers a minute; it never writes, never takes focus, and writing begun inside its minute may finish afterwards. Off hides every offer and keeps entries, Threads and history. |
+| Writing | Offer the built-in rhythm | on | The local minutes :00, :11, :22, :33, :44 and :55 plus each mirrored HH:HH, with eleven minutes of notice, into Main. |
+| Writing | Invitation motion | normal | Slow (24 s), normal (12 s), fast (6 s), or off — a still rainbow. Changes no padding, no label and no size. |
+| Schedules | Add schedule | — | An hourly minute, selected weekdays at a time, or one instant; each with its own destination and enable switch. |
+| Day | Realms | Main only | Additional folders to weave into, each with its own filename format, writing history and remembered workspace. Creating one makes no folder and no file; removing one never deletes notes. |
 | Day | Day note folder | `Chronomancer` | Used only when the core Daily Notes plugin cannot be read. |
 | Day | Day note format | `YYYY.MM.DD` | Same fallback, for the filename. |
 | Look | Equalize entry sizes | on | One size for every entry, whatever its depth. Off steps deeper entries down. |
@@ -258,6 +291,8 @@ before its title.
 | Look | Port `em`/`strong` colours | on | Orange `em`, red `strong`. |
 | Look | Frame each entry | on | Draw a rounded box around every entry: the marker row is its top rail, and the clock row its bottom edge — the duration labels the bottom-left corner, the moment the bottom-right, each running through the middle of the row and cut behind its label. |
 | Look | Frame follows the indent | on | A nested entry's frame starts further right, so nesting reads as a staircase. Off, every frame starts in the left margin and only the prose is indented, so the markers and the times line up down the note. |
+| Look | Space below each Thread | 0px | Air above every depth-1 entry after the note's first Thread, so one Thread's subtree does not run into the next. Zero keeps the old rhythm. |
+| Look | Space between branches | 0px | Air above each branch whose predecessor is also a branch. The first branch stays close to its Thread's root, and deeper siblings get room. Zero keeps the old rhythm. |
 | Whisper | Whisper settled entries | off | Write one to three `~` rows above a settled entry: the model's reading of what it holds. |
 | Whisper | Place each entry in its day | off | One extra request per entry, asking which earlier entry it repeats or picks up. A small model answers thinly — measured, about one usable placement per day's twenty entries — so it is off by default. |
 | Whisper | Endpoint | `http://127.0.0.1:8000/v1` | An address this device can reach. `127.0.0.1` is this machine only; the machine's own reachable name makes whispers work on a phone too. |
@@ -423,11 +458,18 @@ reorder; that pass now reads and writes the branch first.
 
 These need a live Obsidian and are not covered by `npm test`:
 
-- `⌘⇧E` with the caret in the editor of another note: today's note gains
-  `{ 1.1.1 }`, a blank line and a duration-only clock row `- 00:00:00`, the caret
-  sits on the blank line, and no session has started yet. The first text records
-  the day and moment in the same undo step; one undo takes both back.
-- Two keystrokes: the clock ticks in seconds. Moving the caret out of the entry
+- `⌘⇧⏎` with the caret in the editor of another note: one composer opens above the
+  workspace, the note is untouched, and the destination reads `Main`. Type a
+  thought and press `⏎`: the note for the day the thought *began* gains one entry —
+  marker, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
+  the second `⏎` closes the composer without writing again.
+- The same with a saved reference beside it: `Go` switches to the other
+  destination and the draft is still there, with its text and its selection, when
+  you come back.
+- `N` in the resting state: the composer branches under the saved thought, and the
+  note gains a child (`B` inherited, `D` one deeper) when that branch is saved. `T`
+  starts a fresh `1D` Thread in the same Realm.
+- In a note, two keystrokes: the clock ticks in seconds. Moving the caret out of the entry
   writes `=` in the duration half; so does an arrow key inside it. The next
   keystroke resumes from that second and the rendered sigil returns to `-` without
   the file moving.
@@ -438,8 +480,8 @@ These need a live Obsidian and are not covered by `npm test`:
   that colour while its digits keep the note's own text colour, and the clock row
   keeps its height while the digits change.
 - `⇧⏎` inside an open entry adds a line, on a desk.
-- The palette lists exactly *Start an entry*, *Descend into a child entry*,
-  *Today's entries*, *Whisper the day* and *Close the day*; there is no line-break
+- The palette lists exactly *Weave a Thread*, *Branch from this thought*,
+  *Navigator*, *Whisper the day* and *Close the day*; there is no line-break
   command, and every row shows its icon.
 - *Descend into a child entry* with the caret in a settled entry puts the child
   immediately under the parent, above any older siblings.
@@ -447,20 +489,21 @@ These need a live Obsidian and are not covered by `npm test`:
   child.
 - *Descend into a child entry* with the caret outside every entry writes nothing and
   says `put the caret in an entry`.
-- Deleting the live entry then pressing `⌘⇧E`: the new entry's stopwatch reads
-  `- 00:00:00` and stays there until the first keystroke.
+- Deleting the live entry then pressing `⌘⇧⏎`: the composer opens, and the note
+  keeps the deletion alone.
 - Type into a settled entry: its duration half never changes, and a `+` entry is
   never rewritten.
-- `⌘⇧P`: the card lists today's entries with the caret's entry selected; `↓` moves
-the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles it and opens a
-child; `n` starts a root at the tip; `x` removes the selected subtree in one undo;
-`⌘[` walks back a stop and the list reopens where it landed; `Esc` closes and puts
-the caret back where the card opened. `⌘,` still opens Obsidian settings with the
-card open.
+- `⌘⇧P`: the card lists every destination, the day's thoughts across all of them,
+and the outstanding invitations; switching a chip filters the day; `⏎` opens a row
+in its own note; `⇧⏎` branches under it; `t` opens the composer without focus
+returning to the note; `x` removes the selected subtree in one undo; `⌘[` and `⌘]`
+walk the same visit history; `Esc` closes. `⌘,` still opens Obsidian settings with
+the card open.
+- `⌘⇧⏎` from a note, from Reading view, and from an empty workspace: one composer
+  opens, no blank entry is appended, no note is created, and the chord fires once.
 - Phone: `⏎` settles the open entry and never opens a child, from any line of it.
   There is no newline gesture inside an entry. Rows ≥ 44 px, the sheet fills
-  the screen, and *Start an entry* lands the caret in the new entry's prose even
-  from Reading view.
+  the screen, and *Weave a Thread* opens the composer even from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
 - Frames, the start column: with *Frame follows the indent* off, every box starts in
   the same place and the markers and the times run down one column each; only the

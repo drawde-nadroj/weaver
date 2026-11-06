@@ -257,6 +257,11 @@ function toUiSetting(setting: unknown): UiSetting {
   };
 }
 
+/** Forgets every setting rendered so far, so a re-render can be read alone. */
+export function clearUiSettings(): void {
+  (Setting as unknown as { instances: unknown[] }).instances.length = 0;
+}
+
 export function uiSettings(): UiSetting[] {
   return (Setting as unknown as { instances: unknown[] }).instances.map(toUiSetting);
 }

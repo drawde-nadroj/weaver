@@ -39,7 +39,7 @@ interface Harness {
   settled: number[];
   descended: number[];
   deleted: number[];
-  starts: number;
+  opened: number;
   pauses: number;
   host: EntryKeyHost;
 }
@@ -61,11 +61,10 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
   let pauses = 0;
   const host: EntryKeyHost = {
     session,
+    openComposer: () => {
+      starts += 1;
+    },
     entries: {
-      startEntry: () => {
-        starts += 1;
-        return Promise.resolve();
-      },
       settle: (_view, entry) => {
         settled.push(entry.n);
       },
@@ -91,7 +90,7 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
     descended,
     deleted,
     host,
-    get starts(): number {
+    get opened(): number {
       return starts;
     },
     get pauses(): number {
@@ -103,8 +102,8 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
 const PROSE = DOC.indexOf("prose");
 
 describe("Enter", () => {
-  it("binds Mod-Shift-E and Enter, and nothing else", () => {
-    expect(ENTRY_KEYS).toEqual(["Mod-Shift-E", "Enter"]);
+  it("binds Mod-Shift-Enter and Enter, and nothing else", () => {
+    expect(ENTRY_KEYS).toEqual(["Mod-Shift-Enter", "Enter"]);
   });
 
   it("settles the open entry the live session is writing", () => {
@@ -176,12 +175,12 @@ describe("Enter", () => {
   });
 });
 
-describe("Mod-Enter", () => {
-  it("starts an entry and claims the chord", () => {
+describe("Mod-Shift-Enter", () => {
+  it("opens the composer and claims the chord", () => {
     const run = harness(PROSE);
 
     expect(handleStartKey(run.view, run.host)).toBe(true);
-    expect(run.starts).toBe(1);
+    expect(run.opened).toBe(1);
   });
 });
 
@@ -236,8 +235,8 @@ function editHarness(
 
   const host = {
     session: new EntrySession(),
+    openComposer: () => undefined,
     entries: {
-      startEntry: () => Promise.resolve(),
       settle: () => undefined,
       descend: () => undefined,
       deleteEntry: () => undefined,

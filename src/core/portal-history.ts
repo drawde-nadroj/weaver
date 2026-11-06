@@ -1,17 +1,13 @@
 /**
  * The day's portal history, as rows a surface can list.
  *
- * Two kinds of fact share one chronology. A recorded row is something that
- * really happened: a note's `weaver-alignments` record, its original local
- * opening and beginning preserved, and its alignments recomputed from those
- * frozen facts rather than from the machine's current timezone. An opening row
- * is only a schedule: an eligible local minute that no record in this note has
- * claimed. Schedule rows are reconstructed on demand and never written.
- *
- * The default view is deliberately small — what is approaching or open now,
- * plus the most recent opportunity that has passed — while `showAll` lays out
- * the whole local day. "Passed" means the opening minute elapsed; it never
- * claims that a notice was delivered or that someone chose to ignore it.
+ * What this returns is evidence and nothing else: a note's `weaver-alignments`
+ * record, its original local opening and beginning preserved, and its alignments
+ * recomputed from those frozen facts rather than from the machine's current
+ * timezone. The schedule a record happened to come from is not part of the note,
+ * so it is not invented here — a list of upcoming or pending openings comes from
+ * the live controller, which knows the schedules, and a note's history never
+ * claims that a notice was delivered or that someone declined one.
  *
  * Nothing here reads or writes the vault. It parses the note it is given and
  * returns rows, or the reason the note's history could not be read at all.
@@ -20,19 +16,8 @@
 import { readAlignments, type AlignmentRecord } from "./alignments";
 import { pad2 } from "./clock";
 import { entryBySeq, parseEntries, type Entry, type EntryIndex } from "./entries";
-import {
-  portalAlignments,
-  portalInstants,
-  portalPhase,
-  type AlignmentKind,
-  type PortalInstant
-} from "./portals";
+import { portalAlignments, type AlignmentKind, type PortalInstant } from "./portals";
 
-/** One minute, the width of an opening. */
-const MINUTE_MS = 60_000;
-
-/** A portal is announced eleven minutes before it opens. */
-const LEAD_MS = 11 * MINUTE_MS;
 
 /** A recorded beginning, with the local facts its stamp preserves. */
 interface LocalFacts {
@@ -132,17 +117,8 @@ export interface RecordedPortalHistoryRow {
   label: string;
 }
 
-/** A scheduled opening that this note has not recorded. */
-export interface OpeningPortalHistoryRow {
-  kind: "opening";
-  id: string;
-  portal: PortalInstant;
-  phase: "approaching" | "open" | "passed";
-  label: string;
-}
-
-/** One row in the navigator's portal history. */
-export type PortalHistoryRow = RecordedPortalHistoryRow | OpeningPortalHistoryRow;
+/** One row in the navigator's portal history: a recorded beginning. */
+export type PortalHistoryRow = RecordedPortalHistoryRow;
 
 /** A read history, or why the note's history could not be listed. */
 export type PortalHistory =
@@ -172,93 +148,20 @@ function linkEntry(record: AlignmentRecord, index: EntryIndex, began: LocalFacts
   return entry;
 }
 
-/** The local midnight bounds of the day containing `now`. */
-function localDayBounds(now: number): { start: number; end: number } {
-  const date = new Date(now);
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0).getTime();
-  // Local date arithmetic, not a fixed 24 hours: a folded or skipped hour is
-  // part of the real day, and the day can be 25 or 23 hours long.
-  const end = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + 1,
-    0,
-    0,
-    0,
-    0
-  ).getTime();
-  return { start, end };
-}
-
-/** The opening rows a note should show: the default window or the full day. */
-function openingRows(
-  now: number,
-  showAll: boolean,
-  recorded: ReadonlySet<string>
-): PortalHistoryRow[] {
-  const { start, end } = localDayBounds(now);
-  const openings = portalInstants(start, end - 1).filter(
-    (portal) => portal.opensAt >= start && portal.opensAt < end && !recorded.has(portal.id)
-  );
-
-  let shown: PortalInstant[];
-  if (showAll) {
-    shown = openings;
-  } else {
-    const selected = new Map<string, PortalInstant>();
-    let mostRecentPassed: PortalInstant | null = null;
-    for (const portal of openings) {
-      const passesAt = portal.opensAt + MINUTE_MS;
-      if (passesAt <= now) {
-        if (mostRecentPassed === null || portal.opensAt > mostRecentPassed.opensAt) {
-          mostRecentPassed = portal;
-        }
-        continue;
-      }
-      // Approaching for the next eleven minutes, open through its own minute.
-      if (portal.opensAt - LEAD_MS <= now) selected.set(portal.id, portal);
-    }
-    if (mostRecentPassed !== null) selected.set(mostRecentPassed.id, mostRecentPassed);
-    shown = [...selected.values()];
-  }
-
-  return shown.map((portal) => {
-    const phase = portalPhase(portal, now, false);
-    const status = phase === "approaching" ? "Upcoming" : phase === "open" ? "Open" : "Passed";
-    return {
-      kind: "opening" as const,
-      id: `opening:${portal.id}`,
-      portal,
-      phase: phase === "approaching" ? "approaching" : phase === "open" ? "open" : "passed",
-      label: status
-    };
-  });
-}
-
 /**
- * Lists a day note's portal history.
+ * Lists a day note's recorded portal history.
  *
- * Every recorded event is included, whether or not it still points at an entry.
- * The schedule beneath it is reconstructed for the local day containing `now`
- * and omits any portal the note has already recorded, so one opening is never
- * both a fact and an invitation. Rows are chronological by opening instant, then
- * by recorded beginning, and keep source order for otherwise identical events.
- *
- * `showAll` lays out the whole current local day; otherwise only the eleven
- * minute invitation window, the currently open minute, and the most recent
- * elapsed opening are listed. An unreadable history is returned as an error and
- * never silently becomes an empty list.
+ * Every recorded event is included, whether or not it still points at an entry: a
+ * record whose entry was deleted keeps its opening and its moment, and loses only
+ * the association. Rows are chronological by opening instant, then by recorded
+ * beginning, and keep source order for otherwise identical events. An unreadable
+ * history is returned as an error and never silently becomes an empty list.
  */
-export function portalHistoryRows(
-  source: string,
-  now: number,
-  showAll: boolean
-): PortalHistory {
+export function portalHistoryRows(source: string): PortalHistory {
   const history = readAlignments(source);
   if (!history.ok) return { ok: false, error: history.error };
 
   const index = parseEntries(source);
-  const recordedIds = new Set(history.records.map((record) => record.portal));
 
   interface Sortable {
     row: PortalHistoryRow;
@@ -293,16 +196,6 @@ export function portalHistoryRows(
       },
       opensAt,
       beganAt: began.epoch,
-      order
-    });
-    order += 1;
-  }
-
-  for (const row of openingRows(now, showAll, recordedIds)) {
-    sortable.push({
-      row,
-      opensAt: row.portal.opensAt,
-      beganAt: row.portal.opensAt,
       order
     });
     order += 1;

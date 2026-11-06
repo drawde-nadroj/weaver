@@ -1,80 +1,104 @@
 /**
- * Portal lifecycle: which openings are showing now, which one is prepared, and
- * which have already been entered in this plugin session.
+ * The invitation lifecycle: which schedule is offering what, right now.
  *
- * The controller is a pure derivation of an injected clock plus the note's own
- * history — it never writes, never touches the editor, and never reads a file.
- * Everything it knows about a note arrives with a `source` string, so a caller
- * can only be shown a portal that the note's readable history has no record of.
- * A note whose history cannot be read still shows its openings: the refusal
- * belongs to the capture, which can keep the writer's text.
+ * A portal stopped being a minute you could write in and became a call to
+ * action. So this controller holds no note, no preparation and no permission:
+ * it derives, from the actual instant, one outstanding invitation per schedule,
+ * and every one of them opens the same composer the writer can open at any time.
  *
- * Status is always recomputed from the actual instant, never accumulated from
- * timer callbacks: a delayed timeout, a backwards clock correction, or a laptop
- * waking after noon must all produce the same answer as a fresh derivation. The
- * one timer it keeps is a minute-boundary wakeup, because that is the only
- * instant at which the eleven-minute window can gain or lose a candidate.
+ * Three facts make the derivation honest:
+ *
+ *  - **Activation, not history.** A schedule is examined from the moment it was
+ *    enabled, and answered occurrences are excluded, so turning a schedule on
+ *    does not replay a month of openings and a dismissal is not forgotten at the
+ *    next minute.
+ *  - **One per schedule.** A later occurrence replaces its own schedule's
+ *    outstanding invitation; different schedules stay distinct even when they
+ *    point at the same minute. Each invitation carries the generation it belongs
+ *    to, so a late answer can never clear a newer one.
+ *  - **No note bytes.** Dismissing, announcing, or leaving an invitation forever
+ *    writes nothing to the vault. Only a capture that actually settles produces
+ *    evidence, and only through the one writer.
+ *
+ * The controller never counts timer callbacks: `reconcile` is called on a
+ * boundary, on a settings change, on visibility, and once after load, and each
+ * call answers as a fresh derivation would.
  */
 
-import { readAlignments } from "../core/alignments";
-import { portalInstants, portalPhase, type PortalInstant } from "../core/portals";
+import {
+  DEFAULT_LEAD_MINUTES,
+  dueOpening,
+  nextOpening,
+  OPENING_WINDOW_MS,
+  portalContainsBeginning,
+  portalPhase,
+  RHYTHM_SCHEDULE_ID,
+  sourceOccurrences,
+  type PortalInstant,
+  type PortalOccurrence,
+  type PortalPhase,
+  type PortalSchedule,
+  type PortalSource
+} from "../core/portals";
+import type { LocalStateRecord, ScheduleRuntime } from "./local-state";
 
-/** Leading notice time: a portal is visible and preparable eleven minutes early. */
-const LEAD_MS = 660_000;
-/** Openings are minute-aligned, so eligibility only changes on a minute boundary. */
+/** One minute: the granularity at which availability can change. */
 const MINUTE_MS = 60_000;
-/** Wake a hair past the boundary so the new minute is already the current one. */
+
+/** A third of a minute past the boundary, so the new minute is already current. */
 const WAKE_SLACK_MS = 20;
 
-/**
- * Everything the controller may know about the world outside itself.
- *
- * Injected rather than imported so a test can move time without changing the
- * system clock, and so the plugin's main module stays the only owner of vault
- * and workspace access. `todayPath` answers with the path the day note *would*
- * have, whether or not it exists yet: a passive schedule must never create it.
- */
+/** What the controller may know about the world, injected so a test can move time. */
 export interface PortalHost {
   /** The current wall-clock instant, in epoch milliseconds. */
   now(): number;
-  /** Whether portals are switched on in settings right now. */
+  /** The master invitation switch in settings. */
   enabled(): boolean;
-  /** The day note path a new portal belongs to at `at`, existing or not. */
-  todayPath(at: number): string;
-  /** The note currently being edited, or null when no editable note is active. */
-  activePath(): string | null;
-  /** Whether the app and its document are visible enough to speak. */
+  /** Whether the built-in rhythm is offered. */
+  rhythmic(): boolean;
+  /** The destination the rhythm invites writing into. */
+  rhythmContext(): string;
+  /** Every configured schedule, validated. */
+  schedules(): readonly PortalSchedule[];
+  /** The stored record, read fresh when the controller starts. */
+  state(): LocalStateRecord;
+  /** Persists schedule runtime, so an answer survives a reload. */
+  persist(record: LocalStateRecord): void;
+  /** Whether the app is visible enough to speak about an invitation. */
   visible(): boolean;
-  /** Announce one opening, at most once per reconcile, with its true remaining time. */
-  invite(portal: PortalInstant, remainingSeconds: number): void;
+  /** Announces one invitation that has just become available, once. */
+  invite(occurrence: PortalOccurrence): void;
 }
 
-/** A portal's relationship to now; `held` survives the opening's own minute. */
-export type PortalStatus = "approaching" | "open" | "held" | "expired";
-
-/** The one prepared portal, pinned to the note that was showing it. */
-export interface PortalHold {
-  readonly portal: PortalInstant;
-  /** The note the hold belongs to, so midnight does not move it. */
-  readonly path: string;
+/** An invitation as a surface draws it: the occurrence, and how near it is. */
+export interface OfferedInvitation {
+  occurrence: PortalOccurrence;
+  phase: "approaching" | "available";
+  /** The schedule's lead, so a surface can say how long its notice is. */
+  leadMinutes: number;
 }
 
 /**
- * Owns the held portal, the session's entered set, and the announced set.
+ * The schedules' runtime state, and the invitations derived from it.
  *
- * Announcements are remembered for the lifetime of this instance, which is
- * exactly what keeps a backwards clock correction from speaking twice about the
- * same opening. A portal recorded in the note — or entered once already — never
- * becomes a candidate again, so a capture cannot be repeated.
+ * Everything it decides is a function of the instant, the settings and what this
+ * device has already answered; nothing is accumulated from callbacks.
  */
 export class PortalController {
-  private hold: PortalHold | null = null;
-  private readonly heard = new Set<string>();
-  private readonly used = new Set<string>();
+  /** `scheduleId` → the runtime the stored record carries. */
+  private readonly runtime = new Map<string, ScheduleRuntime>();
+  /** `scheduleId` → the schedule shape the runtime was started for. */
+  private readonly signatures = new Map<string, string>();
+  /** `occurrenceId` → the occurrence this session has already spoken about. */
+  private readonly spoken = new Set<string>();
+  /** `scheduleId` → the occurrence currently outstanding. */
+  private readonly pending = new Map<string, PortalOccurrence>();
   private readonly listeners = new Set<() => void>();
   private timer: number | null = null;
   private lastShape = "";
   private destroyed = false;
+  /** The stored record, updated in place so one write carries every change. */
+  private record: LocalStateRecord | null = null;
 
   constructor(private readonly host: PortalHost) {}
 
@@ -83,101 +107,228 @@ export class PortalController {
     return this.host.now();
   }
 
+  /** Loads the stored runtimes, then derives what is outstanding right now. */
+  start(): void {
+    if (this.destroyed) return;
+    const record = this.host.state();
+    this.record = record;
+    for (const [id, runtime] of Object.entries(record.schedules)) this.runtime.set(id, runtime);
+    this.reconcile();
+  }
+
   /**
-   * The portal openings this note should show, earliest first.
+   * Every enabled source, the rhythm first, in a stable order.
    *
-   * A note is eligible for pending frames only when it is today's day note or
-   * the note a portal is currently held in. History is consulted only when it
-   * can be read: a note whose history is malformed is still shown the openings
-   * it would otherwise have, because the refusal belongs to the capture, which
-   * preserves recoverable text. Rendering an invitation never grants permission
-   * to write over unreadable history.
+   * The rhythm is described as a source with no recurrence of its own: its
+   * minutes are the built-in set, and `sourceOccurrences` is what knows that.
    */
-  candidates(path: string, source: string): PortalInstant[] {
+  sources(): PortalSource[] {
+    const rhythm: PortalSource | null = this.host.rhythmic()
+      ? {
+          id: RHYTHM_SCHEDULE_ID,
+          name: "Rhythm",
+          contextId: this.host.rhythmContext(),
+          leadMinutes: DEFAULT_LEAD_MINUTES,
+          createdAt: 0,
+          schedule: null
+        }
+      : null;
+
+    const configured = this.host
+      .schedules()
+      .filter((schedule) => this.host.enabled() && schedule.enabled)
+      .map(
+        (schedule): PortalSource => ({
+          id: schedule.id,
+          name: schedule.name,
+          contextId: schedule.contextId,
+          leadMinutes: schedule.leadMinutes,
+          createdAt: schedule.createdAt,
+          schedule
+        })
+      );
+
+    return [...(rhythm === null ? [] : [rhythm]), ...configured];
+  }
+
+  /** Every invitation a surface may show: available first, then approaching. */
+  outstanding(): OfferedInvitation[] {
     if (this.destroyed || !this.host.enabled()) return [];
 
     const now = this.host.now();
-    const today = this.host.todayPath(now);
-    const hold = this.hold;
-    if (path !== today && (hold === null || hold.path !== path)) return [];
+    const result: OfferedInvitation[] = [];
 
-    const taken = new Set<string>(this.used);
-    const history = readAlignments(source);
-    if (history.ok) for (const record of history.records) taken.add(record.portal);
+    for (const source of this.sources()) {
+      const available = this.pending.get(source.id);
+      // A minute that has closed is no longer an invitation: the writer can still
+      // write, but not through an opening that went by.
+      if (available !== undefined && portalPhase(available.portal, now) === "available") {
+        result.push({ occurrence: available, phase: "available", leadMinutes: source.leadMinutes });
+        continue;
+      }
 
-    const result = new Map<string, PortalInstant>();
-    if (path === today) {
-      for (const portal of this.eligible(now)) {
-        if (!taken.has(portal.id)) result.set(portal.id, portal);
+      const approaching = this.approaching(source, now);
+      if (approaching !== null) {
+        result.push({ occurrence: approaching, phase: "approaching", leadMinutes: source.leadMinutes });
       }
     }
-    // A held portal outlives its minute, so it is not in the boundary window.
-    if (hold !== null && hold.path === path && !taken.has(hold.portal.id)) {
-      result.set(hold.portal.id, hold.portal);
+
+    return result.sort((left, right) => {
+      if (left.phase !== right.phase) return left.phase === "available" ? -1 : 1;
+      const byOpening = left.occurrence.portal.opensAt - right.occurrence.portal.opensAt;
+      if (byOpening !== 0) return byOpening;
+      // Stable order, so the dock does not shuffle between renders.
+      return left.occurrence.scheduleId < right.occurrence.scheduleId ? -1 : 1;
+    });
+  }
+
+  /** The one invitation a compact dock shows, or null. */
+  primary(): OfferedInvitation | null {
+    return this.outstanding()[0] ?? null;
+  }
+
+  /** The next opening of one source, for a list that is not an invitation yet. */
+  next(source: PortalSource): PortalInstant | null {
+    return nextOpening(source, this.host.now());
+  }
+
+  /** The outstanding occurrence of one schedule, or null when it has none. */
+  pendingFor(scheduleId: string): PortalOccurrence | null {
+    const occurrence = this.pending.get(scheduleId);
+    if (occurrence === undefined) return null;
+    return portalPhase(occurrence.portal, this.host.now()) === "available" ? occurrence : null;
+  }
+
+  /** The phase of a live occurrence, so a countdown can be drawn. */
+  phase(occurrence: PortalOccurrence): PortalPhase {
+    return portalPhase(occurrence.portal, this.host.now());
+  }
+
+  /**
+   * Every opening `contextId` at `at` would be written through.
+   *
+   * Asked with the instant of a draft's first committed input, so the answer is
+   * the minute the writer actually began in — not the minute a surface happened
+   * to look. An opening qualifies when it contains that instant, belongs to this
+   * Realm's source, is enabled, and has not been answered through this
+   * activation; two schedules may share the minute, and each is returned with its
+   * own generation because each is answered separately.
+   *
+   * Dismissing an occurrence acknowledges it, so a dismissed opening never
+   * qualifies: a writer who said no did not mean "unless I type".
+   */
+  captureAt(contextId: string, at: number): Array<{ occurrence: PortalOccurrence; generation: number }> {
+    if (this.destroyed || !this.host.enabled()) return [];
+    if (!Number.isFinite(at)) return [];
+
+    const result: Array<{ occurrence: PortalOccurrence; generation: number }> = [];
+
+    for (const source of this.sources()) {
+      if (source.contextId !== contextId) continue;
+      const runtime = this.runtime.get(source.id) ?? this.runtimeFor(source, this.host.now());
+      const floor = Math.max(runtime.activatedAt, (runtime.acknowledgedThrough ?? 0) + 1);
+
+      const candidates = sourceOccurrences(
+        source,
+        Math.max(floor, at - OPENING_WINDOW_MS + 1),
+        at
+      ).filter((portal) => portalContainsBeginning(portal, at));
+
+      for (const portal of candidates) {
+        if (portal.opensAt < floor) continue;
+        result.push({ occurrence: this.occurrenceOf(source, portal), generation: runtime.generation });
+      }
     }
 
-    return [...result.values()].sort((left, right) => left.opensAt - right.opensAt);
-  }
-
-  /** The portal's phase, with the hold extending only an already-open minute. */
-  phase(portal: PortalInstant): PortalStatus {
-    return portalPhase(portal, this.host.now(), this.hold?.portal.id === portal.id);
-  }
-
-  /** The prepared portal and the note it was prepared in, if any. */
-  held(): PortalHold | null {
-    return this.hold;
+    return result.sort((left, right) =>
+      left.occurrence.scheduleId < right.occurrence.scheduleId ? -1 : 1
+    );
   }
 
   /**
-   * Deliberately prepares a portal, pinning it to the note that showed it.
+   * Openings that closed within `windowMs`, for one brief farewell.
    *
-   * Nothing is prepared by itself: an announcement, an ordinary running
-   * stopwatch, or an expiring neighbour never moves the hold. Preparing another
-   * opening releases the previous one in the same emission.
+   * This is how a surface says "04:33 closed" without inventing history: the
+   * opening is a fact about the calendar, and it is reported only while it is
+   * recent. Nothing here records anything, so a missed minute leaves no trace in
+   * any note, and waking after a long sleep replays nothing.
    */
-  prepare(id: string): void {
-    if (this.destroyed || !this.host.enabled() || this.used.has(id)) return;
-    if (this.hold?.portal.id === id) return;
-
-    const portal = this.find(id);
-    if (portal === null) return;
+  recentlyClosed(windowMs: number): PortalOccurrence[] {
+    if (this.destroyed || !this.host.enabled()) return [];
+    if (!Number.isFinite(windowMs) || windowMs <= 0) return [];
 
     const now = this.host.now();
-    const today = this.host.todayPath(now);
-    const active = this.host.activePath();
-    // A portal is only ever offered in today's note or the note already holding
-    // one, so the hold stays with that note; an unrelated active leaf must not
-    // move it out from under the frame the writer just clicked.
-    const path = active !== null && active === this.hold?.path ? active : today;
-    this.hold = { portal, path };
-    this.commit();
-    this.schedule();
+    const result: PortalOccurrence[] = [];
+
+    for (const source of this.sources()) {
+      const runtime = this.runtime.get(source.id);
+      const floor = Math.max(runtime?.activatedAt ?? 0, (runtime?.acknowledgedThrough ?? 0) + 1);
+
+      // An opening's *close* is what falls in the window, so the search runs one
+      // window earlier: the minute that ended recently began a minute before it.
+      const closed = sourceOccurrences(
+        source,
+        now - windowMs - OPENING_WINDOW_MS,
+        now - OPENING_WINDOW_MS
+      ).filter((portal) => portal.opensAt + OPENING_WINDOW_MS > now - windowMs);
+      const last = closed[closed.length - 1];
+      if (last === undefined || last.opensAt < floor) continue;
+      result.push(this.occurrenceOf(source, last));
+    }
+
+    return result.sort((left, right) => right.portal.opensAt - left.portal.opensAt);
   }
 
-  /** Gives up the prepared portal; it is removed at once if its minute is over. */
-  release(): void {
-    if (this.destroyed || this.hold === null) return;
-    this.hold = null;
+  /**
+   * Records that one invitation was answered, and by what.
+   *
+   * Only the occurrence named is acknowledged, and only through its own opening:
+   * a later occurrence that arrived meanwhile keeps its own invitation. An answer
+   * from an older generation never clears a newer one.
+   */
+  acknowledge(occurrence: PortalOccurrence, generation: number): void {
+    if (this.destroyed) return;
+    const source = this.sources().find((candidate) => candidate.id === occurrence.scheduleId);
+    if (source === undefined) return;
+
+    const runtime = this.runtimeFor(source, this.host.now());
+    if (runtime.generation !== generation) return;
+
+    runtime.acknowledgedThrough = Math.max(
+      runtime.acknowledgedThrough ?? 0,
+      occurrence.portal.opensAt
+    );
+
+    const outstanding = this.pending.get(source.id);
+    if (outstanding !== undefined && outstanding.portal.opensAt <= (runtime.acknowledgedThrough ?? 0)) {
+      this.pending.delete(source.id);
+    }
+
     this.commit();
     this.schedule();
   }
 
   /**
-   * Records that this portal's entry exists, so it cannot be entered twice.
+   * Dismisses exactly the occurrence named.
    *
-   * The note's own history is the durable half of the same fact; this set only
-   * covers the window before the write is re-read.
+   * Dismissing an approaching opening acknowledges that opening, so it does not
+   * come back — and nothing else changes: the next occurrence is still offered.
    */
-  consume(id: string): void {
+  dismiss(occurrenceId: string): void {
     if (this.destroyed) return;
-    const fresh = !this.used.has(id);
-    this.used.add(id);
-    const clearing = this.hold?.portal.id === id;
-    if (clearing) this.hold = null;
-    if (fresh || clearing) {
+
+    for (const source of this.sources()) {
+      const occurrence = this.pending.get(source.id);
+      if (occurrence === undefined || occurrence.id !== occurrenceId) continue;
+      const runtime = this.runtimeFor(source, this.host.now());
+      runtime.acknowledgedThrough = Math.max(
+        runtime.acknowledgedThrough ?? 0,
+        occurrence.portal.opensAt
+      );
+      this.pending.delete(source.id);
       this.commit();
       this.schedule();
+      return;
     }
   }
 
@@ -191,106 +342,163 @@ export class PortalController {
   }
 
   /**
-   * Re-derives everything from the actual instant.
+   * Re-derives every schedule from the actual instant.
    *
-   * This is the only entry point for wakeups, reloads, visibility restoration
-   * and settings changes, so a missed or early timeout can never produce a
-   * different answer than a fresh one. At most one invitation is spoken per
-   * reconcile, and only for the nearest current opening: a long sleep resumes
-   * with the truth about now, not with a queue of the boundaries it slept
-   * through.
+   * The only entry point for wakeups, restarts, visibility and settings changes,
+   * so a missed or early timeout can never produce a different answer than a
+   * fresh one would.
    */
   reconcile(): void {
     if (this.destroyed) return;
 
-    const enabled = this.host.enabled();
-    if (!enabled || !this.host.visible()) this.hold = null;
-    if (enabled && this.host.visible()) this.invite();
+    const now = this.host.now();
+    const live = new Set<string>();
+
+    for (const source of this.sources()) {
+      live.add(source.id);
+      const runtime = this.runtimeFor(source, now);
+      const due = dueOpening(source, now, runtime.activatedAt, runtime.acknowledgedThrough);
+
+      if (due === null) {
+        // An approaching invitation is derived, never stored; a pending one that
+        // is no longer due was answered elsewhere and goes with it.
+        this.pending.delete(source.id);
+        continue;
+      }
+
+      const occurrence = this.occurrenceOf(source, due);
+      if (this.host.visible() && !this.spoken.has(occurrence.id)) {
+        this.spoken.add(occurrence.id);
+        this.host.invite(occurrence);
+      }
+      this.pending.set(source.id, occurrence);
+    }
+
+    // A schedule that no longer exists keeps its acknowledgement history but
+    // offers nothing.
+    for (const id of [...this.pending.keys()]) {
+      if (!live.has(id)) this.pending.delete(id);
+    }
 
     this.commit();
     this.schedule();
   }
 
-  /** Stops the timer, drops the hold and forgets this session's listeners. */
+  /** Stops the timer and forgets this session's listeners. */
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
     this.cancel();
-    this.hold = null;
-    this.heard.clear();
-    this.used.clear();
+    this.pending.clear();
+    this.spoken.clear();
     this.listeners.clear();
     this.lastShape = "";
   }
 
-  /** Every opening currently inside the eleven-minute lead and its open minute. */
-  private eligible(now: number): PortalInstant[] {
-    const result: PortalInstant[] = [];
-    for (const portal of portalInstants(now - MINUTE_MS + 1, now + LEAD_MS)) {
-      if (!this.used.has(portal.id)) result.push(portal);
+  /** The runtime for one source, started at the moment it is first seen. */
+  private runtimeFor(source: PortalSource, now: number): ScheduleRuntime {
+    const signature = `${source.contextId}|${source.leadMinutes}|${JSON.stringify(source.schedule?.when ?? null)}`;
+    const previous = this.signatures.get(source.id);
+    const existing = this.runtime.get(source.id);
+
+    if (existing !== undefined && previous === signature) return existing;
+
+    if (existing !== undefined) {
+      // A time or destination edit — or a disable and re-enable — starts a new
+      // activation: its pending invitation is cleared and nothing is backfilled.
+      const next: ScheduleRuntime = {
+        activatedAt: now,
+        acknowledgedThrough: null,
+        pending: null,
+        generation: existing.generation + 1
+      };
+      this.runtime.set(source.id, next);
+      this.signatures.set(source.id, signature);
+      this.pending.delete(source.id);
+      return next;
     }
-    return result;
+
+    const created: ScheduleRuntime = {
+      // A schedule is active from the moment it existed: its own creation
+      // instant, or now for one written by hand without one. Nothing before it
+      // is ever offered, which is what keeps an enable from replaying a day.
+      activatedAt: source.createdAt === 0 ? now : source.createdAt,
+      acknowledgedThrough: null,
+      pending: null,
+      generation: 0
+    };
+    this.runtime.set(source.id, created);
+    this.signatures.set(source.id, signature);
+    return created;
   }
 
-  /** Resolves an id inside the current window, or the held portal's own instant. */
-  private find(id: string): PortalInstant | null {
-    if (this.hold?.portal.id === id) return this.hold.portal;
-    const now = this.host.now();
-    for (const portal of portalInstants(now - MINUTE_MS + 1, now + LEAD_MS)) {
-      if (portal.id === id) return portal;
-    }
-    return null;
+  /** The occurrence value one due opening becomes. */
+  private occurrenceOf(source: PortalSource, portal: PortalInstant): PortalOccurrence {
+    return {
+      id: `${source.id}@${portal.id}`,
+      scheduleId: source.id,
+      contextId: source.contextId,
+      name: source.name,
+      portal
+    };
   }
 
   /**
-   * Speaks at most one invitation, then treats every presently eligible
-   * opening as spoken.
+   * An opening that is due to be announced but has not opened yet.
    *
-   * Marking the whole set is what turns a delayed wake into one truthful
-   * sentence instead of a backlog, and it is also why a backwards correction
-   * cannot repeat an invitation already given in this session. The chosen
-   * opening is the one actually open now, else the nearest that is still
-   * approaching.
+   * Only inside the schedule's own lead window, and only while nothing is
+   * already outstanding for that schedule: an available invitation is never
+   * replaced by a notice about the next one.
    */
-  private invite(): void {
-    const now = this.host.now();
-    const eligible = this.eligible(now);
-    const fresh = eligible.filter((portal) => !this.heard.has(portal.id));
-    for (const portal of eligible) this.heard.add(portal.id);
-    if (fresh.length === 0) return;
+  private approaching(source: PortalSource, now: number): PortalOccurrence | null {
+    const next = nextOpening(source, now);
+    if (next === null) return null;
 
-    const open = fresh.filter((portal) => portal.opensAt <= now);
-    const chosen = open.length > 0 ? open[open.length - 1] : fresh[0];
-    if (chosen === undefined) return;
+    const runtime = this.runtime.get(source.id);
+    const floor = Math.max(runtime?.activatedAt ?? 0, (runtime?.acknowledgedThrough ?? 0) + 1);
+    if (next.opensAt < floor) return null;
+    if (portalPhase(next, now) !== "approaching") return null;
+    if (now < next.opensAt - source.leadMinutes * MINUTE_MS) return null;
 
-    const remainingSeconds = Math.max(0, Math.ceil((chosen.opensAt - now) / 1000));
-    this.host.invite(chosen, remainingSeconds);
+    return this.occurrenceOf(source, next);
   }
 
   /** Emits once when the observable lifecycle state differs from the last time. */
   private commit(): void {
     if (this.destroyed) return;
+    if (this.record !== null) {
+      const schedules: LocalStateRecord["schedules"] = { ...this.record.schedules };
+      for (const [id, runtime] of this.runtime) schedules[id] = runtime;
+      this.record = { ...this.record, schedules };
+      try {
+        this.host.persist(this.record);
+      } catch {
+        // Losing a runtime write costs an acknowledgement after a reload, never
+        // the writer's words; the invitation is still derived from the instant.
+      }
+    }
+
     const shape = this.shape();
     if (shape === this.lastShape) return;
     this.lastShape = shape;
     for (const listener of [...this.listeners]) listener();
   }
 
-  /** Phase and pinned identity change lifecycle; elapsed seconds do not. */
+  /** Availability and identity change lifecycle; elapsed seconds do not. */
   private shape(): string {
-    const now = this.host.now();
-    const ids = this.host.enabled()
-      ? this.eligible(now).map((portal) => `${portal.id}:${portalPhase(portal, now, false)}`)
-      : [];
-    const held = this.hold === null ? "" :
-      `${this.hold.portal.id}@${this.hold.path}:${portalPhase(this.hold.portal, now, true)}`;
-    return `${this.host.todayPath(now)}|${ids.join(",")}|${held}`;
+    const parts = this.sources().map((source) => {
+      const pending = this.pending.get(source.id);
+      const runtime = this.runtime.get(source.id);
+      return `${source.id}:${pending?.id ?? "-"}:${runtime?.generation ?? 0}`;
+    });
+    return `${this.host.enabled()}|${parts.join(",")}`;
   }
 
   /** One timeout, at the next wall-minute boundary, replaced on every change. */
   private schedule(): void {
     this.cancel();
     if (this.destroyed || !this.host.enabled()) return;
+
     const now = this.host.now();
     const next = Math.floor(now / MINUTE_MS) * MINUTE_MS + MINUTE_MS;
     this.timer = window.setTimeout(() => {

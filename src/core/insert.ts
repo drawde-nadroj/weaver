@@ -9,7 +9,6 @@
 
 import {
   detachAlignments,
-  formatLocalTimestamp,
   mergeAlignment,
   readAlignments,
   type AlignmentRecord
@@ -21,6 +20,7 @@ import { formatClockRow, formatDurationLine, parseClockRow, type DurationSigil }
 import {
   childrenOf,
   endOfSubtree,
+  entryBySeq,
   formatMarker,
   nextBranch,
   nextSeq,
@@ -29,7 +29,8 @@ import {
   type Entry,
   type EntryIndex
 } from "./entries";
-import type { PortalInstant } from "./portals";
+import { resolveThought, wholeSeconds, type CaptureRequest } from "./capture";
+import { portalContainsBeginning, type PortalInstant } from "./portals";
 import {
   formatWhisperLine,
   WHISPER_MAX_LINES,
@@ -93,26 +94,6 @@ export function planAppendLine(source: string, text: string, caret: number = tex
 }
 
 /**
- * A new root entry at the tip of the note: `{ b.1.m }`, a blank prose line, and
- * its clock row `- 00:00:00`.
- *
- * The row carries only a duration: the entry is a draft that has no moment yet,
- * because a moment is the time the first text was actually typed, not the time
- * the blank block was made. `planEntryBeginning` stamps the day and moment from
- * the one input timestamp, preserving these duration bytes.
- *
- * The caret lands on the blank line, which is where the writing happens.
- */
-export function planStartEntry(source: string, index: EntryIndex): InsertPlan | null {
-  if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
-
-  const marker = formatMarker(nextBranch(index), 1, nextSeq(index));
-  const clock = formatClockRow(null, "-", 0, null);
-  const text = `${marker}${NEWLINE}${NEWLINE}${clock}`;
-  return planAppendLine(source, text, marker.length + 1);
-}
-
-/**
  * A child entry one dimension deeper, directly beneath the parent's own block,
  * above any older siblings: the newest branch is closest to what it descends
  * from.
@@ -138,18 +119,25 @@ export function planChildEntry(
   const marker = formatMarker(parent.b, parent.d + 1, nextSeq(index));
   const clock = formatClockRow(null, "-", 0, null);
 
-  // The parent's own block ends at its last non-blank line, before its first
-  // child. Inserting there puts the newest branch directly under the parent and
-  // above older siblings, and leaves the parent's subtree contiguous.
-  const firstChild = childrenOf(index, parent)[0];
-  let anchor = firstChild === undefined ? endOfSubtree(index, parent) : firstChild.line - 1;
-  while (anchor > parent.line && (index.lines[anchor] ?? "").trim() === "") anchor -= 1;
-
-  const at = (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
+  const at = childAnchor(index, parent);
   const text = `${NEWLINE}${NEWLINE}${marker}${NEWLINE}${NEWLINE}${clock}`;
 
   const caret = at + NEWLINE.length * 2 + marker.length + 1;
   return { changes: [{ from: at, to: at, text }], selection: { from: caret, to: caret } };
+}
+
+/**
+ * The offset a new child of `parent` belongs at.
+ *
+ * The parent's own block ends at its last non-blank line, before its first
+ * child. Inserting there puts the newest branch directly under the parent and
+ * above older siblings, and leaves the parent's subtree contiguous.
+ */
+function childAnchor(index: EntryIndex, parent: Entry): number {
+  const firstChild = childrenOf(index, parent)[0];
+  let anchor = firstChild === undefined ? endOfSubtree(index, parent) : firstChild.line - 1;
+  while (anchor > parent.line && (index.lines[anchor] ?? "").trim() === "") anchor -= 1;
+  return (index.lineStarts[anchor] ?? 0) + (index.lines[anchor] ?? "").length;
 }
 
 /** Whether two parses describe the same block at the same offsets. */
@@ -236,94 +224,109 @@ function formatPortalOpening(portal: PortalInstant): string {
 }
 
 /**
- * A portal's first text: one root entry carrying the typed prose, the full clock
- * row of the moment it was actually typed, and the day's alignment history.
+ * One settled thought, written exactly as it was written.
  *
- * Home is a root at the tip of the note, exactly where an ordinary entry would
- * be: `{ b.1.N }`, a blank line, the prose, then the clock row. The row is full
- * from the first byte — duration, day and moment — because this entry *was*
- * begun at a known instant; there is no awaiting phase to stamp later.
+ * Unlike an entry begun in the note, a captured thought is already finished: the
+ * composer held it, timed it and froze its beginning. So the block is written
+ * settled in one transaction — the marker, the prose, and a `+` clock row
+ * carrying the duration and the moment — rather than being created empty and
+ * filled by later writes. Nothing was ever visible in the note before this plan,
+ * so there is no half-written entry for a later step to finish.
  *
- * The history record joins the same plan, so the note either gains the entry and
- * the record or changes in no way at all: one dispatch, one undo. `readAlignments`
- * runs before anything is planned, so unreadable history refuses the capture
- * instead of being replaced by a record written on top of it. The merge is
- * folded back into original-source offsets, so the body append and the
- * frontmatter edit cannot compose against mixed coordinates.
+ * A child lands under its parent, one dimension deeper and with the parent's own
+ * branch id, in the parent's file; a root is appended at the tip, with a new
+ * branch id and depth 1. Either way `N` is allocated here and no existing entry
+ * is renumbered.
  *
- * An empty or whitespace-only first input is not a capture: a portal is entered
- * by deliberate text. Multi-line text is prose, exactly as typed — including a
- * balanced code fence, which the parser reads as text. Text that changes what
- * the block *is* — an unclosed fence, a line that reads as another marker or as
- * a clock row — is refused: the record is only merged once the written note
- * parses back as the entry this plan allocated, so a capture cannot consume a
- * portal for an entry that never began.
+ * The planned block is parsed back before anything is returned. A paste can leave
+ * a fence open, or end the prose with a line that reads as a marker or as a clock
+ * row, and either would make the record describe an entry that is not the one
+ * planned here — so the written note must parse into exactly the allocated
+ * entry, at the intended parent and depth, with the exact prose and clock.
+ *
+ * An invitation's evidence joins the same plan, and only when it can be truthful:
+ * the thought is a root, an opening was actually announced, and the first
+ * committed input fell inside that opening's own minute. A branch, a draft begun
+ * before the opening, and a draft begun after it closed all carry no record,
+ * because the alignment is a fact about one beginning rather than a reward for
+ * writing. Finishing a qualified draft later changes nothing: the rule is about
+ * when the writing began.
  */
-export function planPortalEntry(
+export function planCaptureEntry(
   source: string,
   index: EntryIndex,
-  portal: PortalInstant,
-  beganAt: Date,
-  text: string
+  request: CaptureRequest
 ): InsertPlan | null {
   if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return null;
-  if (text.trim() === "") return null;
-  if (!readAlignments(source).ok) return null;
+  if (request.text.trim() === "") return null;
+
+  const parent = request.parent === null ? null : resolveThought(index, request.parent);
+  if (request.parent !== null && parent === null) return null;
+
+  // The authority for something being written *through* an opening: the beginning
+  // has to fall inside the opening's own minute. Checked here, at the one place a
+  // record is written, so a caller that got the rule wrong writes an ordinary
+  // entry instead of an untrue record — never loses the prose.
+  const recordsAlignment =
+    parent === null &&
+    request.portal !== null &&
+    portalContainsBeginning(request.portal, request.beginning.at);
+  if (recordsAlignment && !readAlignments(source).ok) return null;
 
   const n = nextSeq(index);
-  const branch = nextBranch(index);
-  const marker = formatMarker(branch, 1, n);
-  const day = dayKey(beganAt);
-  const time = formatClock(beganAt);
-  const clock = formatClockRow(time, "-", 0, day);
-  const block = `${marker}${NEWLINE}${NEWLINE}${text}${NEWLINE}${clock}`;
+  const b = parent === null ? nextBranch(index) : parent.b;
+  const d = parent === null ? 1 : parent.d + 1;
+  const marker = formatMarker(b, d, n);
+  const clock = formatClockRow(request.beginning.time, "+", request.durationMs, request.beginning.day);
+  const block = `${marker}${NEWLINE}${NEWLINE}${request.text}${NEWLINE}${clock}`;
 
-  // The caret sits just past the text that was typed, on the prose it belongs to.
-  const caret = marker.length + NEWLINE.length * 2 + text.length;
-  const body = planAppendLine(source, block, caret);
+  const at = parent === null ? null : childAnchor(index, parent);
+  const body =
+    at === null
+      ? planAppendLine(source, block, marker.length + NEWLINE.length * 2 + request.text.length)
+      : {
+          changes: [{ from: at, to: at, text: `${NEWLINE}${NEWLINE}${block}` }],
+          selection: {
+            from: at + NEWLINE.length * 2 + marker.length + NEWLINE.length * 2 + request.text.length,
+            to: at + NEWLINE.length * 2 + marker.length + NEWLINE.length * 2 + request.text.length
+          }
+        };
 
-  // Until a parser reads the result, the block is only text plus arithmetic, and
-  // the typed text is the variable: a paste can leave a fence open, or end the
-  // prose with a line that reads as a marker or as a clock row. Any of those
-  // makes the record describe an entry that is not the one planned here. So the
-  // written note is parsed back before a record is merged, and the allocated
-  // entry must be the planned block itself: the marker's own address, the draft
-  // duration-only row at the line the block put it on, the captured day and
-  // moment, and the typed bytes intact between the marker and that row.
   const written = applyPlanToSource(source, body).source;
   const validated = parseEntries(written);
-  if (validated.unclosedFrontmatter || validated.unclosedFence || validated.legacyFormat) {
-    return null;
-  }
+  if (validated.unclosedFrontmatter || validated.unclosedFence || validated.legacyFormat) return null;
 
-  const blockFrom = body.selection.from - caret;
-  const entry = validated.entries.find((candidate) => candidate.from === blockFrom);
-  if (entry === undefined || entry.d !== 1 || entry.b !== branch || entry.n !== n) return null;
-  if (entry.state !== "draft") return null;
+  const entry = entryBySeq(validated, n);
+  if (entry === null || entry.b !== b || entry.d !== d) return null;
+  if (entry.day !== request.beginning.day || entry.time !== request.beginning.time) return null;
+  if (entry.state !== "settled") return null;
+  if (entry.duration === null || entry.duration.ms !== wholeSeconds(request.durationMs)) return null;
 
-  const duration = entry.duration;
-  if (duration === null || duration.sigil !== "-" || duration.ms !== 0) return null;
-  if (entry.day !== day || entry.time !== time) return null;
+  const expectedParent = parent === null ? null : parent.n;
+  const actualParent =
+    entry.parent === null ? null : (validated.entries[entry.parent]?.n ?? null);
+  if (actualParent !== expectedParent) return null;
 
+  // The prose has to be the bytes that were typed, between the marker and the row.
+  const expectedProse = `${NEWLINE}${NEWLINE}${request.text}${NEWLINE}`;
+  if (written.slice(entry.to, entry.clockFrom) !== expectedProse) return null;
   const clockLine = entry.clockLine;
-  if (clockLine === null) return null;
-  if (clockLine !== entry.line + 2 + text.split(NEWLINE).length) return null;
-  if ((validated.lines[clockLine] ?? "") !== clock) return null;
-  if (written.slice(entry.to, entry.clockFrom) !== `${NEWLINE}${NEWLINE}${text}${NEWLINE}`) {
-    return null;
-  }
+  if (clockLine === null || (validated.lines[clockLine] ?? "") !== clock) return null;
+
+  if (!recordsAlignment || request.portal === null) return body;
 
   const record: AlignmentRecord = {
-    portal: portal.id,
-    opened: formatPortalOpening(portal),
-    began: formatLocalTimestamp(beganAt),
+    portal: request.portal.id,
+    opened: formatPortalOpening(request.portal),
+    began: request.beginning.localTimestamp,
     entry: n
   };
-
-  // The body lands first, then the record merges into the frontmatter of that
-  // very text. The result is folded back to one plan over the original source.
   const merged = mergeAlignment(written, record);
-  if (!merged.ok) return null;
+  // The note's *existing* history being unreadable is a refusal, and that was
+  // checked above. A record that cannot be added, though, must never cost the
+  // writer their words: the entry is the record, and the evidence is extra, so
+  // the thought is written without it and the note keeps its own history.
+  if (!merged.ok) return body;
 
   return foldPlans(source, body, merged.source);
 }

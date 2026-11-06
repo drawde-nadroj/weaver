@@ -13,6 +13,8 @@ body {
   --weaver-indent-step: 18px;
   --weaver-indent-step-mobile: 12px;
   --weaver-indent-max-level: 8;
+  --weaver-thread-space: 0px;
+  --weaver-branch-space: 0px;
 }
 
 /* ── The entry ─────────────────────────────────────────────────────────── */
@@ -167,6 +169,22 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
       var(--weaver-indent-step-mobile)
   );
+}
+
+/* The vertical rhythm between Threads and between branches. A marker row carries
+ * one of these classes when the gap belongs above it: a Thread-start is a depth-1
+ * entry that follows another Thread, and a branch-start is a branch whose
+ * predecessor is another branch. Padding on the marker row moves the row, its
+ * prose and its frame down together; the frame measures the label's ink, so the
+ * top rail stays on the glyphs and no character moves inside the row. Four
+ * classes, for the same reason the indent carries four: Obsidian's `.cm-line`
+ * padding rule sets three. */
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head.weaver-thread-start {
+  padding-top: var(--weaver-thread-space);
+}
+
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head.weaver-branch-start {
+  padding-top: var(--weaver-branch-space);
 }
 
 /* ── The frame ─────────────────────────────────────────────────────────── */
@@ -340,6 +358,22 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   }
 }
 
+/* The invitation's motion setting reaches this pulse too: `off` keeps the
+ * rainbow ring and stops the breathing, and the other three set its duration.
+ * Nothing about the box's size or its labels changes with the setting. */
+body[data-weaver-motion="off"] .weaver-frame.is-portal-live::after {
+  animation: none;
+  opacity: 0.6;
+}
+
+body[data-weaver-motion="slow"] .weaver-frame.is-portal-live::after {
+  animation-duration: 16s;
+}
+
+body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
+  animation-duration: 4s;
+}
+
 /* The acknowledgment: brighter than the pulse, and over in 800 ms. The plugin
  * keeps the class for that window and then removes it, so the animation plays
  * once and the box falls back to whatever state the clock is in. No animation
@@ -438,6 +472,22 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   transform: translateY(-50%);
 }
 
+/* The marker row's top padding makes the row taller without moving its
+ * containing block: `top: 50%` still splits the whole padding box, so the date
+ * link would ride half the new air above the rail. Return it to the marker's
+ * centre. Legacy inline titles keep their own raised position. */
+.markdown-source-view.mod-cm6
+  .cm-line.weaver-entry-head.weaver-thread-start:not(.weaver-entry-inline)
+  .weaver-entry-daylink {
+  top: calc(50% - var(--weaver-thread-space) * 0.5);
+}
+
+.markdown-source-view.mod-cm6
+  .cm-line.weaver-entry-head.weaver-branch-start:not(.weaver-entry-inline)
+  .weaver-entry-daylink {
+  top: calc(50% - var(--weaver-branch-space) * 0.5);
+}
+
 /* Legacy inline prose sits below its top rail, rather than under the date. */
 .markdown-source-view.mod-cm6 .cm-line.weaver-entry-inline .weaver-entry-daylink {
   top: -12px;
@@ -487,6 +537,17 @@ body.weaver-phone .markdown-rendered .weaver-frame.is-static {
     min(var(--weaver-d, 1) - 1, var(--weaver-indent-max-level)) *
       var(--weaver-indent-step-mobile)
   );
+}
+
+/* The same two gaps in Reading view, added to the frame's own top margin. The
+ * marker row is inside the frame here, so the air belongs to the frame rather
+ * than to a line: the class is on `.weaver-frame`, written by the processor. */
+.markdown-rendered .weaver-frame.is-static.weaver-thread-start {
+  margin-top: calc(1.8em + var(--weaver-thread-space));
+}
+
+.markdown-rendered .weaver-frame.is-static.weaver-branch-start {
+  margin-top: calc(1.8em + var(--weaver-branch-space));
 }
 
 /* The fixed frame: the box starts in the left margin for every level, and the
@@ -545,22 +606,21 @@ body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static 
   text-align: left;
 }
 
-/* ── Portals ───────────────────────────────────────────────────────────── */
+/* ── The bottom surface: one draft, and the opening it counts for ──────── */
 
-/* An upcoming local minute, drawn at the end of the note in the same grammar as
- * an entry: a rail, the rail's labels, and an interior that holds the first
- * text. It is a block widget, so it adds height below the document and never
- * moves a row above it, and it works on a note that has no entries at all.
+/* One surface, one owner. A draft, a hidden draft, and an opening's status are
+ * three states of the same fixed element at the same edge — never two cards
+ * competing for the bottom of the screen.
  *
- * The element is shared by the Live Preview widget and the Reading view tray
- * (`src/ui/portal.ts`), so these rules describe the component, not the surface.
- * The phase is data, not classes: `data-phase` says which of the four states is
- * on screen, and exactly one animation belongs to each state. The text always
- * says the same thing the rail animates — a locked portal is not "locked" by
- * colour alone.
+ * The surface speaks the note's own language: the draft's dimension colour on
+ * the card, the two rails as label rows that cut the border behind them, the
+ * duration and the moment at the bottom corners, and the same digit grammar for
+ * every address. The prose inside is coloured; the chrome is not.
  *
- * The six colours are the note's anchors, injected once by `src/ui/css.ts`;
- * this file never restates a hex value. */
+ * The rainbow belongs to an opening that is live. Closed, it goes at once — a
+ * minute nobody entered must not keep glowing like a standing invitation — and
+ * `portalMotion` remains the only thing that animates it.
+ */
 
 @property --weaver-portal-angle {
   syntax: "<angle>";
@@ -568,72 +628,97 @@ body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static 
   initial-value: 0deg;
 }
 
-.weaver-portal {
-  /* The band's colours, in order, as one substitutable stop list: the same six
-   * anchors the rail and an aligned entry use. The angle is separate because it
-   * is what the twelve-second animation turns. */
+.weaver-portal-strip {
   --weaver-portal-stops: var(--weaver-anchor-1), var(--weaver-anchor-2),
     var(--weaver-anchor-3), var(--weaver-anchor-4), var(--weaver-anchor-5),
     var(--weaver-anchor-6), var(--weaver-anchor-1);
-
   position: relative;
-  isolation: isolate;
-  box-sizing: border-box;
-  /* `!important` for the same reason the clock row states it: Obsidian's
-   * `.cm-content > *` sets `display: block`, which would turn the two rows into
-   * one stacked column and drop the row's alignment. */
-  display: flex !important;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 8px;
-  width: 100%;
-  margin: 6px 0 10px;
-  /* The top air is the label's room: the label straddles the top rail, and its
-   * own background cuts the rail behind it. The horizontal inset is the same
-   * one a static frame carries (`16px + 0.45em`), so the portal's prose starts
-   * where the entry prose above it starts; Live Preview places the tray's left
-   * edge on the same number, so both surfaces agree without hardcoding a pixel
-   * width per platform. There is no bottom padding: the footer row straddles
-   * the bottom rail the way a Reading clock row does, so the row itself moves
-   * half a line below the box edge instead. */
-  padding: 12px calc(16px + 0.45em) 0;
-  border-radius: 10px;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklab, var(--text-faint) 45%, transparent);
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size);
-  line-height: var(--weaver-entry-line-height);
-  /* The label sits half outside the box; nothing else does. */
-  overflow: visible;
-  transition: box-shadow 160ms ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 14px;
+  border-radius: 12px;
+  background: var(--background-primary);
+  font-family: var(--font-interface);
+  font-size: 0.8em;
+  line-height: 1.3;
+  color: var(--text-muted);
 }
 
-.weaver-portal::before {
+/* The rail, drawn only for an opening that can still be entered. */
+.weaver-portal-strip[data-phase="approaching"]::before,
+.weaver-portal-strip[data-phase="available"]::before {
   content: "";
   position: absolute;
-  z-index: 0;
   inset: 0;
-  padding: 1px;
   border-radius: inherit;
+  padding: 1px;
   background: conic-gradient(from var(--weaver-portal-angle), var(--weaver-portal-stops));
-  /* Keep only the 1px ring. */
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
-  opacity: 0.7;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   pointer-events: none;
+  animation: weaver-portal-orbit var(--weaver-portal-motion, 12s) linear infinite;
 }
 
-/* Locked: the rail turns once every twelve seconds. The colour travels, the
- * component does not, and the bottom-left countdown is what actually says how
- * long is left. */
-.weaver-portal[data-phase="approaching"]::before {
-  animation: weaver-portal-orbit 12s linear infinite;
+.weaver-portal-strip[data-phase="closed"] {
+  border: 1px solid var(--background-modifier-border);
+}
+
+.weaver-portal-strip[hidden],
+.weaver-portal-strip [hidden] {
+  display: none !important;
+}
+
+.weaver-portal-realm {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.weaver-portal-opening,
+.weaver-portal-state {
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-portal-strip[data-phase="available"] .weaver-portal-state {
+  color: var(--text-normal);
+}
+
+.weaver-portal-strip button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  font-size: 0.95em;
+  cursor: pointer;
+}
+
+.weaver-portal-strip button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Writing keeps the neutral background: the rainbow says "now", the button says
+ * "do", and a second colour would make both harder to read. */
+.weaver-portal-strip .weaver-portal-weave:not(:disabled) {
+  border-color: var(--text-faint);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.weaver-portal-strip button:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.weaver-portal-strip button:focus-visible,
+.weaver-composer button:focus-visible,
+.weaver-composer-input:focus-visible,
+.weaver-composer-selected:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
 @keyframes weaver-portal-orbit {
@@ -642,298 +727,384 @@ body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static 
   }
 }
 
-/* Open, or open and held: one restrained breath, every four seconds. It is the
- * same ring in the anchor purple, so the change from "turning" to "breathing"
- * reads as the minute arriving rather than as a different component. */
-.weaver-portal[data-phase="open"]::before,
-.weaver-portal[data-phase="held"]::before {
-  background: color-mix(in oklab, var(--weaver-anchor-6) 60%, transparent);
-  animation: weaver-portal-breath 4s ease-in-out infinite;
-}
-
-@keyframes weaver-portal-breath {
-  0%,
-  100% {
-    opacity: 0.2;
-  }
-  50% {
-    opacity: 0.65;
-  }
-}
-
-/* A portal whose minute has passed and which was never kept: no motion, and the
- * component is on its way out. */
-.weaver-portal[data-phase="expired"]::before {
-  background: color-mix(in oklab, var(--text-faint) 35%, transparent);
+/* The motion setting, as one duration. `off` pins the angle: the rainbow stays,
+ * and nothing moves. */
+body[data-weaver-motion="off"] .weaver-portal-strip::before {
+  --weaver-portal-angle: 0deg;
   animation: none;
-  opacity: 0.6;
 }
 
-/* The top-left rail label. `Portal · HH:MM` — no marker and no N until the
- * portal has been entered, because until then there is no entry. Its left edge
- * is the frame's inner inset, the same line the entry labels above start on;
- * it is spelled with the entry size because the label's own font is smaller. */
-.weaver-portal-label {
-  position: absolute;
-  z-index: 1;
-  top: -0.7em;
-  left: calc(16px + 0.45 * var(--weaver-entry-size));
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--background-primary);
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-smaller);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+body[data-weaver-motion="slow"] .weaver-portal-strip::before {
+  --weaver-portal-motion: 24s;
 }
 
-/* The bottom rail: the countdown at the left corner, the wall clock at the
- * right, in the note's own type — the same face and tabular figures as an
- * entry's clock row, not the UI's smaller one. The row paints nothing: each
- * label's `weaver-frame-label` halo cuts the rail behind it, and the gap
- * between them keeps the rail visible.
- *
- * It hangs half a line over the frame's bottom edge (`calc(-0.675em - 3px)`
- * plus the row's own 3 px of air), exactly like a Reading clock row, so the
- * labels' centres land on the rail instead of floating inside the border. The
- * row carries no side padding, also like that clock row: the frame's own inset
- * places both labels on the prose edges, and it is wide enough that each
- * label's 8 px halo stays clear of the rounded corners. */
-.weaver-portal-footer {
-  position: relative;
-  z-index: 1;
-  order: 3;
-  box-sizing: border-box;
+body[data-weaver-motion="normal"] .weaver-portal-strip::before {
+  --weaver-portal-motion: 12s;
+}
+
+body[data-weaver-motion="fast"] .weaver-portal-strip::before {
+  --weaver-portal-motion: 6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weaver-portal-strip::before {
+    --weaver-portal-angle: 0deg;
+    animation: none;
+  }
+}
+
+/* ── The composer's own surface ────────────────────────────────────────── */
+
+/* `ui/composer.ts` measures the box and writes it as inline style on the root.
+ * These rules only say what lives inside it: the card is the frame, the two rails
+ * are its labelled edges, and the prose is the entry's own colour. */
+
+.weaver-composer {
+  position: fixed;
+  z-index: var(--layer-menu, 30);
   display: flex;
-  flex: 1 0 100%;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0 8px;
-  width: 100%;
-  margin: 0 0 calc(-0.675em - 3px);
-  padding: 3px 0;
-  background: transparent;
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size);
-  font-variant-numeric: tabular-nums;
-  line-height: var(--weaver-entry-line-height);
-}
-
-.weaver-portal-countdown,
-.weaver-portal-clock {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.weaver-portal-countdown {
-  color: var(--text-muted);
-}
-
-/* `margin-left: auto` is the right corner in every shape: it is the second
- * half when both labels fit one line, and it right-aligns the clock on a
- * second line when a larger type size wraps them. The controls live in their
- * own interior rows, so they never decide whether the clock fits. */
-.weaver-portal-clock {
-  margin-left: auto;
-  color: var(--text-faint);
-}
-
-/* The receptacle for the first text: one prose line, the note's own font, no
- * chrome of its own. It is the only place a portal becomes an entry, and it
- * stops being used the moment the real prose caret exists. While locked and not
- * prepared the caret is hidden — the portal can be prepared, but nothing can be
- * typed into it before its minute. */
-.weaver-portal-input {
-  order: 1;
-  flex: 1 0 100%;
-  min-width: 0;
-  min-height: calc(var(--weaver-entry-line-height) * 1em);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-interface);
+  font-size: 0.85em;
   color: var(--text-normal);
-  font: inherit;
-  line-height: var(--weaver-entry-line-height);
-  overflow-wrap: anywhere;
-  outline: none;
-  resize: none;
-  white-space: pre-wrap;
 }
 
-.weaver-portal[data-phase="approaching"]:not(.is-prepared) .weaver-portal-input {
-  caret-color: transparent;
-}
-
-/* Prepared: the receptacle is the waiting input position, and the outline says
- * where the first character will go without changing the row's height. */
-.weaver-portal.is-prepared .weaver-portal-input {
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklab, var(--text-faint) 40%, transparent);
-}
-
-.weaver-portal[hidden],
-.weaver-portal [hidden] {
-  /* The root states `display: flex !important` to beat CodeMirror, so hiding
-   * has to be equally explicit or a hidden portal would still paint. */
+.weaver-composer[hidden],
+.weaver-composer [hidden] {
   display: none !important;
 }
 
-/* Prepare while locked, Enter once open. The button is the deliberate action;
- * the portal itself never takes focus by passing time. */
-.weaver-portal .weaver-portal-prepare {
-  order: 2;
-  height: 26px;
-  margin-left: 0;
-  padding: 0 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 4px);
-  background: var(--background-secondary);
-  box-shadow: none;
-  color: var(--text-normal);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-smaller);
-  line-height: 1;
+.weaver-composer-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  max-height: var(--weaver-composer-max-height, 45vh);
+  overflow-y: auto;
+  padding: 10px 14px 12px;
+  /* The same radius as an entry's own frame: one box, one geometry. */
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--weaver-dcolor, var(--text-faint)) 55%, transparent);
+  background: var(--background-primary);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 22%);
+}
+
+/* The rails: a label row whose own background cuts the border behind it, so the
+ * box reads as running into its own text rather than enclosing it. */
+.weaver-composer-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+  color: var(--text-muted);
+}
+
+.weaver-composer-rail-top {
+  margin-bottom: 2px;
+  color: var(--text-muted);
+}
+
+.weaver-composer-rail-bottom {
+  margin-top: 2px;
+}
+
+.weaver-composer-duration {
+  color: var(--text-muted);
+}
+
+.weaver-composer-moment {
+  color: var(--text-faint);
+}
+
+.weaver-composer-rail.weaver-frame-label,
+.weaver-composer-duration.weaver-frame-label,
+.weaver-composer-moment.weaver-frame-label {
+  display: inline-flex;
+  padding: 0 6px;
+}
+
+.weaver-composer-realm {
+  align-self: flex-start;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.95em;
   cursor: pointer;
 }
 
-.weaver-portal .weaver-portal-prepare:hover {
-  background: var(--background-modifier-hover);
+.weaver-composer-realm:hover {
+  border-color: var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
 }
 
-.weaver-portal .weaver-portal-prepare:focus-visible,
-.weaver-portal .weaver-portal-input:focus-visible {
-  outline: 2px solid var(--text-accent);
-  outline-offset: 2px;
+/* The one quiet line, shown only when writing and viewing disagree. */
+.weaver-composer-viewing-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.86em;
 }
 
-/* A refused capture keeps its words here. The text lives in the receptacle
- * rather than being discarded, and says why, so the first character is never
- * lost to a write that failed. */
-.weaver-portal-refusal {
-  order: 4;
-  flex: 1 0 100%;
-  color: var(--text-error);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-smaller);
-}
-
-/* The locked attempt: a quiet status line, not an error. It says the minute
- * once, and it is distinct from a write failure on purpose. */
-.weaver-portal-lock {
-  order: 5;
-  flex: 1 0 100%;
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-smaller);
-}
-
-.weaver-portal.is-refused {
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklab, var(--text-error) 60%, transparent);
-}
-
-/* The Reading view's tray: one component per daily note, not one per rendered
- * paragraph. An empty tray is not a gap. */
-.weaver-portal-tray {
+.weaver-composer-parent {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 6px 0 10px;
+  gap: 2px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 0.88em;
 }
 
-.weaver-portal-tray:empty {
-  display: none;
+.weaver-composer-parent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
-/* Reading view widens its tray to the static frame's outer span: a rendered
- * entry hangs 16 px past its text column on each side, and the pending portal
- * has to line its rails up with the entry boxes rather than stopping at the
- * column. The tray is hosted in that same rendered content column, so the same
- * two numbers are the same two numbers a static frame uses: `-16px` on each
- * side and `100% + 32px` of width. No width of the reader's choosing is
- * guessed here — whatever the column actually is, the portal spans it plus the
- * frame gutters. Live Preview's tray is placed by the widget's own frame
- * geometry, so the widening belongs to the rendered surface only. */
-.markdown-rendered .weaver-portal-tray {
-  box-sizing: border-box;
-  width: calc(100% + 32px);
-  margin-left: -16px;
-  margin-right: -16px;
+.weaver-composer-parent-label {
+  color: var(--text-faint);
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
 }
 
-/* No frames: the rail effects go, the labels and the controls stay. A portal
- * still has to say when it opens and accept its first text; it simply does not
- * paint an animated box while the setting says boxes are off. The builder sets
- * `data-effects="off"` on every portal it makes, so the Reading view's tray and
- * the Live Preview widget behave alike. */
-.weaver-portal[data-effects="off"] {
-  padding-top: 8px;
-  box-shadow: none;
+.weaver-composer-parent-address {
+  font-variant-numeric: tabular-nums;
+  color: var(--weaver-dcolor, var(--text-muted));
 }
 
-/* No rail is drawn, so there is nothing for the footer to straddle: its hang
- * is reset and the labels stay inside the component they belong to. */
-.weaver-portal[data-effects="off"] .weaver-portal-footer {
-  margin-bottom: 0;
+.weaver-composer-parent-excerpt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.weaver-portal[data-effects="off"]::before {
-  display: none;
+.weaver-composer-outline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.86em;
 }
 
-.weaver-portal[data-effects="off"] .weaver-portal-label {
-  position: static;
-  flex: 1 0 100%;
-  margin-bottom: 2px;
-  padding: 0;
+.weaver-composer-ancestor {
+  border: 0;
   background: transparent;
-  box-shadow: none;
+  padding: 2px 4px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-/* Phones: the same component with a bigger target. The label cannot straddle
- * the rail where the top corner is tight, so the padding gives it the room, and
- * the bottom padding is zero for the same reason as on the desk: the footer
- * hangs over the rail. The rail labels keep the note's own size here too; a
- * narrower line simply wraps the clock under the countdown, still at the right
- * corner, because it no longer shares a row with the control. */
-body.weaver-phone .weaver-portal {
-  padding: 14px calc(16px + 0.45em) 0;
+.weaver-composer-ancestor:hover {
+  color: var(--text-normal);
 }
 
-body.weaver-phone .weaver-portal .weaver-portal-prepare {
+.weaver-composer-hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.9em;
+}
+
+/* The selected thought is the thing the structural motions move, so it is the
+ * focusable target — with an outline as well as a colour, because colour alone
+ * is not a selection cue. */
+.weaver-composer-selected {
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--weaver-dcolor, var(--text-normal));
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  line-height: var(--weaver-entry-line-height, 1.35);
+}
+
+.weaver-composer-selected:focus-visible,
+.weaver-composer[data-phase="resting"] .weaver-composer-selected {
+  border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
+}
+
+.weaver-composer-prose {
+  white-space: pre-wrap;
+}
+
+.weaver-composer-prose a {
+  color: var(--link-color, var(--text-accent));
+}
+
+.weaver-composer-input {
+  margin: 0;
+  padding: 6px 8px;
+  min-height: 3.2em;
+  resize: none;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--weaver-dcolor, var(--text-normal));
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  line-height: var(--weaver-entry-line-height, 1.35);
+}
+
+.weaver-composer-input[readonly] {
+  background: var(--background-secondary);
+}
+
+.weaver-composer-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 1.4em;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-status {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.weaver-composer-status[data-kind="error"] {
+  color: var(--text-error);
+}
+
+.weaver-composer-through {
+  color: var(--text-muted);
+}
+
+.weaver-composer-portal-slot {
+  min-width: 0;
+}
+
+.weaver-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.weaver-composer-actions button {
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.weaver-composer-actions button:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.weaver-composer-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Saving is the draft's own colour, not a second product's purple: the button
+ * belongs to the frame it sits in. */
+.weaver-composer .weaver-composer-save,
+.weaver-composer .weaver-composer-confirm {
+  border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
+  background: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 18%, var(--background-primary));
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+/* Closing is a quiet act, not the loudest thing on the surface. */
+.weaver-composer .weaver-composer-close,
+.weaver-composer .weaver-composer-hide,
+.weaver-composer .weaver-composer-more {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.weaver-composer-more-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.weaver-composer-confirm-discard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-error, var(--text-error));
+  font-size: 0.9em;
+}
+
+.weaver-composer-confirm-text {
+  color: var(--text-normal);
+}
+
+/* A hidden draft leaves one strip: the whole surface, reduced to resuming it. */
+.weaver-composer-resume {
+  display: flex;
+}
+
+.weaver-composer-resume-button {
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  text-align: left;
+  font-size: 0.85em;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+}
+
+.weaver-composer-resume[data-kind="error"] .weaver-composer-resume-button {
+  border-color: var(--text-error);
+  color: var(--text-error);
+}
+
+.weaver-composer-strip {
+  display: flex;
+}
+
+/* Phones: a sheet at the bottom edge, and every target a finger's. */
+body.weaver-phone .weaver-composer-card {
+  border-radius: 14px 14px 0 0;
+}
+
+body.weaver-phone .weaver-composer-actions button,
+body.weaver-phone .weaver-composer-realm,
+body.weaver-phone .weaver-portal-strip button {
   min-height: 44px;
-  padding: 0 16px;
 }
 
-/* Reduced motion: the band is still there, and still the six colours, but it
- * does not rotate and nothing breathes. The phase is read from the words in
- * the label and the countdown, never from motion alone. */
-@media (prefers-reduced-motion: reduce) {
-  .weaver-portal {
-    transition: none;
-  }
-
-  .weaver-portal::before,
-  .weaver-portal[data-phase="approaching"]::before,
-  .weaver-portal[data-phase="open"]::before,
-  .weaver-portal[data-phase="held"]::before,
-  .weaver-portal[data-phase="expired"]::before {
-    /* One static band, still the six colours, for every phase: the words in the
-     * label and the countdown are what distinguish locked from open. The band's
-     * angle is pinned on the pseudo element the gradient belongs to, so the
-     * gradient cannot jump if the animation is turned off mid-turn. */
-    --weaver-portal-angle: 0deg;
-    background: conic-gradient(from 0deg, var(--weaver-portal-stops));
-    animation: none;
-    opacity: 0.7;
-  }
+body.weaver-phone .weaver-portal-strip {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
 }
+
 
 /* ── Closing the day ───────────────────────────────────────────────────── */
 
@@ -958,7 +1129,7 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
 .weaver-navigator {
   position: fixed;
   inset: 0;
-  z-index: var(--layer-modal);
+  z-index: var(--layer-modal, 40);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -969,7 +1140,7 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   display: flex;
   flex-direction: column;
   gap: var(--size-2-2);
-  width: min(440px, 100vw - 32px);
+  width: min(460px, 100vw - 32px);
   max-height: 70vh;
   padding: var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
@@ -982,6 +1153,54 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   outline: none;
 }
 
+/* Tabs, filter and day: one row of controls, and only the History tab has all
+ * three. The arrows move between tabs; the picker keeps its own keys. */
+.weaver-navigator-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2-2);
+}
+
+.weaver-navigator-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+}
+
+.weaver-navigator-tab {
+  min-height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-navigator-tab.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.weaver-navigator-filter,
+.weaver-navigator-day {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 6px);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+}
+
+.weaver-navigator-day {
+  margin-left: auto;
+}
+
 .weaver-navigator-list {
   display: flex;
   flex-direction: column;
@@ -990,6 +1209,8 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   overflow-y: auto;
 }
 
+/* Rows carry the selection, the focus and the action together: one row, one
+ * meaning. The selected row is the roving tabindex holder. */
 .weaver-navigator-row {
   display: flex;
   gap: var(--size-2-2);
@@ -1001,10 +1222,19 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   background: transparent;
   text-align: left;
   box-shadow: none;
+  outline: none;
 }
 
-/* The row's own tap target: everything but the delete, so a press on `✕` can
- * never be read as a jump. */
+.weaver-navigator-row.is-selected {
+  background: var(--background-modifier-hover);
+  box-shadow: inset 2px 0 0 var(--weaver-dcolor, var(--text-accent));
+}
+
+.weaver-navigator-row:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
 .weaver-navigator-open {
   display: flex;
   flex: 1;
@@ -1014,35 +1244,59 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   border: 0;
   background: transparent;
   box-shadow: none;
+  color: inherit;
   text-align: left;
+  font-family: inherit;
 }
 
-.weaver-navigator-row.is-selected {
-  background: var(--background-modifier-hover);
+.weaver-navigator-realm-body,
+.weaver-navigator-offer-body {
+  display: flex;
+  flex: 1;
+  gap: var(--size-2-2);
+  align-items: baseline;
+  min-width: 0;
 }
 
-/* The entry the caret is in: the row a tap descends from. */
-.weaver-navigator-row.is-current {
-  box-shadow: inset 0 0 0 1px var(--weaver-dcolor);
+.weaver-navigator-realm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.weaver-navigator-append {
-  color: var(--text-accent);
+.weaver-navigator-travel,
+.weaver-navigator-weave {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
 }
 
-.weaver-navigator-label {
-  padding: 2px var(--size-2-2) 0;
+/* Writing keeps the neutral background here too: one accent per surface is
+ * enough, and the accent belongs to selection. */
+.weaver-navigator-weave {
+  border-color: var(--text-faint);
+  font-weight: 600;
+}
+
+.weaver-navigator-context-tag {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
-  letter-spacing: 0.04em;
 }
 
 .weaver-navigator-dcn {
   font-variant-numeric: tabular-nums;
 }
 
-.weaver-navigator-time,
-.weaver-navigator-count {
+.weaver-navigator-time {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
@@ -1056,39 +1310,27 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   white-space: nowrap;
 }
 
-.weaver-navigator-delete {
-  flex: 0 0 auto;
-  min-width: 24px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-}
-
-.weaver-navigator-delete:hover {
-  color: var(--text-error);
-}
-
-/* Portal history: one quiet section under today's entries. The header is a row
- * like any other, so it keeps the same tap height on a phone; the facts below
- * wrap rather than clip when the actual moment and its offset run long. */
-.weaver-navigator-portals-toggle {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  letter-spacing: 0.04em;
-}
-
-.weaver-navigator-portal .weaver-navigator-open {
-  flex-wrap: wrap;
-  row-gap: 0;
-}
-
-.weaver-navigator-portal-time {
-  color: var(--text-muted);
+/* Openings: the opening once, its Realm, and what is left of it. */
+.weaver-navigator-offer-opening {
+  color: var(--text-normal);
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
+}
+
+.weaver-navigator-offer-state {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-navigator-offer[data-phase="available"] .weaver-navigator-offer-state {
+  color: var(--text-normal);
+}
+
+.weaver-navigator-row.weaver-navigator-closed {
+  color: var(--text-faint);
 }
 
 .weaver-navigator-portal-label {
@@ -1096,30 +1338,41 @@ body.weaver-phone .weaver-portal .weaver-portal-prepare {
   font-size: var(--font-ui-small);
 }
 
-.weaver-navigator-portal-moment,
-.weaver-navigator-portal-unavailable {
+.weaver-navigator-portal-moment {
   color: var(--text-faint);
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
 
-.weaver-navigator-portal.is-unavailable .weaver-navigator-portal-label {
-  color: var(--text-faint);
+/* The selected row's acts, and none other: a list of buttons per row would be a
+ * second keyboard model to keep in step. */
+.weaver-navigator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-2-2);
 }
 
-.weaver-navigator-portals-all {
-  color: var(--text-accent);
+.weaver-navigator-action {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
   font-size: var(--font-ui-smaller);
 }
 
-.weaver-navigator-portals-note {
-  padding-top: 0;
+.weaver-navigator-action.quiet {
+  background: transparent;
+  color: var(--text-muted);
 }
 
-.weaver-navigator-portals-error {
-  padding: 2px var(--size-2-2);
-  color: var(--text-error);
+.weaver-navigator-notice {
+  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   white-space: normal;
 }
@@ -1147,14 +1400,11 @@ body.weaver-phone .weaver-navigator-row {
   min-height: 44px;
 }
 
-/* The clickable child, not only its container, must carry the touch target. */
 body.weaver-phone .weaver-navigator-open,
-body.weaver-phone .weaver-navigator-delete {
+body.weaver-phone .weaver-navigator-travel,
+body.weaver-phone .weaver-navigator-weave,
+body.weaver-phone .weaver-navigator-action {
   min-height: 44px;
-}
-
-body.weaver-phone .weaver-navigator-delete {
-  min-width: 44px;
 }
 
 body.weaver-phone .weaver-navigator-hint-keys {

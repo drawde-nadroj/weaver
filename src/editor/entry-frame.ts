@@ -33,14 +33,7 @@ import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
 import { dimensionColor } from "../core/color";
-import {
-  frameBox,
-  frameColumn,
-  frameLabelInset,
-  frameSpan,
-  trayFrame,
-  type FrameColumn
-} from "../core/frame";
+import { frameBox, frameColumn, frameLabelInset, frameSpan } from "../core/frame";
 import type { EntrySession } from "../entries/session";
 import type { WeaverSettings } from "../settings";
 import { entryIndexField } from "./entry-field";
@@ -238,49 +231,6 @@ class EntryFrames {
     this.frames.clear();
   }
 
-  /**
-   * Puts the pending tray where a root entry's frame would be.
-   *
-   * The tray is the block widget's own element: a child of the content, in the
-   * flow, so the frame's box is one negative left margin and one width. A
-   * pending portal is a root, so its text edge is the content's own — never a
-   * child's indent, and never the width of the last entry it follows.
-   *
-   * The column is content-relative: the content's own text edge is zero, so
-   * scrolling cannot move the tray, and the pane's clamp is the same clamp the
-   * drawn boxes get. Nothing here runs per second — only inside `measure`.
-   */
-  private alignTray(column: FrameColumn, labelInset: number): void {
-    const tray = this.view.contentDOM.querySelector<HTMLElement>("[data-weaver-portal-tray]");
-    if (tray === null) return;
-
-    const frame = trayFrame({ column, textLeft: 0, gutter: labelInset });
-    if (frame === null) {
-      this.resetTray(tray);
-      return;
-    }
-
-    const marginLeft = `${frame.marginLeft}px`;
-    const width = `${frame.width}px`;
-    if (tray.style.marginLeft !== marginLeft) tray.style.marginLeft = marginLeft;
-    if (tray.style.width !== width) tray.style.width = width;
-    // The portal's own border box is its rail, so its padding may not narrow it.
-    if (tray.style.boxSizing !== "border-box") tray.style.boxSizing = "border-box";
-  }
-
-  /**
-   * Puts the tray back in the flow, for a view that has no pending surface to
-   * place: Source mode, where the field renders no tray at all.
-   */
-  private resetTray(tray?: HTMLElement | null): void {
-    const element =
-      tray ?? this.view.contentDOM.querySelector<HTMLElement>("[data-weaver-portal-tray]");
-    if (element === null || element === undefined) return;
-    element.style.marginLeft = "";
-    element.style.width = "";
-    element.style.boxSizing = "";
-  }
-
   private path(): string {
     const info = this.view.state.field(editorInfoField, false);
     return info?.file?.path ?? this.host.fallbackPath();
@@ -293,7 +243,6 @@ class EntryFrames {
     // is for: no box is drawn there, and no pending tray exists to place.
     if (this.view.state.field(editorLivePreviewField, false) !== true) {
       this.clear();
-      this.resetTray();
       return;
     }
 
@@ -312,10 +261,7 @@ class EntryFrames {
     // The entry's own size is what the rails are labelled at. On a note with no
     // entry yet, the pending portal's root already carries that same size; the
     // content's own font is the last resort.
-    const sizeSource =
-      head ??
-      this.view.contentDOM.querySelector<HTMLElement>(".weaver-portal") ??
-      this.view.contentDOM;
+    const sizeSource = head ?? this.view.contentDOM;
     const fontSize = Number.parseFloat(window.getComputedStyle(sizeSource).fontSize);
     const labelInset = frameLabelInset(Number.isFinite(fontSize) ? fontSize : 16);
     const content = this.view.contentDOM.getBoundingClientRect();
@@ -327,25 +273,7 @@ class EntryFrames {
       gutter: labelInset
     });
 
-    // The pending tray is placed first, before the early return below: a note
-    // with no entries at all is exactly the note whose portal still has to line
-    // up with the root the first entry will become. Its numbers are relative to
-    // the content's own text edge, because a laid-out child scrolls with the
-    // text rather than with the pane the overlay is clamped to.
-    if (content.width > 0) {
-      const origin = content.left + padLeft;
-      // Reuse the same padded text column in the tray's coordinates.
-      const textOrigin = toX(origin);
-      this.alignTray(
-        { left: column.left - textOrigin, right: column.right - textOrigin },
-        labelInset
-      );
-    }
-
     const index = this.view.state.field(entryIndexField, false);
-    // With frames off there is no overlay to draw, but the tray keeps the frame
-    // column above: the portal's own frame inset then puts its prose on the same
-    // left edge as the entries, which is layout, not decoration.
     if (!settings.entryFrames || index === undefined || index.entries.length === 0) {
       this.clear();
       return;

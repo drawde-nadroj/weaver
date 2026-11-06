@@ -31,7 +31,7 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { entryDayLinkTarget } from "../core/day";
+import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
 import type { Entry } from "../core/entries";
 import type { EntryClock } from "../entries/clock";
 import type { EntrySession } from "../entries/session";
@@ -102,10 +102,6 @@ function pathOfState(state: EditorState, fallback: () => string): string {
   return info?.file?.path ?? fallback();
 }
 
-function basenameOf(path: string): string {
-  return (path.split("/").pop() ?? path).replace(/\.md$/, "");
-}
-
 /**
  * A draft still waiting for its first input: its clock row holds a duration and
  * nothing else. That duration-only row is the durable pending state, so it has no
@@ -131,6 +127,7 @@ export function entryDecorationSet(
   session: EntrySession,
   path: string,
   clock: EntryClock,
+  contexts: readonly WeavingContext[],
   openDayLink?: OpenDayLink
 ): DecorationSet {
   const index = state.field(entryIndexField, false);
@@ -139,27 +136,38 @@ export function entryDecorationSet(
   const ranges: Range<Decoration>[] = [];
 
   // Visibility depends on the record and its note, never the pointer or caret.
-  const basename = basenameOf(path);
   const livePreview = state.field(editorLivePreviewField, false) === true;
+  let seenThread = false;
 
-  for (const entry of index.entries) {
+  for (const [position, entry] of index.entries.entries()) {
     if (entry.line >= state.doc.lines) continue;
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
-    const dayLinkTarget = livePreview ? entryDayLinkTarget(entry.day, basename) : null;
+    const dayLinkTarget = livePreview ? entryDayLinkTarget(entry.day, path, contexts) : null;
     // Legacy inline prose keeps its rail and date label above the text.
     const inlineTitle =
       entry.firstProseLine !== null && entry.firstProseLine === entry.line;
+    // A Thread-start is every depth-1 entry after the note's first Thread; a
+    // branch-start is a branch whose predecessor is another branch, so the first
+    // branch stays close to its Thread's root and every later one gets the air.
+    const previous = position === 0 ? null : index.entries[position - 1];
+    const threadStart = entry.d === 1 && seenThread;
+    if (entry.d === 1) seenThread = true;
+    const branchStart = entry.d > 1 && previous !== null && previous.d > 1;
 
     // The marker keeps its own text, always: the frame is drawn beside it, never
     // over it, so there is no class to swap when the caret arrives. The stamp is
     // how the frame layer finds this row without asking for a DOM position.
+    const headClasses = ["weaver-entry-head"];
+    if (inlineTitle) headClasses.push("weaver-entry-inline");
+    if (threadStart) headClasses.push("weaver-thread-start");
+    if (branchStart) headClasses.push("weaver-branch-start");
     ranges.push({
       from: head.from,
       to: head.from,
       value: Decoration.line({
-        class: inlineTitle ? "weaver-entry-head weaver-entry-inline" : "weaver-entry-head",
+        class: headClasses.join(" "),
         attributes: { style: vars, "data-weaver-n": String(entry.n) }
       })
     });
@@ -278,10 +286,18 @@ export function entryDecorationsExtension(
   getSession: () => EntrySession,
   getPath: () => string,
   getClock: () => EntryClock,
+  getContexts: () => readonly WeavingContext[],
   openDayLink?: OpenDayLink
 ): Extension {
   const build = (state: EditorState): DecorationSet =>
-    entryDecorationSet(state, getSession(), pathOfState(state, getPath), getClock(), openDayLink);
+    entryDecorationSet(
+      state,
+      getSession(),
+      pathOfState(state, getPath),
+      getClock(),
+      getContexts(),
+      openDayLink
+    );
 
   const field = StateField.define<DecorationSet>({
     create: build,

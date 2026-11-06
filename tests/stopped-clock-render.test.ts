@@ -40,7 +40,7 @@ describe("successful stop rendering", () => {
       extensions: [
         editorInfoField.init(() => ({ file }) as MarkdownFileInfo),
         entryIndexField,
-        entryDecorationsExtension(() => plugin.session, () => file.path, () => plugin.clock)
+        entryDecorationsExtension(() => plugin.session, () => file.path, () => plugin.clock, () => [])
       ]
     });
     const holder = { state };

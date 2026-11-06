@@ -12,22 +12,55 @@
  * and renaming a field must not silently reset it.
  */
 
+import { isPlainObject } from "./core/value";
+
+/** Every setting Weaver has, in the groups the tab shows them in. */
 export interface WeaverSettings {
   // Writing
   /** Rewrite the day note's `travels`, `depth` and `duration` fields. */
   writeDayCounters: boolean;
   /**
-   * Offer upcoming portals: local minutes on the :00/:11/:22/:33/:44/:55
-   * schedule and the mirrored HH:HH of each hour, announced eleven minutes
-   * ahead and enterable at the opening second.
+   * Offer invitations at all.
+   *
+   * The master switch: off hides every offering — the built-in rhythm and every
+   * configured schedule alike — without touching entries, saved threads or the
+   * history a note already carries.
    */
   portalsEnabled: boolean;
+  /**
+   * Offer the built-in rhythm: the local minutes :00/:11/:22/:33/:44/:55 and each
+   * mirrored HH:HH, announced eleven minutes ahead.
+   */
+  rhythmicPortalsEnabled: boolean;
+  /**
+   * Every configured invitation, exactly as stored.
+   *
+   * Raw for the same reason the context list is: an unreadable row is the
+   * writer's data and is reported, not rewritten into some other schedule.
+   */
+  portalSchedules: unknown;
+  /**
+   * How much the invitation's rainbow moves: static when off, and never a
+   * second simultaneous animation.
+   */
+  portalMotion: "off" | "slow" | "normal" | "fast";
 
   // Day
-  /** Fallback folder, used only when the Daily Notes plugin cannot be read. */
+  /**
+   * Fallback folder for the `main` context, used only when the Daily Notes plugin
+   * cannot be read.
+   */
   dayNoteFolder: string;
-  /** Fallback filename format, used in the same circumstance. */
+  /** Fallback filename format for `main`, used in the same circumstance. */
   dayNoteFormat: string;
+  /**
+   * Every additional destination a thought may be woven into, exactly as stored.
+   *
+   * Kept raw on purpose: an unreadable row is the writer's data, so it is
+   * preserved verbatim and reported by `readContexts` rather than being rewritten
+   * into some other destination. Only validated rows ever resolve a path.
+   */
+  contexts: unknown;
 
   // Look
   equalizeEntrySizes: boolean;
@@ -45,6 +78,17 @@ export interface WeaverSettings {
    * times line up down the note.
    */
   frameFollowsIndent: boolean;
+  /**
+   * Air below a complete Thread, in pixels: the space between one depth-1
+   * entry's whole subtree and the next Thread. Zero keeps the note's old rhythm.
+   */
+  threadSpacing: number;
+  /**
+   * Air between branch entries inside a Thread, in pixels: each branch after the
+   * Thread's first begins this much lower than the row above it. Zero keeps the
+   * note's old rhythm.
+   */
+  branchSpacing: number;
 
   // Whisper
   /** Ask the model for a whisper on the idle pause, and again at settle. */
@@ -76,9 +120,13 @@ export interface WeaverData {
 export const DEFAULT_SETTINGS: WeaverSettings = {
   writeDayCounters: true,
   portalsEnabled: true,
+  rhythmicPortalsEnabled: true,
+  portalSchedules: [],
+  portalMotion: "normal",
 
   dayNoteFolder: "Chronomancer",
   dayNoteFormat: "YYYY.MM.DD",
+  contexts: [],
 
   equalizeEntrySizes: true,
   entrySize: "1em",
@@ -89,6 +137,8 @@ export const DEFAULT_SETTINGS: WeaverSettings = {
 
   entryFrames: true,
   frameFollowsIndent: true,
+  threadSpacing: 0,
+  branchSpacing: 0,
 
   whisperEnabled: false,
   whisperEndpoint: "http://127.0.0.1:8000/v1",
@@ -167,13 +217,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function integer(value: unknown, fallback: number, min: number, max: number): number {
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : fallback;
   return clamp(Math.round(numeric), min, max);
+}
+
+/** One of the four motion settings, or the fallback for anything else. */
+function motion(value: unknown, fallback: WeaverSettings["portalMotion"]): WeaverSettings["portalMotion"] {
+  return value === "off" || value === "slow" || value === "normal" || value === "fast"
+    ? value
+    : fallback;
 }
 
 function bool(value: unknown, fallback: boolean): boolean {
@@ -198,9 +251,19 @@ export function normalizeSettings(data: unknown): WeaverSettings {
   return {
     writeDayCounters: bool(raw.writeDayCounters, DEFAULT_SETTINGS.writeDayCounters),
     portalsEnabled: bool(raw.portalsEnabled, DEFAULT_SETTINGS.portalsEnabled),
+    rhythmicPortalsEnabled: bool(
+      raw.rhythmicPortalsEnabled,
+      DEFAULT_SETTINGS.rhythmicPortalsEnabled
+    ),
+    portalSchedules:
+      raw.portalSchedules === undefined ? DEFAULT_SETTINGS.portalSchedules : raw.portalSchedules,
+    portalMotion: motion(raw.portalMotion, DEFAULT_SETTINGS.portalMotion),
 
     dayNoteFolder: text(raw.dayNoteFolder, DEFAULT_SETTINGS.dayNoteFolder),
     dayNoteFormat: text(raw.dayNoteFormat, DEFAULT_SETTINGS.dayNoteFormat),
+    // Not normalized: a stored list is data, and an unreadable one must stay
+    // readable as the thing that needs repairing.
+    contexts: raw.contexts === undefined ? DEFAULT_SETTINGS.contexts : raw.contexts,
 
     equalizeEntrySizes: bool(raw.equalizeEntrySizes, DEFAULT_SETTINGS.equalizeEntrySizes),
     entrySize: isValidEntrySize(rawEntrySize) ? rawEntrySize.trim() : DEFAULT_SETTINGS.entrySize,
@@ -210,6 +273,8 @@ export function normalizeSettings(data: unknown): WeaverSettings {
     portEmphasisColors: bool(raw.portEmphasisColors, DEFAULT_SETTINGS.portEmphasisColors),
     entryFrames: bool(raw.entryFrames, DEFAULT_SETTINGS.entryFrames),
     frameFollowsIndent: bool(raw.frameFollowsIndent, DEFAULT_SETTINGS.frameFollowsIndent),
+    threadSpacing: integer(raw.threadSpacing, DEFAULT_SETTINGS.threadSpacing, 0, 48),
+    branchSpacing: integer(raw.branchSpacing, DEFAULT_SETTINGS.branchSpacing, 0, 48),
 
     whisperEnabled: bool(raw.whisperEnabled, DEFAULT_SETTINGS.whisperEnabled),
     whisperEndpoint: text(raw.whisperEndpoint, DEFAULT_SETTINGS.whisperEndpoint),

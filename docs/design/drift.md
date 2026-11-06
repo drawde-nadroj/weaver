@@ -30,7 +30,7 @@ address went stale, and nothing failed when it did.
 
 - The old core day-note module was split. The pure half — `dayKey`, `dayNotePath`,
   `dayKeyFromName`, `dayFrontmatter` — is `src/core/day.ts`. The vault half —
-  `ensureDayNote`, `resolveDayNote`, the Daily Notes lookup — is
+  `ensureDayNote`, `resolveContextDay`, the Daily Notes lookup — is
   `src/entries/day-note.ts`. Imports and tests were moved with it, and the old
   path was deleted rather than kept as a re-export.
 - The `heading*` settings names became `entry*`: `entrySize`,

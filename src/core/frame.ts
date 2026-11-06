@@ -88,38 +88,106 @@ export function frameBox(input: FrameBoxInput): FrameBox {
   return { left, width, drawn: input.textLeft !== null };
 }
 
-/**
- * A pending tray's placement inside the note's content.
- *
- * The tray is a child of the content in the normal flow, so the frame's box
- * becomes one negative left margin and one explicit width. Nothing else about
- * the pending portal is an entry: this is the only geometry it shares.
- */
-export interface TrayFrame {
-  /** The box's left edge, relative to the content's own text edge. */
-  marginLeft: number;
+/** The floating composer's rectangle, in viewport coordinates. */
+export interface ComposerBox {
+  left: number;
+  top: number;
   width: number;
+  /** The tallest the surface may be; it scrolls internally past this. */
+  maxHeight: number;
+  /** False when the surface has to be hidden: preview gone, sheet scrolling. */
+  preview: boolean;
+}
+
+/** Everything the composer's placement may read. */
+export interface ComposerBoxInput {
+  /** The visual viewport a phone keyboard shrinks; the window's on a desk. */
+  viewport: FrameColumn & { top: number; bottom: number };
+  /** The active pane's edges, in viewport coordinates. */
+  pane: FrameColumn & { top: number; bottom: number };
+  /** The text column inside that pane, when one can be measured. */
+  content: FrameColumn | null;
+  /** Air kept between the surface and every edge it could touch. */
+  inset: number;
+  /** The height the surface would like, before any clamping. */
+  wantedHeight: number;
+  /** The height the surface actually rendered, or 0 before it was measured. */
+  renderedHeight: number;
+  /** True on a phone, where the sheet may take more of the screen. */
+  phone: boolean;
+  /** Reserved space at the bottom: a mobile toolbar, a safe area. */
+  bottomReserve: number;
+}
+
+/** How much of a viewport the composer may take, by platform. */
+export function composerHeightShare(phone: boolean): number {
+  return phone ? 0.6 : 0.45;
 }
 
 /**
- * Where the pending tray sits, or `null` before anything has been measured.
+ * Where the floating composer sits.
  *
- * A pending portal is a root, so its text edge is the note's own — never a
- * child's indent, and never the width of the first entry it happens to follow.
+ * It floats above the workspace rather than inside a leaf, so it has no flow to
+ * inherit and must be told its box: the writing column of the active pane when
+ * one can be measured, up to 720px centred in the pane when none can, and always
+ * inside the visual viewport with one inset of air. Width is the *text* column —
+ * no widening for the surface and no child indentation — because a thought at
+ * depth 1 is written where the note's own text is.
+ *
+ * Height is the surface's own: it sits on the bottom edge and grows upward by
+ * exactly what it rendered, never by a fixed card height it would leave blank.
+ * The cap is the same share of the usable viewport as before, and past it the
+ * surface scrolls inside its own box, so the input and the actions stay reachable
+ * above a phone keyboard. When the usable height is too small to hold a preview
+ * and an input, the preview is dropped rather than letting the box overflow.
+ *
+ * A viewport with less room than the insets leave produces a zero-height box at
+ * the floor, never a negative one: geometry that cannot exist is not expressed as
+ * an inverted rectangle.
  */
-export function trayFrame(input: {
-  column: FrameColumn;
-  /** The note's own left text edge, in whatever space the column is measured. */
-  textLeft: number;
-  gutter: number;
-}): TrayFrame | null {
-  const box = frameBox({
-    column: input.column,
-    textLeft: input.textLeft,
-    gutter: input.gutter
-  });
-  if (!box.drawn || box.width <= 0) return null;
-  return { marginLeft: box.left - input.textLeft, width: box.width };
+export function floatingComposerBox(input: ComposerBoxInput): ComposerBox {
+  const usableTop = input.viewport.top + input.inset;
+  const usableBottom = input.viewport.bottom - input.inset - input.bottomReserve;
+
+  const floor = Math.max(usableTop, input.pane.top + input.inset);
+  const ceiling = Math.min(usableBottom, input.pane.bottom - input.inset);
+
+  const paneLeft = Math.max(input.pane.left, input.viewport.left);
+  const paneRight = Math.min(input.pane.right, input.viewport.right);
+  const paneWidth = Math.max(0, paneRight - paneLeft);
+
+  let left: number;
+  let width: number;
+  if (input.content !== null) {
+    left = Math.max(input.content.left, paneLeft);
+    const right = Math.min(input.content.right, paneRight);
+    width = Math.max(0, right - left);
+  } else {
+    width = Math.min(paneWidth, 720);
+    left = paneLeft + Math.max(0, (paneWidth - width) / 2);
+  }
+
+  const available = Math.max(0, ceiling - floor);
+  const maxHeight = Math.max(
+    0,
+    Math.min(input.wantedHeight, available * composerHeightShare(input.phone))
+  );
+
+  // Before the first measurement, fill the cap: a surface that dropped to nothing
+  // and then grew would flicker on every mount.
+  const rendered = input.renderedHeight > 0 ? input.renderedHeight : maxHeight;
+  const height = Math.max(0, Math.min(rendered, maxHeight, available));
+
+  // A box with no room for both a preview and an input keeps only the input.
+  const preview = maxHeight >= 160 && available >= 160;
+
+  return {
+    left: Math.round(left),
+    top: Math.round(Math.max(floor, ceiling - height)),
+    width: Math.round(width),
+    maxHeight: Math.round(maxHeight),
+    preview
+  };
 }
 
 /** The three rails: this entry's two, and where the next entry's top one sits. */

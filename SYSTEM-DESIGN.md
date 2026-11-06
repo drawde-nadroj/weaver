@@ -39,7 +39,7 @@ alone.
 | Marker | `formatMarker` | `parseMarkerPrefix`, `parseEntries` | `{ B.D.N }`, matched as a prefix |
 | Prose | the writer's own typing | `parseEntries` | every line between the marker and the clock row that is not a whisper row, trimmed at both ends |
 | Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>` — one to three rows (the prompt asks for two or three); a `thread:` row may be appended later |
-| Moment | `planEntryBeginning`, `planPortalEntry` | `parseClockRow` | `YYYY-MM-DD HH:MM:SS` captured on first committed text; an undated historical moment inherits the filename day |
+| Moment | `planEntryBeginning`, `planCaptureEntry` | `parseClockRow` | `YYYY-MM-DD HH:MM:SS` captured on first committed text — or, in the composer, on the first committed character of the draft; an undated historical moment inherits the filename day |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS` at the head of the clock row; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats`, `mergeAlignment` | `scanFrontmatter`, `recountDay`, `readAlignments` | `date`, `travels`, `depth`, `duration`, and structured `weaver-alignments` |
@@ -58,6 +58,45 @@ its parent's `D` plus one, and a depth-1 entry starts a new branch
 (`nextBranch`).
 
 <!-- claim: src/core/entries.ts#nextBranch @8b5cb2e473 -->
+
+### Destinations, and the day across them
+
+A *destination* is a folder and a filename format that a thought may be woven
+into. `main` is the vault's own day note: it resolves through the core Daily
+Notes plugin when that can be read, and through `dayNoteFolder`/`dayNoteFormat`
+when it cannot. Every other destination is an explicit row, and Daily Notes never
+overrides one.
+
+`src/core/contexts.ts#readContexts` is the boundary: a stored row becomes a typed
+definition only when it has an id, a unique name, a folder inside the vault and a
+filename format in the `YYYY`/`MM`/`DD` language. The same small language is what
+makes the inverse exist — `src/core/contexts.ts#contextDayForPath` matches a whole
+vault path back to the destination and day it names, round-tripping the calendar
+so February 30 is refused. `src/core/contexts.ts#mainContext` and
+`effectiveContexts` put `main` first, which is the picker's order;
+`src/core/contexts.ts#contextDayPath` expands a day into a path.
+
+Resolution always takes the day it is for, never a fresh reading of the clock:
+`src/entries/day-note.ts#resolveContextDay` answers with a path and the file when
+it exists, and an unknown or unreadable destination is an error rather than a
+silent fall back to `main`. Creating is separate and explicit:
+`src/entries/day-note.ts#ensureDayNote` makes every missing folder in order and
+accepts only a `TFile` at the exact path, so a concurrent create that wins the
+race is the file the caller asked for.
+
+Two consequences run through the rest of this document. A created day that differs
+from the note's filename is a link in that destination's own format —
+`src/core/contexts.ts#entryDayLinkTarget` — and a note no destination recognises is
+read by its basename, as it always was. And the day's list is derived, not stored:
+`src/entries/daily-log.ts#readDailyLog` reads every recognised day note, prefers an
+open editor's own text, and selects a row by its recorded day or, for an undated
+entry, its note's.
+
+<!-- claim: src/core/contexts.ts#readContexts @93b53b25de -->
+<!-- claim: src/core/contexts.ts#contextDayForPath @133fade252 -->
+<!-- claim: src/entries/day-note.ts#resolveContextDay @283d4405d2 -->
+<!-- claim: src/entries/day-note.ts#ensureDayNote @210f61c1da -->
+<!-- claim: src/entries/daily-log.ts#readDailyLog @f215b22c09 -->
 <!-- claim: src/core/entries.ts#repairBranches @a57d8d7a30 -->
 
 The parser is a prefix match, so `{ 1.2.3 } a title` is one entry whose first
@@ -83,17 +122,20 @@ A day note has exactly one writer at a time, and one module owns it.
 - Every write carries `programmaticWrite`, so the edit listener cannot mistake
   Weaver's own write for the writer typing.
 
-<!-- claim: src/entries/writer.ts#rewriteDay @759cc35cb2 -->
+<!-- claim: src/entries/writer.ts#rewriteDay @ed29801c71 -->
 <!-- claim: src/entries/writer.ts#planRewrite @b52e9a19bf -->
 <!-- claim: src/editor/entry-field.ts#programmaticWrite @e59e28301b -->
 
 Callers of `rewriteDay`, exhaustively —
 `src/entries/engine.ts#publish` (the ambient pause),
-`src/entries/engine.ts#startEntry`, `src/main.ts#closeDay`,
-`src/main.ts#refreshDayStats`, and the two whisper writes,
+`src/entries/engine.ts#capture` (one settled thought, through the composer),
+`src/main.ts#closeDay`, `src/main.ts#refreshDayStats`, and the two whisper writes,
 `src/entries/engine.ts#landWhisper` (one answer arriving after its entry settled)
 and `src/entries/engine.ts#whisperDay` (a whole-day pass merged into one
-transaction). The editor path is
+transaction). `capture` is the one caller that passes the writer's optional hooks:
+`beforeCommit` records a receipt before the note is touched, and
+`confirmPersistence` re-reads the file afterwards, because a composer's save is
+the one write whose outcome the writer has to be told about. The editor path is
 `src/entries/engine.ts#EntryEngine` itself: settle, descend, deleteEntry and
 first-input capture dispatch plans from `core/insert.ts` there, and §3 lists
 those plans. Nothing else writes a day note. The gate fails if
@@ -103,7 +145,7 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-<!-- claim: src/entries/engine.ts#EntryEngine @92cea8c527 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @9ab18fd325 -->
 
 ## 3. The plans
 
@@ -112,10 +154,10 @@ transaction, so one undo reverses all of it.
 
 | Plan | Intent | Changes | Renumbers |
 | --- | --- | --- | --- |
-| `planStartEntry` | append a root at the tip | marker, blank line, `- 00:00:00` | no — new `N`, next branch |
+
 | `planChildEntry` | open a child under a settled entry, above older siblings | marker, blank line, `- 00:00:00` | no — inherits `B` |
 | `planEntryBeginning` | stamp a draft's beginning on first input | the clock row's day and moment, duration bytes untouched | no |
-| `planPortalEntry` | capture an opening on first input | root marker, first prose, full clock row and history together | no — new `N`, next branch |
+| `planCaptureEntry` | write one settled thought | marker, prose, a `+` clock row with its own duration and moment, and the invitation's record when it applies | no — new `N`, next branch or the parent's `B` |
 | `planDeleteEntry` | remove a subtree | the block, its blank separator, and nulling deleted history associations | yes — surviving `B` values |
 | `planDuration` | write the clock | the duration half of the clock row, moment untouched | no |
 | `planWhisper` | name an entry | whisper rows above the first prose line | no |
@@ -123,14 +165,31 @@ transaction, so one undo reverses all of it.
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
-<!-- claim: src/core/insert.ts#planStartEntry @2820f13712 -->
-<!-- claim: src/core/insert.ts#planChildEntry @5f9ac6508b -->
+<!-- claim: src/core/insert.ts#planCaptureEntry @d9fa1fcd24 -->
+<!-- claim: src/core/insert.ts#planChildEntry @dfd9e28c58 -->
 <!-- claim: src/core/insert.ts#planEntryBeginning @3e58476127 -->
 <!-- claim: src/core/insert.ts#planDeleteEntry @9e6538e477 -->
 <!-- claim: src/core/insert.ts#planDuration @546c356091 -->
 <!-- claim: src/core/insert.ts#planWhisper @a9fb1e4a70 -->
 <!-- claim: src/core/insert.ts#planThread @a8069bde30 -->
 <!-- claim: src/core/close.ts#planCloseDay @e36f434d57 -->
+
+`planCaptureEntry` is the only plan that writes a whole settled entry. It
+allocates `N` itself, places a root at the tip or a child under its parent above
+older siblings, and then **parses the result back**: the written note must contain
+exactly the allocated entry, at the intended parent and depth, with the typed prose
+between the marker and the planned clock row. A paste that leaves a fence open, or
+prose ending in a line that reads as a marker or as a clock row, therefore refuses
+instead of writing a record that describes a different entry. An invitation's
+evidence joins the same plan only when the thought is a root, an opening was really
+announced, and the first committed input fell inside that opening's own minute —
+`portalContainsBeginning` is re-checked here, at the one place a record is written,
+so a caller that got the rule wrong writes an ordinary entry rather than an untrue
+record. A branch, a draft begun before its opening and a draft begun after it closed
+carry none, and finishing a qualified draft later changes nothing. A record that
+cannot be *added* — an id that names no whole minute, say — is dropped while the
+thought is still written, because the entry is the record and the alignment is
+extra; a note whose existing history cannot be *read* is still refused outright.
 
 Two invariants hold across every plan, and both are tested against
 `applyPlanToSource`, the pure oracle: **a settled `+` half is never rewritten**
@@ -175,12 +234,14 @@ The transitions, and where each lives:
 | Transition | Trigger | Code | Write |
 | --- | --- | --- | --- |
 | Start | the writer's own input in a draft | `src/entries/engine.ts#afterEdit` | none |
-| Capture beginning | first committed text in an awaiting draft or portal | `src/entries/engine.ts#captureInput`, `src/entries/engine.ts#captureComposition`, `src/entries/engine.ts#capturePortal` | date and moment, and for a portal its root and history, in the input's undo group |
+| Capture beginning | first committed text in an awaiting draft | `src/entries/engine.ts#captureInput`, `src/entries/engine.ts#captureComposition` | the entry's date and moment, in the input's undo group |
+| Draft beginning | the first committed character in the composer | `src/core/capture.ts#captureBeginningAt`, `src/entries/portals.ts#PortalController.captureAt` | nothing — the day, the moment and the openings that instant qualifies for are held in the draft until it settles |
+| Settle a Thread | `Enter` in the composer | `src/entries/engine.ts#capture` | one settled entry, and the invitation's record in the same transaction |
 | Pause | a caret move, blur, wheel, touch, leaf change, hidden app, navigator open, the live entry deleted | `src/entries/engine.ts#pause` | `= HH:MM:SS`, not undoable |
 | Settle | `⏎` on an open entry | `src/entries/engine.ts#settle` | `+ HH:MM:SS`, undoable — and, when the idle pause already answered, the whisper rows in the same transaction |
 | Drop | the entry being written is deleted | `src/entries/engine.ts#deleteEntry` | none |
 
-<!-- claim: src/entries/engine.ts#EntryEngine @92cea8c527 -->
+<!-- claim: src/entries/engine.ts#EntryEngine @9ab18fd325 -->
 
 `afterEdit` is the only place a clock starts, and it starts on an input
 observation only: `{ path, seq, at }`, read from the transaction's own selection
@@ -216,31 +277,38 @@ only recorded fields. No tick costs a transaction or an undo entry.
 
 <!-- claim: src/editor/stopwatch-widget.ts#DurationWidget @96fea98494 -->
 
-Portal openings have no entry identity before writing.
-`src/core/portals.ts#portalInstants` enumerates actual epoch minutes and tests
-their local hour and minute, preserving daylight-saving gaps and repeated hours.
-`src/core/portals.ts#portalPhase` keeps a prepared opening after its minute without
-unlocking it early; `src/core/portals.ts#portalAlignments` recognizes every
-coincident boundary, hour echo and minute echo from the actual input second.
+### Invitations
 
-`src/core/insert.ts#planPortalEntry` appends an actual root beginning and merges its
-event through `src/core/alignments.ts#mergeAlignment` in one plan over the original
-source coordinates. `src/core/alignments.ts#readAlignments` refuses unreadable
-owned metadata rather than inventing empty history. The owned property is
-`weaver-alignments`: a YAML sequence of JSON flow mappings recording the UTC
-opening, its original local offset timestamp, the actual first-input timestamp,
-and the associated entry sequence. Other frontmatter and body bytes remain
-untouched. `src/core/alignments.ts#detachAlignments` nulls deleted subtree
-associations in the deletion plan without erasing event facts.
+A portal is now an *invitation*: a scheduled call to action that opens the same
+composer every other gesture opens. It holds no note, no preparation and no
+permission to write, so there is nothing to unlock and nothing that can expire in
+the writer's hands. `src/core/portals.ts#occurrencesBetween` and
+`src/core/portals.ts#rhythmOccurrences` enumerate the *actual* local minutes a
+schedule offers — a daylight-saving gap produces nothing and a repeated hour
+produces two distinct instants — and `src/core/portals.ts#dueOpening` takes the
+newest occurrence this device has neither outlived nor answered.
+`src/core/portals.ts#portalPhase` has two states: approaching, and available
+without an expiry. `src/core/portals.ts#portalAlignments` still recognises every
+coincident boundary, hour echo and minute echo from the actual input second, and
+that recognition is what the entry's frame acknowledges.
 
-`src/entries/portals.ts#PortalController` derives current candidates and their
-phase from actual time at every wakeup, not from elapsed timer counts. Preparation
-holds at most one opening in its selected note across midnight; release after
-expiry removes it. Consumption is remembered in this instance and checked against
-the containing note's readable history after reload. Announced identities survive
-backward clock changes and settings toggles. Initialization and delayed wakeups
-invite only the nearest current opening through `src/notices.ts#noticePortal`;
-hidden documents speak nothing. The controller owns no writer or navigation.
+`src/entries/portals.ts#PortalController` derives one outstanding invitation per
+schedule from the instant, the settings and what this device has answered. A
+schedule is examined from its activation — the instant it was created — and never
+replays an opening from before it; a later occurrence of the *same* schedule
+renews its own invitation, while different schedules stay distinct even at the same
+minute. Each carries the generation it belongs to, so a late answer cannot clear a
+newer invitation. Dismissing acknowledges exactly the occurrence named; `Weave`
+acknowledges only after the first successful settlement of a matching root, so
+collapsing or failing costs nothing. The controller owns no writer, no editor and
+no navigation, and it writes nothing to a note.
+
+Settings hold the schedules as raw rows: `src/core/portals.ts#readPortalSchedules`
+turns them into typed recurrences — hourly minute, selected weekdays at a time, or
+one instant — and reports the row it could not use rather than dropping it. The
+built-in rhythm stays its own switch, because its minutes are not any single
+recurrence shape; `src/entries/portals.ts#PortalSource` is what lets the dock list
+the rhythm and the configured schedules together.
 
 ## 5. Geometry
 
@@ -248,13 +316,9 @@ Nothing reflows. The text decides where the box is, never the reverse.
 
 - `frameBox` is pure: column, the text's left edge, the label inset → the box's
   `left`/`width`, or `drawn: false`.
-- `src/core/frame.ts#frameColumn` supplies the same pane-clamped column to entry
-  boxes and the pending root tray. `src/core/frame.ts#trayFrame` converts that
-  box into the tray's content-relative margin and width, including an empty
-  document. `src/editor/entry-frame.ts#remeasureFrames` gives a newly mounted
-  tray one measurement without making clock ticks measure or dispatch.
-  Editor content padding is excluded from that shared column, so a padded theme
-  cannot give the entry and portal different right rails.
+- `src/core/frame.ts#frameColumn` supplies the pane-clamped column entry boxes are
+  drawn in. Editor content padding is excluded from it, so a padded theme cannot
+  give two entries different right rails.
 - `frameSpan` is pure: this entry's two rails and the next entry's top rail →
   `top`/`bottom`, or `drawn: false` when they leave no interior.
 - `src/editor/entry-frame.ts` is the only measuring code. It finds each entry's
@@ -264,9 +328,13 @@ Nothing reflows. The text decides where the box is, never the reverse.
   `requestAnimationFrame` per batch (`src/editor/entry-frame.ts#schedule`). A row
   that has scrolled out of the render range falls back to its line block, whose
   centre is still the label's centre.
-  It also sizes the in-flow pending tray from that root geometry. Reading
-  portals inherit the static frame's two outer gutters, and their footer's
-  labels straddle the bottom rail rather than floating inside it.
+- `src/core/frame.ts#floatingComposerBox` places the one floating surface. It has
+  no flow to inherit, so it is told its box: the active pane's text column when one
+  can be measured, up to 720 px centred in the pane when none can, clamped to the
+  visual viewport with one inset of air, and never taller than 45% of the usable
+  height on a desk or 60% on a phone. Width is the *text* column — no widening for
+  the surface and no child indentation — and when the usable height cannot hold a
+  preview and an input, the preview goes rather than the box overflowing.
 - The constants that turn "a box" into this box — `MIN_AIR`, `NO_CLOCK_PAD`,
   `INLINE_TITLE_PAD` — stay in the measuring layer. The shared side clearance is
   `src/core/frame.ts#frameLabelInset`: `16 px + 0.45em`, using the rendered marker's
@@ -283,16 +351,28 @@ Nothing reflows. The text decides where the box is, never the reverse.
   in the left margin, the frame's edge follows them, and every box starts in the same
   column — which puts the markers and the times in one column each down the note. The
   body class is `weaver-frame-fixed`; both modes are four CSS declarations.
-- `src/core/insert.ts#planStartEntry` and `src/core/insert.ts#planChildEntry`
-  write a duration-only row, `- 00:00:00`: the block exists, but it has not begun.
+- Vertical rhythm is two settings, both air above a marker row. `threadSpacing` is
+  the gap above every depth-1 entry after the note's first Thread, so one Thread's
+  subtree does not run into the next; `branchSpacing` is the gap above each branch
+  whose predecessor is also a branch, so the first branch stays close to its Thread's
+  root and later siblings separate. `src/editor/entry-decorations.ts#entryDecorationSet`
+  stamps `weaver-thread-start` and `weaver-branch-start` on the marker line, where
+  padding moves the row, its prose and its frame together;
+  `src/reading/entry-processor.ts#createEntryProcessor` stamps the same names on the
+  static frame, where the top margin does the work. Both default to zero, and the
+  frame measures ink rather than the line box, so the top rail stays on its label
+  whatever the padding.
+- `src/core/insert.ts#planChildEntry`
+  writes a duration-only row, `- 00:00:00`: the block exists, but it has not begun.
   `src/core/insert.ts#planEntryBeginning` stamps the actual local day and moment
   from the first input's one timestamp, even inside an older note, and copies the
   duration bytes unchanged — so an entry made before midnight but typed after it
   records the real day without moving the note. Existing days and moments are
   never replaced. `src/core/duration.ts#parseClockRow` exposes the day
   and time; undated historical moments use the filename day without a rewrite.
-  `src/core/day.ts#entryDayLinkTarget` returns a link only when the recorded day
-  differs from the filename day, formatted in the filename's style. Same-day
+  `src/core/contexts.ts#entryDayLinkTarget` returns a link only when the recorded
+  day differs from the note's, as a full path in the containing destination's own
+  format — or, for a note no destination recognises, in the filename's style. Same-day
   and historical undated entries carry no date label or hidden tab stop, and an
   awaiting draft carries none either: it has not recorded a day for the link to
   name.
@@ -342,11 +422,10 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Clock row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
-| Start command | `src/main.ts#WeaverPlugin` | the root entry | the plan | `today's day note could not be found. Nothing was written.` |
-| Navigator | `src/ui/navigator.ts#Navigator` | the child, the root, the deletion, the pause | the plan | `no entries yet — ＋ starts the first` |
+| Composer | `src/ui/composer.ts#Composer` | one settled thought, when it is settled — nothing before | the plan | asked for nothing; a draft's top rail says `Thread` or `Branch`, never a fabricated address |
+| Opening strip | `src/ui/portal.ts#InvitationDock` | nothing | — | `hidden` |
+| Navigator | `src/ui/navigator.ts#Navigator` | the branch (`⇧⏎`) as an empty draft, the deletion, the pause | the plan | `No Threads for this day`, in the notice line; a recorded capture is listed from its own note even when no editor holds it |
 | Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry and adds a creation-day link only when the day differs from the note) |
-| Pending portal | `src/editor/portal-widget.ts#portalExtension` | first committed text creates marker, prose, clock and history through the engine; otherwise nothing | the entire beginning | appears even after an empty document; no fake entry identity |
-| Reading portal tray | `src/reading/portals.ts#PortalReadingTray` | nothing; explicit preparation switches the same leaf to Live Preview | — | one whole-view tray, even without entries |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Whisper the day | `src/entries/engine.ts#whisperDay` | one whisper per settled entry that has none | the whole pass | `Nothing to whisper: every settled entry already has one, or a name.` |
 | Descend command | `src/main.ts#WeaverPlugin` | settle `+`, or a child | the plan, once per transaction | `this needs an editable note.` or `put the caret in an entry.` — nothing written |
@@ -354,8 +433,8 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
-<!-- claim: src/ui/navigator.ts#Navigator @facec75295 -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @4a073f0ce2 -->
+<!-- claim: src/ui/navigator.ts#Navigator @171ea4ebc1 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @b36fbbafc7 -->
 
 A command's target is the day plane, and *Whisper the day* aims at the day note on
 screen — `src/entries/engine.ts#dayToWhisper` — falling back to today's note only
@@ -369,13 +448,16 @@ prose, and re-reads the document on every action
 `shouldPinStopwatch`, true only when all four of phone, live session, caret on
 the last prose line, and a clock row exist.
 
-`src/core/portal-history.ts#portalHistoryRows` combines recorded beginnings with
-the reconstructed local schedule inside the navigator's collapsed Portals
-section. Captured alignments use their stored original offsets, while schedule
-rows are explicitly in the current timezone. `src/core/portal-history.ts#linkedPortalEntry`
-checks sequence, day and moment before a historical jump; deletion or a mismatch
-leaves an informational unavailable row. Navigator refreshes preserve selection
-identity and scroll, and schedule/history rows cannot descend or delete.
+The navigator's three sections are the whole surface: `Contexts` offers each
+destination's `Go` and `Weave`; `Day` is one chronology for the selected day, read
+by `src/entries/daily-log.ts#readDailyLog` and filterable by destination; `Portals`
+lists the outstanding invitations beside what was really entered.
+`src/core/portal-history.ts#portalHistoryRows` returns recorded facts only — a list
+of upcoming openings is the live controller's, never reconstructed from a note —
+and `src/core/portal-history.ts#linkedPortalEntry` checks sequence, day and moment
+before a historical jump. `src/core/navigation.ts#record` keeps a cursor, so back
+and forward walk the same path, and the cursor moves only after a navigation
+succeeds.
 
 <!-- claim: src/editor/entry-keys.ts#shouldPinStopwatch @eefa36e514 -->
 
@@ -390,7 +472,7 @@ does not survive being read next to prose. Nothing is generated per level; the s
 into one `<style id="weaver-style">` element.
 
 <!-- claim: src/core/color.ts#dimensionColor @bbd0b078df -->
-<!-- claim: src/ui/css.ts#buildCss @3731087775 -->
+<!-- claim: src/ui/css.ts#buildCss @83b340d818 -->
 
 Settings land in one of the places listed here, never in a surface of their own:
 values that change the drawing go through `buildCss` (variables), values that
@@ -402,11 +484,21 @@ place an older spelling is read — the v2 `heading*` names. A stored name with 
 current name at all (`entryWeight`, dropped with the per-entry weight slider;
 `entryDate`, dropped with the per-entry date) is simply dropped.
 
-<!-- claim: src/settings.ts#normalizeSettings @c605a342e5 -->
-<!-- claim: src/settings.ts#DEFAULT_SETTINGS @a3ccb180cf -->
+<!-- claim: src/settings.ts#normalizeSettings @aba553f890 -->
+<!-- claim: src/settings.ts#DEFAULT_SETTINGS @fb8d0b2893 -->
+
+Two settings are persisted raw rather than normalised: `contexts` and
+`portalSchedules`. A row this build cannot read is the writer's data, so it is
+reported with its index and left exactly as it is; only validated rows ever resolve
+a path or offer an invitation. `portalMotion` is the one motion setting, and it
+changes the invitation's rainbow duration and nothing else — no padding, no label
+placement, no second animation.
 
 **Vocabulary is a coupling, not a preference.** The unit is an *entry*, its depth
-a *dimension*, its state *open* or *settled*. `heading` names Markdown syntax and
+a *dimension*, its state *open* or *settled*. A depth-1 entry starts a **Thread**
+and the Thread includes its descendants; a deeper thought is a **branch**. Product
+copy capitalises Thread; the stored `B`/`D`/`N` and the internal plan names do not
+change with it. `heading` names Markdown syntax and
 nothing else, which is why the settings fields are `entrySize` and
 `equalizeEntrySizes` and why the v2 names appear once, in the migration. The
 frame's labels — marker, the date link on another day, stopwatch and moment — carry
@@ -467,65 +559,74 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-47 files, 260 exported symbols, 41 test files.
+54 files, 369 exported symbols, 44 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
 | `src/core/alignments.ts` | core | 484 | 8 | no |
+| `src/core/capture.ts` | core | 485 | 31 | no |
 | `src/core/clock.ts` | core | 16 | 2 | no |
 | `src/core/close.ts` | core | 61 | 5 | no |
 | `src/core/color.ts` | core | 123 | 7 | no |
+| `src/core/contexts.ts` | core | 480 | 21 | no |
 | `src/core/day-stats.ts` | core | 90 | 4 | no |
-| `src/core/day.ts` | core | 73 | 6 | no |
+| `src/core/day.ts` | core | 72 | 6 | no |
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 157 | 6 | no |
 | `src/core/entries.ts` | core | 426 | 15 | no |
-| `src/core/frame.ts` | core | 165 | 12 | no |
-| `src/core/insert.ts` | core | 636 | 14 | no |
-| `src/core/navigator-stack.ts` | core | 40 | 4 | no |
-| `src/core/portal-history.ts` | core | 320 | 6 | no |
-| `src/core/portals.ts` | core | 48 | 5 | no |
+| `src/core/frame.ts` | core | 233 | 14 | no |
+| `src/core/insert.ts` | core | 639 | 13 | no |
+| `src/core/navigation.ts` | core | 150 | 12 | no |
+| `src/core/portal-history.ts` | core | 213 | 5 | no |
+| `src/core/portals.ts` | core | 512 | 24 | no |
+| `src/core/value.ts` | core | 15 | 1 | no |
 | `src/core/whisper.ts` | core | 407 | 19 | no |
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 23 | 2 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 300 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 316 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 62 | 6 | no |
-| `src/editor/entry-frame.ts` | editor | 483 | 3 | yes |
-| `src/editor/entry-keys.ts` | editor | 493 | 15 | no |
+| `src/editor/entry-frame.ts` | editor | 411 | 3 | yes |
+| `src/editor/entry-keys.ts` | editor | 496 | 15 | no |
 | `src/editor/frame-effects.ts` | editor | 86 | 4 | no |
-| `src/editor/portal-widget.ts` | editor | 510 | 5 | yes |
 | `src/editor/stopwatch-widget.ts` | editor | 273 | 3 | no |
 | `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
+| `src/entries/capture.ts` | entries | 1165 | 6 | no |
 | `src/entries/clock.ts` | entries | 131 | 3 | no |
-| `src/entries/day-note.ts` | entries | 96 | 3 | yes |
-| `src/entries/engine.ts` | entries | 1381 | 1 | yes |
-| `src/entries/portals.ts` | entries | 308 | 4 | no |
+| `src/entries/context-workspaces.ts` | entries | 541 | 4 | yes |
+| `src/entries/daily-log.ts` | entries | 216 | 6 | no |
+| `src/entries/day-note.ts` | entries | 170 | 5 | yes |
+| `src/entries/engine.ts` | entries | 1370 | 1 | yes |
+| `src/entries/local-state.ts` | entries | 441 | 12 | no |
+| `src/entries/portals.ts` | entries | 516 | 3 | no |
 | `src/entries/session.ts` | entries | 105 | 2 | no |
-| `src/entries/writer.ts` | entries | 100 | 5 | yes |
-| `src/main.ts` | root | 573 | 1 | yes |
+| `src/entries/writer.ts` | entries | 169 | 7 | yes |
+| `src/main.ts` | root | 1054 | 1 | yes |
 | `src/model/whisper-model.ts` | root | 186 | 6 | yes |
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
-| `src/notices.ts` | root | 166 | 23 | no |
+| `src/notices.ts` | root | 169 | 23 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 306 | 1 | yes |
-| `src/reading/portals.ts` | reading | 302 | 1 | yes |
-| `src/settings-tab.ts` | root | 290 | 1 | yes |
-| `src/settings.ts` | root | 253 | 8 | no |
-| `src/ui/css.ts` | ui | 80 | 4 | no |
+| `src/reading/entry-processor.ts` | reading | 347 | 1 | yes |
+| `src/settings-tab.ts` | root | 785 | 1 | yes |
+| `src/settings.ts` | root | 318 | 8 | no |
+| `src/ui/composer.ts` | ui | 1325 | 5 | yes |
+| `src/ui/css.ts` | ui | 82 | 4 | no |
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
-| `src/ui/navigator.ts` | ui | 811 | 1 | no |
+| `src/ui/invitation.ts` | ui | 44 | 5 | no |
+| `src/ui/navigator.ts` | ui | 1077 | 3 | no |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
-| `src/ui/portal.ts` | ui | 723 | 10 | no |
+| `src/ui/portal.ts` | ui | 179 | 2 | no |
 
 ### Commands
 
 | id | name | icon | hotkey |
 | --- | --- | --- | --- |
-| `weaver:start-entry` | Start an entry | `plus` | `Mod,Shift+E` |
-| `weaver:descend` | Descend into a child entry | `arrow-down-right` | — |
-| `weaver:navigate` | Today's entries | `list` | `Mod,Shift+P` |
+| `weaver:start-entry` | Weave a Thread | `plus` | `Mod,Shift+Enter` |
+| `weaver:descend` | Branch from this thought | `arrow-down-right` | — |
+| `weaver:back` | Back | `arrow-left` | — |
+| `weaver:forward` | Forward | `arrow-right` | — |
+| `weaver:navigate` | Navigator | `list` | `Mod,Shift+P` |
 | `weaver:whisper-day` | Whisper the day | `sparkles` | — |
 | `weaver:close-day` | Close the day | `check-circle` | — |
 
@@ -534,17 +635,23 @@ That is the point: the document is not maintained by memory, it is maintained by
 | field | default | read in |
 | --- | --- | --- |
 | `writeDayCounters` | `true` | `main.ts`<br>`settings-tab.ts` |
-| `portalsEnabled` | `true` | `editor/portal-widget.ts`<br>`main.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` |
+| `portalsEnabled` | `true` | `main.ts`<br>`settings-tab.ts` |
+| `rhythmicPortalsEnabled` | `true` | `main.ts`<br>`settings-tab.ts` |
+| `portalSchedules` | `[]` | `main.ts`<br>`settings-tab.ts` |
+| `portalMotion` | `"normal"` | `main.ts`<br>`settings-tab.ts` |
 | `dayNoteFolder` | `"Chronomancer"` | `entries/day-note.ts`<br>`settings-tab.ts` |
 | `dayNoteFormat` | `"YYYY.MM.DD"` | `entries/day-note.ts`<br>`settings-tab.ts` |
+| `contexts` | `[]` | `core/contexts.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/daily-log.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` |
 | `equalizeEntrySizes` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entrySize` | `"1em"` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentStep` | `18` | `settings-tab.ts`<br>`ui/css.ts` |
 | `mobileIndentStep` | `12` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentMaxLevel` | `8` | `settings-tab.ts`<br>`ui/css.ts` |
 | `portEmphasisColors` | `true` | `main.ts`<br>`settings-tab.ts` |
-| `entryFrames` | `true` | `editor/entry-frame.ts`<br>`editor/portal-widget.ts`<br>`reading/portals.ts`<br>`settings-tab.ts` |
+| `entryFrames` | `true` | `editor/entry-frame.ts`<br>`settings-tab.ts` |
 | `frameFollowsIndent` | `true` | `main.ts`<br>`settings-tab.ts` |
+| `threadSpacing` | `0` | `settings-tab.ts`<br>`ui/css.ts` |
+| `branchSpacing` | `0` | `settings-tab.ts`<br>`ui/css.ts` |
 | `whisperEnabled` | `false` | `main.ts`<br>`settings-tab.ts` |
 | `whisperEndpoint` | `"http://127.0.0.1:8000/v1"` | `main.ts`<br>`settings-tab.ts` |
 | `whisperModelId` | `"Qwen3.5-4B-MLX-4bit"` | `main.ts`<br>`settings-tab.ts` |
@@ -560,9 +667,54 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 
 | name | state | written in |
 | --- | --- | --- |
-| `weaver-alignments` | hook | `core/alignments.ts`<br>`core/portal-history.ts`<br>`ui/navigator.ts` |
+| `weaver-alignments` | hook | `core/alignments.ts`<br>`core/portal-history.ts` |
+| `weaver-branch-start` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` |
 | `weaver-close-mark` | styled | `reading/close-processor.ts` |
 | `weaver-close-mark-line` | styled | `editor/close-decorations.ts` |
+| `weaver-composer` | styled | `ui/composer.ts` |
+| `weaver-composer-actions` | styled | `ui/composer.ts` |
+| `weaver-composer-ancestor` | styled | `ui/composer.ts` |
+| `weaver-composer-branch` | hook | `ui/composer.ts` |
+| `weaver-composer-cancel` | hook | `ui/composer.ts` |
+| `weaver-composer-card` | styled | `ui/composer.ts` |
+| `weaver-composer-check` | hook | `ui/composer.ts` |
+| `weaver-composer-close` | styled | `ui/composer.ts` |
+| `weaver-composer-confirm` | styled | `ui/composer.ts` |
+| `weaver-composer-confirm-discard` | styled | `ui/composer.ts` |
+| `weaver-composer-confirm-text` | styled | `ui/composer.ts` |
+| `weaver-composer-discard` | hook | `ui/composer.ts` |
+| `weaver-composer-discard-go` | hook | `ui/composer.ts` |
+| `weaver-composer-discard-keep` | hook | `ui/composer.ts` |
+| `weaver-composer-duration` | styled | `ui/composer.ts` |
+| `weaver-composer-edit` | hook | `ui/composer.ts` |
+| `weaver-composer-hide` | styled | `ui/composer.ts` |
+| `weaver-composer-hint` | styled | `ui/composer.ts` |
+| `weaver-composer-input` | styled | `ui/composer.ts` |
+| `weaver-composer-moment` | styled | `ui/composer.ts` |
+| `weaver-composer-more` | styled | `ui/composer.ts` |
+| `weaver-composer-more-panel` | styled | `ui/composer.ts` |
+| `weaver-composer-new` | hook | `ui/composer.ts` |
+| `weaver-composer-outline` | styled | `ui/composer.ts` |
+| `weaver-composer-parent` | styled | `ui/composer.ts` |
+| `weaver-composer-parent-address` | styled | `ui/composer.ts` |
+| `weaver-composer-parent-excerpt` | styled | `ui/composer.ts` |
+| `weaver-composer-parent-label` | styled | `ui/composer.ts` |
+| `weaver-composer-parent-row` | styled | `ui/composer.ts` |
+| `weaver-composer-portal-slot` | styled | `ui/composer.ts` |
+| `weaver-composer-prose` | styled | `ui/composer.ts` |
+| `weaver-composer-rail` | styled | `ui/composer.ts` |
+| `weaver-composer-rail-bottom` | styled | `ui/composer.ts` |
+| `weaver-composer-rail-top` | styled | `ui/composer.ts` |
+| `weaver-composer-realm` | styled | `ui/composer.ts` |
+| `weaver-composer-resume` | styled | `ui/composer.ts` |
+| `weaver-composer-resume-button` | styled | `ui/composer.ts` |
+| `weaver-composer-save` | styled | `ui/composer.ts` |
+| `weaver-composer-selected` | styled | `ui/composer.ts` |
+| `weaver-composer-status` | styled | `ui/composer.ts` |
+| `weaver-composer-status-row` | styled | `ui/composer.ts` |
+| `weaver-composer-strip` | styled | `ui/composer.ts` |
+| `weaver-composer-through` | styled | `ui/composer.ts` |
+| `weaver-composer-viewing-note` | styled | `ui/composer.ts` |
 | `weaver-dcn-ink` | styled | `ui/dcn.ts` |
 | `weaver-dcn-num` | styled | `ui/dcn.ts` |
 | `weaver-duration` | styled | `editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
@@ -579,50 +731,56 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-entry-whisper` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-frame` | styled | `editor/entry-frame.ts`<br>`reading/entry-processor.ts` |
 | `weaver-frame-fixed` | styled | `main.ts` |
-| `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/day-link.ts`<br>`ui/portal.ts` |
+| `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts`<br>`ui/day-link.ts` |
 | `weaver-frame-layer` | styled | `editor/entry-frame.ts` |
 | `weaver-navigator` | styled | `ui/navigator.ts` |
-| `weaver-navigator-append` | styled | `ui/navigator.ts` |
+| `weaver-navigator-action` | styled | `ui/navigator.ts` |
+| `weaver-navigator-actions` | styled | `ui/navigator.ts` |
 | `weaver-navigator-card` | styled | `ui/navigator.ts` |
-| `weaver-navigator-count` | styled | `ui/navigator.ts` |
+| `weaver-navigator-closed` | styled | `ui/navigator.ts` |
+| `weaver-navigator-context-tag` | styled | `ui/navigator.ts` |
+| `weaver-navigator-day` | styled | `ui/navigator.ts` |
 | `weaver-navigator-dcn` | styled | `ui/navigator.ts` |
-| `weaver-navigator-delete` | styled | `ui/navigator.ts` |
 | `weaver-navigator-entry` | hook | `ui/navigator.ts` |
+| `weaver-navigator-filter` | styled | `ui/navigator.ts` |
+| `weaver-navigator-header` | styled | `ui/navigator.ts` |
 | `weaver-navigator-hint` | styled | `ui/navigator.ts` |
 | `weaver-navigator-hint-keys` | styled | `ui/navigator.ts` |
 | `weaver-navigator-hint-touch` | styled | `ui/navigator.ts` |
-| `weaver-navigator-label` | styled | `ui/navigator.ts` |
 | `weaver-navigator-list` | styled | `ui/navigator.ts` |
+| `weaver-navigator-notice` | styled | `ui/navigator.ts` |
+| `weaver-navigator-offer` | styled | `ui/navigator.ts` |
+| `weaver-navigator-offer-body` | styled | `ui/navigator.ts` |
+| `weaver-navigator-offer-opening` | styled | `ui/navigator.ts` |
+| `weaver-navigator-offer-state` | styled | `ui/navigator.ts` |
 | `weaver-navigator-open` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portal` | styled | `ui/navigator.ts` |
 | `weaver-navigator-portal-label` | styled | `ui/navigator.ts` |
 | `weaver-navigator-portal-moment` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portal-time` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portal-unavailable` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portals-all` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portals-error` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portals-note` | styled | `ui/navigator.ts` |
-| `weaver-navigator-portals-toggle` | styled | `ui/navigator.ts` |
+| `weaver-navigator-realm` | hook | `ui/navigator.ts` |
+| `weaver-navigator-realm-body` | styled | `ui/navigator.ts` |
+| `weaver-navigator-realm-name` | styled | `ui/navigator.ts` |
+| `weaver-navigator-record` | hook | `ui/navigator.ts` |
 | `weaver-navigator-row` | styled | `ui/navigator.ts` |
-| `weaver-navigator-stop` | hook | `ui/navigator.ts` |
+| `weaver-navigator-tab` | styled | `ui/navigator.ts` |
+| `weaver-navigator-tabs` | styled | `ui/navigator.ts` |
 | `weaver-navigator-time` | styled | `ui/navigator.ts` |
 | `weaver-navigator-title` | styled | `ui/navigator.ts` |
+| `weaver-navigator-travel` | styled | `ui/navigator.ts` |
+| `weaver-navigator-weave` | styled | `ui/navigator.ts` |
 | `weaver-no-emphasis` | styled | `main.ts`<br>`ui/css.ts` |
 | `weaver-phone` | styled | `main.ts` |
 | `weaver-platform-mobile` | body state | `main.ts` |
-| `weaver-portal` | styled | `editor/entry-frame.ts`<br>`ui/portal.ts` |
-| `weaver-portal-clock` | styled | `ui/portal.ts` |
-| `weaver-portal-countdown` | styled | `ui/portal.ts` |
-| `weaver-portal-footer` | styled | `ui/portal.ts` |
-| `weaver-portal-input` | styled | `ui/portal.ts` |
-| `weaver-portal-label` | styled | `ui/portal.ts` |
-| `weaver-portal-lock` | styled | `ui/portal.ts` |
-| `weaver-portal-prepare` | styled | `ui/portal.ts` |
-| `weaver-portal-refusal` | styled | `ui/portal.ts` |
-| `weaver-portal-tray` | styled | `ui/portal.ts` |
+| `weaver-portal-all` | hook | `ui/portal.ts` |
+| `weaver-portal-dismiss` | hook | `ui/portal.ts` |
+| `weaver-portal-opening` | styled | `ui/portal.ts` |
+| `weaver-portal-realm` | styled | `ui/portal.ts` |
+| `weaver-portal-state` | styled | `ui/portal.ts` |
+| `weaver-portal-strip` | styled | `ui/portal.ts` |
+| `weaver-portal-weave` | styled | `ui/portal.ts` |
 | `weaver-settings` | styled | `settings-tab.ts` |
 | `weaver-style` | hook | `ui/css.ts` |
 | `weaver-tablet` | body state | `main.ts` |
+| `weaver-thread-start` | styled | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` |
 | `weaver-unequal` | styled | `main.ts`<br>`ui/css.ts` |
 
 **Dead CSS check.** Every class styled in `styles.css` must be written by the code. Unstyled rules right now: none.
@@ -632,9 +790,9 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `data-weaver-close-processed` | `reading/close-processor.ts` |
 | `data-weaver-d` | `reading/entry-processor.ts` |
 | `data-weaver-entry-processed` | `reading/entry-processor.ts` |
+| `data-weaver-motion` | `main.ts` |
 | `data-weaver-n` | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts` |
 | `data-weaver-portal` | `ui/portal.ts` |
-| `data-weaver-portal-tray` | `editor/entry-frame.ts`<br>`ui/portal.ts` |
 
 ### The record example
 
@@ -670,15 +828,17 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | module | exports named by a test | exports |
 | --- | --- | --- |
 | `src/core/document.ts` | 0 | 6 |
+| `src/core/value.ts` | 0 | 1 |
 | `src/editor/duration-ticker.ts` | 0 | 2 |
 | `src/editor/editor-path.ts` | 0 | 1 |
 | `src/editor/entry-frame.ts` | 0 | 3 |
 | `src/entries/engine.ts` | 0 | 1 |
-| `src/reading/portals.ts` | 0 | 1 |
 | `src/ui/css.ts` | 0 | 4 |
 | `src/ui/dcn.ts` | 0 | 6 |
+| `src/ui/invitation.ts` | 0 | 5 |
+| `src/ui/portal.ts` | 0 | 2 |
 
-Modules with no symbol named by any test: 8.
+Modules with no symbol named by any test: 10.
 
 ### Symbols
 
@@ -691,13 +851,51 @@ Portal history: the openings a day note actually entered, and the frontmatter
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `ALIGNMENTS_KEY` | const | 23 | `export const ALIGNMENTS_KEY = "weaver-alignments"` | — | — |
-| `AlignmentRecord` | interface | 35 | `export interface AlignmentRecord` | `core/insert.ts`<br>`core/portal-history.ts` | `tests/alignments.test.ts`<br>`tests/navigator.test.ts`<br>`tests/portal-history.test.ts` |
+| `AlignmentRecord` | interface | 35 | `export interface AlignmentRecord` | `core/insert.ts`<br>`core/portal-history.ts` | `tests/alignments.test.ts`<br>`tests/portal-history.test.ts` |
 | `AlignmentRead` | type | 43 | `export type AlignmentRead = \|` | — | — |
 | `AlignmentWrite` | type | 48 | `export type AlignmentWrite = \|` | — | — |
-| `formatLocalTimestamp` | function | 88 | `export function formatLocalTimestamp(date: Date): string` | `core/insert.ts` | `tests/alignments.test.ts`<br>`tests/navigator.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/reading-portals.test.ts` |
-| `readAlignments` | function | 348 | `export function readAlignments(source: string): AlignmentRead` | `core/insert.ts`<br>`core/portal-history.ts`<br>`entries/engine.ts`<br>`entries/portals.ts`<br>`main.ts` | `tests/alignments.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `mergeAlignment` | function | 442 | `export function mergeAlignment(source: string, record: AlignmentRecord): AlignmentWrite` | `core/insert.ts` | `tests/alignments.test.ts`<br>`tests/portal-controller.test.ts` |
+| `formatLocalTimestamp` | function | 88 | `export function formatLocalTimestamp(date: Date): string` | `core/capture.ts` | `tests/alignments.test.ts` |
+| `readAlignments` | function | 348 | `export function readAlignments(source: string): AlignmentRead` | `core/insert.ts`<br>`core/portal-history.ts`<br>`main.ts` | `tests/alignments.test.ts`<br>`tests/capture-end-to-end.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `mergeAlignment` | function | 442 | `export function mergeAlignment(source: string, record: AlignmentRecord): AlignmentWrite` | `core/insert.ts` | `tests/alignments.test.ts` |
 | `detachAlignments` | function | 470 | `export function detachAlignments(source: string, deleted: ReadonlySet<number>): AlignmentWrite` | `core/insert.ts` | `tests/alignments.test.ts` |
+
+#### `src/core/capture.ts`
+
+One thought being written outside its note: the facts a capture is made of.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `CaptureBeginning` | interface | 35 | `export interface CaptureBeginning` | `entries/capture.ts` | — |
+| `CaptureInvitation` | interface | 55 | `export interface CaptureInvitation` | `entries/capture.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts` | `tests/capture.test.ts` |
+| `DraftTarget` | type | 77 | `export type DraftTarget = \|` | `entries/capture.ts` | — |
+| `ThoughtRef` | interface | 89 | `export interface ThoughtRef` | `core/navigation.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`main.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
+| `CaptureRequest` | interface | 107 | `export interface CaptureRequest` | `core/insert.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `CaptureResult` | type | 123 | `export type CaptureResult = \|` | `entries/capture.ts`<br>`entries/engine.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
+| `CapturePhase` | type | 128 | `export type CapturePhase = "closed" \| "editing" \| "submitting" \| "uncertain" \| "resting"` | `entries/capture.ts` | — |
+| `DraftClock` | interface | 138 | `export interface DraftClock` | `entries/capture.ts` | — |
+| `DraftRecord` | interface | 145 | `export interface DraftRecord` | `entries/capture.ts`<br>`entries/local-state.ts` | — |
+| `CaptureReceipt` | interface | 179 | `export interface CaptureReceipt` | `entries/capture.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts` | `tests/capture.test.ts` |
+| `wholeSeconds` | function | 199 | `export function wholeSeconds(ms: number): number` | `core/insert.ts`<br>`entries/capture.ts`<br>`entries/session.ts` | — |
+| `freshReceiptId` | function | 204 | `export function freshReceiptId(): string` | `entries/engine.ts` | — |
+| `captureBeginningAt` | function | 217 | `export function captureBeginningAt(at: number): CaptureBeginning` | `entries/capture.ts` | `tests/capture.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `idleClock` | function | 228 | `export function idleClock(): DraftClock` | `entries/capture.ts` | — |
+| `elapsedOf` | function | 233 | `export function elapsedOf(clock: DraftClock, now: number): number` | `entries/capture.ts` | — |
+| `shownOf` | function | 239 | `export function shownOf(clock: DraftClock, now: number): number` | `entries/capture.ts` | — |
+| `resumeClock` | function | 250 | `export function resumeClock(clock: DraftClock, at: number): DraftClock` | `entries/capture.ts` | — |
+| `pauseClock` | function | 263 | `export function pauseClock(clock: DraftClock): DraftClock` | `entries/capture.ts` | — |
+| `commitShown` | function | 269 | `export function commitShown(clock: DraftClock, ms: number): DraftClock` | `entries/capture.ts` | — |
+| `proseOf` | function | 275 | `export function proseOf(index: EntryIndex, entry: Entry): string` | `entries/engine.ts` | — |
+| `rootEntryOf` | function | 287 | `export function rootEntryOf(index: EntryIndex, entry: Entry): Entry` | `entries/capture.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
+| `thoughtRefOf` | function | 298 | `export function thoughtRefOf(index: EntryIndex, entry: Entry, path: string): ThoughtRef` | `entries/capture.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | `tests/capture.test.ts`<br>`tests/entry-plans.test.ts` |
+| `resolveThought` | function | 319 | `export function resolveThought(index: EntryIndex, ref: ThoughtRef): Entry \| null` | `core/insert.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/capture.test.ts` |
+| `excerptOf` | function | 329 | `export function excerptOf(prose: string, words = 6): string` | — | — |
+| `ThreadNode` | interface | 341 | `export interface ThreadNode` | — | — |
+| `ThreadView` | interface | 364 | `export interface ThreadView` | `ui/composer.ts` | `tests/composer.test.ts` |
+| `ThreadMove` | type | 375 | `export type ThreadMove = "previous" \| "next" \| "parent" \| "child"` | `ui/composer.ts` | — |
+| `threadViewOf` | function | 384 | `export function threadViewOf( index: EntryIndex, path: string, target: ThoughtRef \| null ): ThreadView \| null` | `main.ts` | — |
+| `moveThreadSelection` | function | 452 | `export function moveThreadSelection(view: ThreadView, direction: ThreadMove): ThoughtRef \| null` | `ui/composer.ts` | — |
+| `branchLabel` | function | 475 | `export function branchLabel(parent: ThoughtRef): string` | — | `tests/capture.test.ts` |
+| `openingLabel` | function | 482 | `export function openingLabel(portal: PortalInstant): string` | — | — |
 
 #### `src/core/clock.ts`
 
@@ -705,8 +903,8 @@ Pads a clock component to two digits.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `pad2` | function | 2 | `export function pad2(value: number): string` | `core/alignments.ts`<br>`core/day.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`main.ts`<br>`ui/navigator.ts`<br>`ui/portal.ts` | `tests/clock.test.ts` |
-| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/portal.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `pad2` | function | 2 | `export function pad2(value: number): string` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/day.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`ui/composer.ts`<br>`ui/invitation.ts`<br>`ui/navigator.ts`<br>`ui/portal.ts` | `tests/clock.test.ts` |
+| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/capture.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/close.ts`
 
@@ -732,7 +930,35 @@ Colour is a pure function of the dimension number.
 | `hexToOklab` | function | 44 | `export function hexToOklab(hex: string): [number, number, number]` | — | `tests/color.test.ts` |
 | `oklabToHex` | function | 71 | `export function oklabToHex(L: number, a: number, b: number): string` | — | `tests/color.test.ts` |
 | `dimensionColor` | function | 108 | `export function dimensionColor(d: number): string` | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts` | `tests/color.test.ts` |
-| `dimensionColorVars` | function | 119 | `export function dimensionColorVars(d: number): string` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/navigator.ts` | `tests/color.test.ts` |
+| `dimensionColorVars` | function | 119 | `export function dimensionColorVars(d: number): string` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | `tests/color.test.ts` |
+
+#### `src/core/contexts.ts`
+
+The destinations Weaver may weave into, and the way back from a path.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `MAIN_CONTEXT_ID` | const | 28 | `export const MAIN_CONTEXT_ID = "main"` | `entries/capture.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
+| `MAIN_CONTEXT_NAME` | const | 31 | `export const MAIN_CONTEXT_NAME = "Main"` | — | — |
+| `WeavingContext` | interface | 34 | `export interface WeavingContext` | `editor/entry-decorations.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/daily-log.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/daily-log.test.ts` |
+| `ContextDay` | interface | 46 | `export interface ContextDay` | — | — |
+| `ContextError` | interface | 55 | `export interface ContextError` | `entries/day-note.ts`<br>`settings-tab.ts` | — |
+| `ContextRow` | interface | 62 | `export interface ContextRow` | — | — |
+| `ContextRead` | interface | 69 | `export interface ContextRead` | — | — |
+| `DayTemplate` | interface | 77 | `export interface DayTemplate` | — | — |
+| `DayToken` | type | 89 | `export type DayToken = "YYYY" \| "MM" \| "DD"` | — | — |
+| `parseDayTemplate` | function | 139 | `export function parseDayTemplate( folder: string, format: string ):` | `entries/daily-log.ts` | `tests/contexts.test.ts` |
+| `templateNamesADay` | function | 173 | `export function templateNamesADay(template: DayTemplate): boolean` | `entries/daily-log.ts` | — |
+| `contextDayForPath` | function | 238 | `export function contextDayForPath( path: string, contexts: readonly WeavingContext[] ): ContextDay \| null` | `entries/capture.ts`<br>`entries/daily-log.ts`<br>`entries/engine.ts` | `tests/contexts.test.ts` |
+| `contextDayPath` | function | 267 | `export function contextDayPath(context: WeavingContext, day: string): string` | `entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`ui/navigator.ts` | `tests/contexts.test.ts` |
+| `mainContext` | function | 272 | `export function mainContext(options: DayNoteOptions): WeavingContext` | — | `tests/capture.test.ts`<br>`tests/composer.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts` |
+| `effectiveContexts` | function | 277 | `export function effectiveContexts( options: DayNoteOptions, additional: readonly WeavingContext[] ): WeavingContext[]` | `entries/day-note.ts` | `tests/contexts.test.ts` |
+| `contextById` | function | 291 | `export function contextById( contexts: readonly WeavingContext[], id: string ): WeavingContext \| null` | `entries/day-note.ts` | — |
+| `freshContextId` | function | 299 | `export function freshContextId(): string` | `settings-tab.ts` | — |
+| `readContexts` | function | 361 | `export function readContexts(value: unknown, main?: DayNoteOptions): ContextRead` | `entries/day-note.ts`<br>`settings-tab.ts`<br>`settings.ts` | `tests/contexts.test.ts` |
+| `contextDraftError` | function | 422 | `export function contextDraftError(folder: string, format: string): string \| null` | `settings-tab.ts` | `tests/contexts.test.ts` |
+| `sourceDayOf` | function | 439 | `export function sourceDayOf(path: string, contexts: readonly WeavingContext[]): string \| null` | `main.ts` | `tests/contexts.test.ts` |
+| `entryDayLinkTarget` | function | 459 | `export function entryDayLinkTarget( day: string \| null, sourcePath: string, contexts: readonly WeavingContext[] ): string \| null` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/contexts.test.ts` |
 
 #### `src/core/day-stats.ts`
 
@@ -751,12 +977,12 @@ The day's name, and nothing else.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `DayNoteOptions` | interface | 19 | `export interface DayNoteOptions` | `entries/day-note.ts` | — |
-| `dayKey` | function | 25 | `export function dayKey(now: Date): string` | `core/insert.ts`<br>`core/portals.ts`<br>`entries/day-note.ts`<br>`main.ts` | `tests/day-note.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/portal-controller.test.ts` |
-| `dayNotePath` | function | 30 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | `entries/day-note.ts` | `tests/day-note.test.ts`<br>`tests/reading-portals.test.ts`<br>`tests/start-entry.test.ts` |
-| `dayKeyFromName` | function | 43 | `export function dayKeyFromName(basename: string): string \| null` | `entries/engine.ts` | `tests/day-note.test.ts` |
-| `entryDayLinkTarget` | function | 55 | `export function entryDayLinkTarget(day: string \| null, basename: string): string \| null` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/day-note.test.ts` |
-| `dayFrontmatter` | function | 62 | `export function dayFrontmatter(day: string): string` | `entries/day-note.ts` | `tests/day-note.test.ts` |
+| `DayNoteOptions` | interface | 18 | `export interface DayNoteOptions` | `core/contexts.ts`<br>`entries/day-note.ts` | — |
+| `dayKey` | function | 24 | `export function dayKey(now: Date): string` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/day-note.test.ts`<br>`tests/entry-plans.test.ts` |
+| `dayNotePathFor` | function | 36 | `export function dayNotePathFor(day: string, options: DayNoteOptions): string` | `core/contexts.ts` | `tests/day-note.test.ts` |
+| `dayNotePath` | function | 46 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | — | `tests/day-note.test.ts`<br>`tests/start-entry.test.ts` |
+| `dayKeyFromName` | function | 54 | `export function dayKeyFromName(basename: string): string \| null` | `core/contexts.ts`<br>`entries/daily-log.ts`<br>`entries/engine.ts` | `tests/day-note.test.ts` |
+| `dayFrontmatter` | function | 61 | `export function dayFrontmatter(day: string): string` | `entries/day-note.ts` | `tests/day-note.test.ts` |
 
 #### `src/core/document.ts`
 
@@ -778,7 +1004,7 @@ The clock row of an entry, and the clocks it is written with.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DurationSigil` | type | 30 | `export type DurationSigil = "+" \| "-" \| "="` | `core/entries.ts`<br>`core/insert.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/engine.ts` | — |
-| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/portal.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/capture.ts`<br>`core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 | `formatDurationLine` | function | 41 | `export function formatDurationLine(sigil: DurationSigil, ms: number): string` | `core/insert.ts` | — |
 | `ClockRow` | interface | 56 | `export interface ClockRow` | `reading/entry-processor.ts` | — |
 | `parseClockRow` | function | 98 | `export function parseClockRow(text: string): ClockRow \| null` | `core/entries.ts`<br>`core/insert.ts`<br>`reading/entry-processor.ts` | `tests/duration.test.ts` |
@@ -790,20 +1016,20 @@ The entry: the unit a day note is made of.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `Entry` | interface | 36 | `export interface Entry` | `core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/navigator.test.ts`<br>`tests/settings-tab.test.ts` |
-| `EntryIndex` | interface | 85 | `export interface EntryIndex` | `core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`ui/navigator.ts` | — |
+| `Entry` | interface | 36 | `export interface Entry` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/settings-tab.test.ts` |
+| `EntryIndex` | interface | 85 | `export interface EntryIndex` | `core/capture.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/capture.test.ts` |
 | `MarkerPrefix` | interface | 113 | `export interface MarkerPrefix` | — | — |
 | `parseMarkerPrefix` | function | 128 | `export function parseMarkerPrefix(text: string): MarkerPrefix \| null` | `reading/entry-processor.ts` | — |
-| `parseEntries` | function | 166 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/navigator.ts` | `tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
+| `parseEntries` | function | 166 | `export function parseEntries(source: string): EntryIndex` | `core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-field.ts`<br>`editor/entry-keys.ts`<br>`entries/capture.ts`<br>`entries/daily-log.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/navigator.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/capture.test.ts`<br>`tests/color.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/entries.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/record-format.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/whisper.test.ts`<br>`tests/writer.test.ts` |
 | `findEntryAtLine` | function | 344 | `export function findEntryAtLine(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
 | `findEntryAtOffset` | function | 353 | `export function findEntryAtOffset(index: EntryIndex, offset: number): Entry \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
-| `findCurrentEntry` | function | 361 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | `ui/navigator.ts` | `tests/entries.test.ts` |
-| `entryBySeq` | function | 371 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `core/portal-history.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
-| `childrenOf` | function | 379 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `core/insert.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
+| `findCurrentEntry` | function | 361 | `export function findCurrentEntry(index: EntryIndex, line: number): Entry \| null` | — | `tests/entries.test.ts` |
+| `entryBySeq` | function | 371 | `export function entryBySeq(index: EntryIndex, n: number): Entry \| null` | `core/insert.ts`<br>`core/portal-history.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/entries.test.ts` |
+| `childrenOf` | function | 379 | `export function childrenOf(index: EntryIndex, entry: Entry \| null): Entry[]` | `core/insert.ts` | `tests/entries.test.ts` |
 | `endOfSubtree` | function | 385 | `export function endOfSubtree(index: EntryIndex, entry: Entry): number` | `core/insert.ts` | — |
-| `nextSeq` | function | 390 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
+| `nextSeq` | function | 390 | `export function nextSeq(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
 | `nextBranch` | function | 395 | `export function nextBranch(index: EntryIndex): number` | `core/insert.ts` | `tests/entries.test.ts` |
-| `formatMarker` | function | 400 | `export function formatMarker(b: number, d: number, n: number): string` | `core/insert.ts`<br>`entries/engine.ts` | `tests/entries.test.ts` |
+| `formatMarker` | function | 400 | `export function formatMarker(b: number, d: number, n: number): string` | `core/capture.ts`<br>`core/insert.ts`<br>`entries/engine.ts`<br>`ui/composer.ts` | `tests/entries.test.ts` |
 | `repairBranches` | function | 411 | `export function repairBranches(index: EntryIndex): TextChange[]` | `core/insert.ts` | `tests/entries.test.ts` |
 
 #### `src/core/frame.ts`
@@ -813,17 +1039,19 @@ The frame around one entry: a box, and nothing else.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `frameLabelInset` | function | 25 | `export function frameLabelInset(fontSize: number): number` | `editor/entry-frame.ts` | — |
-| `FrameColumn` | interface | 30 | `export interface FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `FrameColumn` | interface | 30 | `export interface FrameColumn` | — | `tests/frame.test.ts` |
 | `FrameColumnInput` | interface | 36 | `export interface FrameColumnInput` | — | — |
 | `frameColumn` | function | 55 | `export function frameColumn(input: FrameColumnInput): FrameColumn` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
 | `FrameBoxInput` | interface | 63 | `export interface FrameBoxInput` | — | — |
 | `FrameBox` | interface | 72 | `export interface FrameBox` | — | — |
 | `frameBox` | function | 85 | `export function frameBox(input: FrameBoxInput): FrameBox` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `TrayFrame` | interface | 98 | `export interface TrayFrame` | — | — |
-| `trayFrame` | function | 110 | `export function trayFrame(input:` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `FrameSpanInput` | interface | 126 | `export interface FrameSpanInput` | — | — |
-| `FrameSpan` | interface | 138 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
-| `frameSpan` | function | 159 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
+| `ComposerBox` | interface | 92 | `export interface ComposerBox` | `ui/composer.ts` | — |
+| `ComposerBoxInput` | interface | 103 | `export interface ComposerBoxInput` | — | — |
+| `composerHeightShare` | function | 123 | `export function composerHeightShare(phone: boolean): number` | `ui/composer.ts` | — |
+| `floatingComposerBox` | function | 148 | `export function floatingComposerBox(input: ComposerBoxInput): ComposerBox` | `ui/composer.ts` | `tests/frame.test.ts` |
+| `FrameSpanInput` | interface | 194 | `export interface FrameSpanInput` | — | — |
+| `FrameSpan` | interface | 206 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
+| `frameSpan` | function | 227 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -831,31 +1059,38 @@ The plans that write entry text, and the arithmetic every plan shares.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `TextChange` | interface | 40 | `export interface TextChange` | `core/entries.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | — |
-| `InsertPlan` | interface | 47 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `planAppendLine` | function | 71 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
-| `planStartEntry` | function | 106 | `export function planStartEntry(source: string, index: EntryIndex): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planChildEntry` | function | 131 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planEntryBeginning` | function | 190 | `export function planEntryBeginning( _source: string, index: EntryIndex, entry: Entry, beganAt: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planPortalEntry` | function | 262 | `export function planPortalEntry( source: string, index: EntryIndex, portal: PortalInstant, beganAt: Date, text: string ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/writer.test.ts` |
-| `planDeleteEntry` | function | 347 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDuration` | function | 410 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planWhisper` | function | 455 | `export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planThread` | function | 484 | `export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan \| null` | `entries/engine.ts` | — |
-| `offsetToLineCh` | function | 507 | `export function offsetToLineCh(source: string, offset: number):` | `entries/engine.ts` | — |
-| `cmChanges` | function | 520 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `applyPlanToSource` | function | 527 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
+| `TextChange` | interface | 41 | `export interface TextChange` | `core/entries.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | — |
+| `InsertPlan` | interface | 48 | `export interface InsertPlan` | `core/close.ts`<br>`entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `planAppendLine` | function | 72 | `export function planAppendLine(source: string, text: string, caret: number = text.length): InsertPlan` | `core/close.ts` | — |
+| `planChildEntry` | function | 112 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planEntryBeginning` | function | 178 | `export function planEntryBeginning( _source: string, index: EntryIndex, entry: Entry, beganAt: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planCaptureEntry` | function | 255 | `export function planCaptureEntry( source: string, index: EntryIndex, request: CaptureRequest ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planDeleteEntry` | function | 350 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDuration` | function | 413 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planWhisper` | function | 458 | `export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planThread` | function | 487 | `export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan \| null` | `entries/engine.ts` | — |
+| `offsetToLineCh` | function | 510 | `export function offsetToLineCh(source: string, offset: number):` | — | — |
+| `cmChanges` | function | 523 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `applyPlanToSource` | function | 530 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
 
-#### `src/core/navigator-stack.ts`
+#### `src/core/navigation.ts`
 
-The return stack: where a jump came from.
+Where you have been: a real history, with a cursor, not a stack that eats itself.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `Stop` | interface | 11 | `export interface Stop` | `entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | `tests/navigator-stack.test.ts`<br>`tests/navigator.test.ts` |
-| `STACK_LIMIT` | const | 19 | `export const STACK_LIMIT = 8` | — | `tests/navigator-stack.test.ts` |
-| `pushStop` | function | 27 | `export function pushStop(stops: readonly Stop[], stop: Stop, limit = STACK_LIMIT): Stop[]` | `entries/engine.ts` | `tests/navigator-stack.test.ts` |
-| `popStop` | function | 36 | `export function popStop(stops: readonly Stop[]):` | `ui/navigator.ts` | `tests/navigator-stack.test.ts` |
+| `NoteStop` | interface | 27 | `export interface NoteStop` | `entries/engine.ts` | `tests/navigation.test.ts` |
+| `WorkspaceStop` | interface | 53 | `export interface WorkspaceStop` | — | `tests/navigation.test.ts` |
+| `Stop` | type | 66 | `export type Stop = NoteStop \| WorkspaceStop` | `main.ts` | `tests/navigation.test.ts` |
+| `NavigationHistory` | interface | 69 | `export interface NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
+| `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
+| `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
+| `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/daily-log.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/portals.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | `tests/alignments.test.ts`<br>`tests/capture.test.ts`<br>`tests/composer.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/navigation.test.ts`<br>`tests/navigator.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/writer.test.ts` |
+| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/daily-log.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | `tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/daily-log.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/navigation.test.ts`<br>`tests/navigator.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/navigator.test.ts`<br>`tests/plugin.test.ts` |
+| `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
+| `canGoForward` | function | 129 | `export function canGoForward(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
+| `sameStop` | function | 140 | `export function sameStop(left: Stop, right: Stop): boolean` | — | `tests/navigation.test.ts` |
 
 #### `src/core/portal-history.ts`
 
@@ -863,24 +1098,50 @@ The day's portal history, as rows a surface can list.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `RecordedPortalHistoryRow` | interface | 123 | `export interface RecordedPortalHistoryRow` | — | — |
-| `OpeningPortalHistoryRow` | interface | 136 | `export interface OpeningPortalHistoryRow` | — | — |
-| `PortalHistoryRow` | type | 145 | `export type PortalHistoryRow = RecordedPortalHistoryRow \| OpeningPortalHistoryRow` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
-| `PortalHistory` | type | 148 | `export type PortalHistory = \|` | — | — |
-| `linkedPortalEntry` | function | 161 | `export function linkedPortalEntry(record: AlignmentRecord, index: EntryIndex): Entry \| null` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
-| `portalHistoryRows` | function | 252 | `export function portalHistoryRows( source: string, now: number, showAll: boolean ): PortalHistory` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
+| `RecordedPortalHistoryRow` | interface | 108 | `export interface RecordedPortalHistoryRow` | — | — |
+| `PortalHistoryRow` | type | 121 | `export type PortalHistoryRow = RecordedPortalHistoryRow` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
+| `PortalHistory` | type | 124 | `export type PortalHistory = \|` | — | — |
+| `linkedPortalEntry` | function | 137 | `export function linkedPortalEntry(record: AlignmentRecord, index: EntryIndex): Entry \| null` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
+| `portalHistoryRows` | function | 160 | `export function portalHistoryRows(source: string): PortalHistory` | `ui/navigator.ts` | `tests/portal-history.test.ts` |
 
 #### `src/core/portals.ts`
 
-Local openings are epoch instants, so daylight-saving gaps and repeats stay real.
+Invitations: when Weaver may offer to weave, and which offer is outstanding.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `PortalInstant` | interface | 5 | `export interface PortalInstant` | `core/insert.ts`<br>`core/portal-history.ts`<br>`editor/portal-widget.ts`<br>`entries/portals.ts`<br>`reading/portals.ts`<br>`ui/portal.ts` | `tests/entry-plans.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-surface.test.ts` |
-| `AlignmentKind` | type | 15 | `export type AlignmentKind = "boundary" \| "hour-echo" \| "minute-echo"` | `core/portal-history.ts` | — |
-| `portalInstants` | function | 18 | `export function portalInstants(fromMs: number, toMs: number): PortalInstant[]` | `core/portal-history.ts`<br>`entries/portals.ts` | `tests/entry-plans.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/writer.test.ts` |
-| `portalAlignments` | function | 33 | `export function portalAlignments(portal: PortalInstant, beganAt: number): readonly AlignmentKind[]` | `core/portal-history.ts`<br>`entries/engine.ts` | `tests/portals.test.ts` |
-| `portalPhase` | function | 43 | `export function portalPhase(portal: PortalInstant, now: number, held: boolean): "approaching" \| "open" \| "held" \| "expired"` | `core/portal-history.ts`<br>`editor/portal-widget.ts`<br>`entries/engine.ts`<br>`entries/portals.ts` | `tests/portals.test.ts` |
+| `PortalInstant` | interface | 29 | `export interface PortalInstant` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`entries/local-state.ts`<br>`entries/portals.ts` | `tests/entry-plans.test.ts` |
+| `AlignmentKind` | type | 39 | `export type AlignmentKind = "boundary" \| "hour-echo" \| "minute-echo"` | `core/portal-history.ts` | — |
+| `RHYTHM_SCHEDULE_ID` | const | 42 | `export const RHYTHM_SCHEDULE_ID = "rhythm"` | `entries/portals.ts` | — |
+| `DEFAULT_LEAD_MINUTES` | const | 45 | `export const DEFAULT_LEAD_MINUTES = 11` | `entries/portals.ts` | — |
+| `PortalWhen` | type | 54 | `export type PortalWhen = /** Every hour at `minute`, on the device's current local wall clock. */ \|` | — | — |
+| `PortalSchedule` | interface | 63 | `export interface PortalSchedule` | `entries/portals.ts` | `tests/portal-controller.test.ts`<br>`tests/portals.test.ts` |
+| `PortalSource` | interface | 84 | `export interface PortalSource` | `entries/portals.ts` | `tests/portals.test.ts` |
+| `PortalOccurrence` | interface | 96 | `export interface PortalOccurrence` | `entries/portals.ts`<br>`ui/invitation.ts`<br>`ui/navigator.ts` | — |
+| `PortalPhase` | type | 106 | `export type PortalPhase = "approaching" \| "available" \| "expired"` | `entries/portals.ts` | — |
+| `OPENING_WINDOW_MS` | const | 109 | `export const OPENING_WINDOW_MS = 60_000` | `entries/portals.ts`<br>`main.ts` | — |
+| `PortalScheduleError` | interface | 112 | `export interface PortalScheduleError` | — | — |
+| `PortalScheduleRead` | interface | 118 | `export interface PortalScheduleRead` | — | — |
+| `portalAt` | function | 160 | `export function portalAt(opensAt: number): PortalInstant` | — | `tests/entry-plans.test.ts`<br>`tests/portals.test.ts`<br>`tests/writer.test.ts` |
+| `occurrencesBetween` | function | 205 | `export function occurrencesBetween( when: PortalWhen, from: number, to: number ): PortalInstant[]` | — | `tests/portals.test.ts` |
+| `rhythmOccurrences` | function | 246 | `export function rhythmOccurrences(from: number, to: number): PortalInstant[]` | — | `tests/portals.test.ts` |
+| `portalTime` | function | 265 | `export function portalTime(portal: PortalInstant): string` | `main.ts` | — |
+| `portalContainsBeginning` | function | 278 | `export function portalContainsBeginning(portal: PortalInstant, beganAt: number): boolean` | `core/insert.ts`<br>`entries/local-state.ts`<br>`entries/portals.ts` | `tests/portals.test.ts` |
+| `portalPhase` | function | 291 | `export function portalPhase(portal: PortalInstant, now: number): PortalPhase` | `entries/portals.ts` | `tests/portals.test.ts` |
+| `portalAlignments` | function | 297 | `export function portalAlignments(portal: PortalInstant, beganAt: number): readonly AlignmentKind[]` | `core/portal-history.ts`<br>`main.ts` | `tests/portals.test.ts` |
+| `sourceOccurrences` | function | 318 | `export function sourceOccurrences(source: PortalSource, from: number, to: number): PortalInstant[]` | `entries/portals.ts` | `tests/portals.test.ts` |
+| `dueOpening` | function | 335 | `export function dueOpening( source: PortalSource, now: number, activatedAt: number, acknowledgedThrough: number \| null ): PortalInstant \| null` | `entries/portals.ts` | `tests/portals.test.ts` |
+| `nextOpening` | function | 352 | `export function nextOpening(source: PortalSource, now: number): PortalInstant \| null` | `entries/portals.ts` | `tests/portals.test.ts` |
+| `scheduleKey` | function | 359 | `export function scheduleKey(schedule: PortalSchedule): string` | — | — |
+| `readPortalSchedules` | function | 483 | `export function readPortalSchedules(value: unknown): PortalScheduleRead` | `main.ts`<br>`settings-tab.ts` | `tests/portals.test.ts` |
+
+#### `src/core/value.ts`
+
+The one shape guard for values that arrive as `unknown`.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `isPlainObject` | function | 12 | `export function isPlainObject(value: unknown): value is Record<string, unknown>` | `core/contexts.ts`<br>`core/portals.ts`<br>`entries/local-state.ts`<br>`settings.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | — |
 
 #### `src/core/whisper.ts`
 
@@ -923,7 +1184,7 @@ The digit writer shared by every drawn clock.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `writeClockText` | function | 12 | `export function writeClockText(digits: readonly HTMLElement[], clock: string): void` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/portal.ts` | — |
+| `writeClockText` | function | 12 | `export function writeClockText(digits: readonly HTMLElement[], clock: string): void` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
 | `writeDigits` | function | 20 | `export function writeDigits(digits: readonly HTMLElement[], ms: number): void` | `editor/stopwatch-widget.ts` | — |
 
 #### `src/editor/editor-path.ts`
@@ -932,7 +1193,7 @@ The file a live editor view is showing, or null when it is not a note.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `editorPathOf` | function | 7 | `export function editorPathOf(view: EditorView): string \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
+| `editorPathOf` | function | 7 | `export function editorPathOf(view: EditorView): string \| null` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | — |
 
 #### `src/editor/entry-decorations.ts`
 
@@ -940,8 +1201,8 @@ The entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `entryDecorationSet` | function | 129 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, openDayLink?: OpenDayLink ): DecorationSet` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 277 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, openDayLink?: OpenDayLink ): Extension` | `main.ts` | `tests/stopped-clock-render.test.ts` |
+| `entryDecorationSet` | function | 125 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, contexts: readonly WeavingContext[], openDayLink?: OpenDayLink ):...` | — | `tests/entry-decorations.test.ts` |
+| `entryDecorationsExtension` | function | 285 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, getContexts: () => readonly WeavingContext[], openD...` | `main.ts` | `tests/stopped-clock-render.test.ts` |
 
 #### `src/editor/entry-field.ts`
 
@@ -950,7 +1211,7 @@ The entry index as editor state: one parse per document change, shared by the
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `refreshEntriesEffect` | const | 11 | `export const refreshEntriesEffect = StateEffect.define<void>()` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/entry-field.test.ts` |
-| `programmaticWrite` | const | 22 | `export const programmaticWrite = Annotation.define<boolean>()` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`ui/navigator.ts` | — |
+| `programmaticWrite` | const | 22 | `export const programmaticWrite = Annotation.define<boolean>()` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | — |
 | `InputObservation` | interface | 33 | `export interface InputObservation` | `editor/entry-keys.ts`<br>`entries/engine.ts` | — |
 | `capturedInput` | const | 44 | `export const capturedInput = Annotation.define<InputObservation>()` | `editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts` |
 | `entryIndexField` | const | 47 | `export const entryIndexField = StateField.define<EntryIndex>(` | `editor/close-decorations.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/engine.ts` | `tests/close-decorations.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-field.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/plugin.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts` |
@@ -962,9 +1223,9 @@ The frame around every entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `FrameHost` | interface | 57 | `export interface FrameHost` | — | — |
-| `remeasureFrames` | function | 165 | `export function remeasureFrames(view: EditorView): void` | `editor/portal-widget.ts` | — |
-| `entryFrameExtension` | function | 474 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
+| `FrameHost` | interface | 50 | `export interface FrameHost` | — | — |
+| `remeasureFrames` | function | 158 | `export function remeasureFrames(view: EditorView): void` | — | — |
+| `entryFrameExtension` | function | 402 | `export function entryFrameExtension(host: FrameHost): Extension` | `main.ts` | — |
 
 #### `src/editor/entry-keys.ts`
 
@@ -972,21 +1233,21 @@ The two keys an entry owns, and the two edit events that keep the stopwatch
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `ENTRY_KEYS` | const | 49 | `export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const` | `main.ts` | `tests/entry-keys.test.ts` |
-| `EntryKeyHost` | interface | 52 | `export interface EntryKeyHost` | — | `tests/entry-keys.test.ts` |
-| `EntryEditHost` | interface | 71 | `export interface EntryEditHost extends EntryKeyHost` | — | `tests/entry-keys.test.ts` |
-| `enterableEntry` | function | 94 | `export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry \| null` | — | `tests/entry-keys.test.ts` |
-| `handleEnterKey` | function | 102 | `export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
-| `handleStartKey` | function | 117 | `export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
-| `shouldPinStopwatch` | function | 127 | `export function shouldPinStopwatch(input:` | — | `tests/entry-keys.test.ts` |
-| `maybePinStopwatch` | function | 137 | `export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean` | — | — |
-| `entryKeysExtension` | function | 171 | `export function entryKeysExtension(host: EntryKeyHost): Extension` | `main.ts` | — |
-| `inputObservation` | function | 194 | `export function inputObservation( transactions: readonly Transaction[], context:` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts` |
-| `compositionCommit` | function | 239 | `export function compositionCommit(host: Pick<EntryEditHost, "entries">):` | — | `tests/entry-keys.test.ts` |
-| `replacedDocument` | function | 317 | `export function replacedDocument(transactions: readonly Transaction[]): boolean` | — | `tests/entry-keys.test.ts` |
-| `PendingInput` | interface | 335 | `export interface PendingInput` | — | — |
-| `InputLedger` | class | 350 | `export class InputLedger` | — | `tests/entry-keys.test.ts` |
-| `entryEditExtension` | function | 374 | `export function entryEditExtension(host: EntryEditHost): Extension` | `main.ts` | `tests/entry-keys.test.ts` |
+| `ENTRY_KEYS` | const | 50 | `export const ENTRY_KEYS = ["Mod-Shift-Enter", "Enter"] as const` | — | `tests/entry-keys.test.ts` |
+| `EntryKeyHost` | interface | 53 | `export interface EntryKeyHost` | — | `tests/entry-keys.test.ts` |
+| `EntryEditHost` | interface | 73 | `export interface EntryEditHost extends EntryKeyHost` | — | `tests/entry-keys.test.ts` |
+| `enterableEntry` | function | 96 | `export function enterableEntry(view: EditorView, _host: EntryKeyHost): Entry \| null` | — | `tests/entry-keys.test.ts` |
+| `handleEnterKey` | function | 104 | `export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
+| `handleStartKey` | function | 120 | `export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean` | — | `tests/entry-keys.test.ts` |
+| `shouldPinStopwatch` | function | 130 | `export function shouldPinStopwatch(input:` | — | `tests/entry-keys.test.ts` |
+| `maybePinStopwatch` | function | 140 | `export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone = isPhone()): boolean` | — | — |
+| `entryKeysExtension` | function | 174 | `export function entryKeysExtension(host: EntryKeyHost): Extension` | `main.ts` | — |
+| `inputObservation` | function | 197 | `export function inputObservation( transactions: readonly Transaction[], context:` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts` |
+| `compositionCommit` | function | 242 | `export function compositionCommit(host: Pick<EntryEditHost, "entries">):` | — | `tests/entry-keys.test.ts` |
+| `replacedDocument` | function | 320 | `export function replacedDocument(transactions: readonly Transaction[]): boolean` | — | `tests/entry-keys.test.ts` |
+| `PendingInput` | interface | 338 | `export interface PendingInput` | — | — |
+| `InputLedger` | class | 353 | `export class InputLedger` | — | `tests/entry-keys.test.ts` |
+| `entryEditExtension` | function | 377 | `export function entryEditExtension(host: EntryEditHost): Extension` | `main.ts` | `tests/entry-keys.test.ts` |
 
 #### `src/editor/frame-effects.ts`
 
@@ -998,18 +1259,6 @@ What a drawn frame can be doing, and which single effect shows it.
 | `FrameEffect` | interface | 26 | `export interface FrameEffect` | — | — |
 | `FRAME_EFFECTS` | const | 52 | `export const FRAME_EFFECTS: readonly FrameEffect[] = [` | `editor/entry-frame.ts` | `tests/frame-effects.test.ts` |
 | `frameEffect` | function | 76 | `export function frameEffect(activity: FrameActivity): FrameEffect \| null` | `editor/entry-frame.ts` | `tests/frame-effects.test.ts` |
-
-#### `src/editor/portal-widget.ts`
-
-Pending portals in Live Preview: one block tray at the end of today's note.
-
-| symbol | kind | line | signature | used by | tested by |
-| --- | --- | --- | --- | --- | --- |
-| `PortalWidgetHost` | interface | 54 | `export interface PortalWidgetHost` | — | `tests/portal-widget.test.ts` |
-| `PortalTray` | class | 105 | `export class PortalTray` | — | `tests/portal-widget.test.ts` |
-| `portalExtension` | function | 447 | `export function portalExtension(host: PortalWidgetHost): Extension` | `main.ts` | — |
-| `focusPortal` | function | 487 | `export function focusPortal(view: EditorView, id: string): boolean` | `entries/engine.ts` | `tests/portal-widget.test.ts` |
-| `trayDecorations` | function | 497 | `export function trayDecorations(host: PortalWidgetHost, state: EditorState): DecorationSet` | — | `tests/portal-widget.test.ts` |
 
 #### `src/editor/stopwatch-widget.ts`
 
@@ -1027,12 +1276,25 @@ The live editor views, in one place.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
-| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/navigator.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/navigator.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `viewRegistryExtension` | const | 25 | `export const viewRegistryExtension = ViewPlugin.fromClass( class` | `main.ts` | — |
-| `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
+| `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/navigator.ts` | — |
 | `findEditorViewForFile` | function | 43 | `export function findEditorViewForFile(file: TFile): EditorView \| null` | `entries/engine.ts`<br>`entries/writer.ts` | — |
-| `findActiveEditorView` | function | 57 | `export function findActiveEditorView(app: App): EditorView \| null` | `entries/engine.ts` | — |
+| `findActiveEditorView` | function | 57 | `export function findActiveEditorView(app: App): EditorView \| null` | `entries/engine.ts`<br>`ui/navigator.ts` | — |
+
+#### `src/entries/capture.ts`
+
+The one floating draft, and everything that may happen to it.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `CaptureRecord` | interface | 61 | `export interface CaptureRecord` | `entries/local-state.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
+| `CaptureStore` | interface | 75 | `export interface CaptureStore` | `entries/local-state.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
+| `CaptureHost` | interface | 85 | `export interface CaptureHost` | `main.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
+| `SavedThought` | type | 119 | `export type SavedThought =` | — | — |
+| `CAPTURE_BUSY` | const | 122 | `export const CAPTURE_BUSY = "A draft is already open; it was kept."` | — | — |
+| `CaptureController` | class | 139 | `export class CaptureController` | `main.ts`<br>`ui/composer.ts` | `tests/capture.test.ts`<br>`tests/composer.test.ts` |
 
 #### `src/entries/clock.ts`
 
@@ -1042,17 +1304,43 @@ The one clock a running stopwatch is read through.
 | --- | --- | --- | --- | --- | --- |
 | `ClockSnapshot` | interface | 27 | `export interface ClockSnapshot` | — | — |
 | `ClockListener` | type | 35 | `export type ClockListener = (now: number, durationMs: number) => void` | — | — |
-| `EntryClock` | class | 41 | `export class EntryClock` | `editor/duration-ticker.ts`<br>`editor/entry-decorations.ts`<br>`editor/portal-widget.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`reading/portals.ts` | `tests/entry-clock.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/portal-widget.test.ts`<br>`tests/stopwatch-widget.test.ts` |
+| `EntryClock` | class | 41 | `export class EntryClock` | `editor/duration-ticker.ts`<br>`editor/entry-decorations.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/composer.ts` | `tests/composer.test.ts`<br>`tests/entry-clock.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/stopwatch-widget.test.ts` |
 
-#### `src/entries/day-note.ts`
+#### `src/entries/context-workspaces.ts`
 
-The day plane, resolved against the vault: which file today's note is, and how
+Destination travel: going to a workspace, and coming back to it as you left it.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `dayNoteOptions` | function | 60 | `export function dayNoteOptions(app: App, settings: WeaverSettings): DayNoteOptions` | — | — |
-| `resolveDayNote` | function | 67 | `export function resolveDayNote( app: App, settings: WeaverSettings, now: Date ):` | `entries/engine.ts`<br>`main.ts` | `tests/day-note.test.ts` |
-| `ensureDayNote` | function | 82 | `export async function ensureDayNote(app: App, path: string, now: Date): Promise<TFile>` | `entries/engine.ts` | `tests/day-note.test.ts` |
+| `LayoutApi` | interface | 37 | `export interface LayoutApi` | `main.ts` | `tests/context-workspaces.test.ts` |
+| `WorkspaceHost` | interface | 45 | `export interface WorkspaceHost` | — | `tests/context-workspaces.test.ts` |
+| `layoutKey` | function | 64 | `export function layoutKey(contextId: string, phone = isPhone(), tablet = isTablet()): string` | — | `tests/context-workspaces.test.ts` |
+| `ContextWorkspaces` | class | 76 | `export class ContextWorkspaces` | `main.ts` | `tests/context-workspaces.test.ts` |
+
+#### `src/entries/daily-log.ts`
+
+The day across every destination: one chronology, read and never written.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `DailyRow` | interface | 43 | `export interface DailyRow` | `ui/navigator.ts` | — |
+| `DailyLogError` | interface | 62 | `export interface DailyLogError` | — | — |
+| `DailyLog` | interface | 68 | `export interface DailyLog` | `ui/navigator.ts` | — |
+| `DailyLogPorts` | interface | 79 | `export interface DailyLogPorts` | — | `tests/daily-log.test.ts` |
+| `recognisePath` | function | 94 | `export function recognisePath( path: string, contexts: readonly WeavingContext[] ):` | — | `tests/daily-log.test.ts` |
+| `readDailyLog` | function | 113 | `export async function readDailyLog( ports: DailyLogPorts, contexts: readonly WeavingContext[], day: string ): Promise<DailyLog>` | `ui/navigator.ts` | `tests/daily-log.test.ts` |
+
+#### `src/entries/day-note.ts`
+
+The day plane, resolved against the vault: which file a destination's note for
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `dayNoteOptions` | function | 72 | `export function dayNoteOptions(app: App, settings: WeaverSettings): DayNoteOptions` | `settings-tab.ts` | — |
+| `contextList` | function | 87 | `export function contextList( app: App, settings: WeaverSettings ):` | `main.ts` | `tests/contexts.test.ts`<br>`tests/daily-log.test.ts` |
+| `ResolvedContextDay` | type | 97 | `export type ResolvedContextDay = \|` | — | — |
+| `resolveContextDay` | function | 109 | `export function resolveContextDay( app: App, settings: WeaverSettings, contextId: string, day: string ): ResolvedContextDay` | `entries/engine.ts`<br>`main.ts` | `tests/day-note.test.ts` |
+| `ensureDayNote` | function | 138 | `export async function ensureDayNote(app: App, path: string, day: string): Promise<TFile>` | `entries/engine.ts`<br>`main.ts` | `tests/day-note.test.ts` |
 
 #### `src/entries/engine.ts`
 
@@ -1060,18 +1348,36 @@ The editor path that changes an entry.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `EntryEngine` | class | 112 | `export class EntryEngine` | `main.ts` | — |
+| `EntryEngine` | class | 117 | `export class EntryEngine` | `entries/capture.ts`<br>`main.ts` | — |
 
-#### `src/entries/portals.ts`
+#### `src/entries/local-state.ts`
 
-Portal lifecycle: which openings are showing now, which one is prepared, and
+What this device remembers about Weaver, and nothing that syncs.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `PortalHost` | interface | 37 | `export interface PortalHost` | — | `tests/portal-controller.test.ts`<br>`tests/portal-widget.test.ts` |
-| `PortalStatus` | type | 53 | `export type PortalStatus = "approaching" \| "open" \| "held" \| "expired"` | — | — |
-| `PortalHold` | interface | 56 | `export interface PortalHold` | — | — |
-| `PortalController` | class | 70 | `export class PortalController` | `editor/portal-widget.ts`<br>`main.ts` | `tests/portal-controller.test.ts`<br>`tests/portal-widget.test.ts` |
+| `WORKSPACE_STORAGE_KEY` | const | 29 | `export const WORKSPACE_STORAGE_KEY = "weaver:local-state:v1"` | — | — |
+| `CAPTURE_STORAGE_KEY` | const | 32 | `export const CAPTURE_STORAGE_KEY = "weaver:capture:v1"` | — | — |
+| `LocalStorageIo` | interface | 35 | `export interface LocalStorageIo` | — | — |
+| `PanePosition` | interface | 43 | `export interface PanePosition` | `entries/context-workspaces.ts` | — |
+| `WorkspaceSnapshot` | interface | 60 | `export interface WorkspaceSnapshot` | `entries/context-workspaces.ts`<br>`main.ts` | — |
+| `WorkspaceRecord` | interface | 72 | `export interface WorkspaceRecord` | — | — |
+| `ScheduleRuntime` | interface | 82 | `export interface ScheduleRuntime` | `entries/portals.ts` | — |
+| `LocalStateRecord` | interface | 94 | `export interface LocalStateRecord` | `entries/context-workspaces.ts`<br>`entries/portals.ts` | `tests/context-workspaces.test.ts`<br>`tests/portal-controller.test.ts` |
+| `UnreadableState` | class | 100 | `export class UnreadableState extends Error` | — | — |
+| `readCaptureRecord` | function | 313 | `export function readCaptureRecord(value: unknown): CaptureRecord \| null` | — | `tests/capture.test.ts` |
+| `readWorkspaceRecord` | function | 359 | `export function readWorkspaceRecord(value: unknown): LocalStateRecord` | — | `tests/context-workspaces.test.ts` |
+| `LocalState` | class | 409 | `export class LocalState implements CaptureStore` | `main.ts` | `tests/capture.test.ts` |
+
+#### `src/entries/portals.ts`
+
+The invitation lifecycle: which schedule is offering what, right now.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `PortalHost` | interface | 52 | `export interface PortalHost` | — | `tests/portal-controller.test.ts` |
+| `OfferedInvitation` | interface | 74 | `export interface OfferedInvitation` | `main.ts` | — |
+| `PortalController` | class | 87 | `export class PortalController` | `main.ts` | `tests/portal-controller.test.ts` |
 
 #### `src/entries/session.ts`
 
@@ -1080,7 +1386,7 @@ The live stopwatch: at most one entry is being written at a time.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `ActiveEntry` | interface | 16 | `export interface ActiveEntry` | — | — |
-| `EntrySession` | class | 32 | `export class EntrySession` | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/clock.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/entry-clock.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/navigator.test.ts`<br>`tests/portal-widget.test.ts`<br>`tests/session.test.ts`<br>`tests/stopwatch-widget.test.ts` |
+| `EntrySession` | class | 32 | `export class EntrySession` | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/entry-keys.ts`<br>`entries/clock.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/composer.test.ts`<br>`tests/entry-clock.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-processor.test.ts`<br>`tests/session.test.ts`<br>`tests/stopwatch-widget.test.ts` |
 
 #### `src/entries/writer.ts`
 
@@ -1088,19 +1394,21 @@ The one writer of a day note.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `RewriteResult` | interface | 28 | `export interface RewriteResult` | — | — |
+| `RewriteResult` | interface | 28 | `export interface RewriteResult` | `entries/engine.ts` | — |
 | `Rewrite` | type | 36 | `export type Rewrite = (source: string) => RewriteResult \| null` | `settings.ts` | — |
-| `rewriteDay` | function | 45 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean ): Promise<RewriteResult \| null>` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
-| `planRewrite` | function | 73 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
-| `minimalChange` | function | 86 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `RewriteRefused` | class | 45 | `export class RewriteRefused extends Error` | `entries/engine.ts` | — |
+| `RewriteOptions` | interface | 48 | `export interface RewriteOptions` | — | — |
+| `rewriteDay` | function | 70 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `planRewrite` | function | 142 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `minimalChange` | function | 155 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
 
 #### `src/main.ts`
 
-Weaver: a day note is a linear list of entries.
+Weaver: a day note is a linear list of entries, and a thought may be written
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 76 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`reading/portals.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reading-portals.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts` |
+| `WeaverPlugin` | class | 88 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts`<br>`ui/navigator.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/navigator.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts` |
 
 #### `src/model/whisper-model.ts`
 
@@ -1142,20 +1450,20 @@ Every user-facing string Weaver shows, so wording stays consistent.
 | `NOTICE_DAY_CLOSED` | const | 23 | `export const NOTICE_DAY_CLOSED = (time: string): string => `Weaver: day closed at $` | `main.ts` | — |
 | `NOTICE_DAY_ALREADY_CLOSED` | const | 25 | `export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. $` | `main.ts` | — |
 | `NOTICE_NO_DAY_NOTE` | const | 27 | `export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. $` | `entries/engine.ts`<br>`main.ts` | — |
-| `noticePortal` | function | 34 | `export function noticePortal(time: string, remainingSeconds: number): string` | `main.ts` | `tests/notices.test.ts` |
-| `noticePortalRefused` | function | 48 | `export function noticePortalRefused(reason: string): string` | `entries/engine.ts` | — |
-| `NOTICE_PORTAL_UNAVAILABLE` | const | 53 | `export const NOTICE_PORTAL_UNAVAILABLE = `Weaver: that portal is no longer open. $` | `entries/engine.ts` | — |
-| `NOTICE_STOP_FAILED` | const | 59 | `export const NOTICE_STOP_FAILED = "Weaver: the stopped time could not be saved; the clock is held where it stopped. Check the vault is writable, then stop again."` | `entries/engine.ts` | `tests/start-entry.test.ts` |
-| `NOTICE_WHISPERING` | const | 63 | `export const NOTICE_WHISPERING = "Whispering the day…"` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
-| `NOTICE_WHISPER_UNREACHABLE` | const | 66 | `export const NOTICE_WHISPER_UNREACHABLE = "No whisper endpoint is reachable from this device."` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
-| `WhisperPass` | interface | 69 | `export interface WhisperPass` | — | — |
-| `whisperFailurePhrase` | function | 92 | `export function whisperFailurePhrase(failure: WhisperFailure): string` | `entries/engine.ts`<br>`model/whisper-runner.ts` | — |
-| `noticeWhispered` | function | 123 | `export function noticeWhispered(pass: WhisperPass): string` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
-| `NAVIGATOR_HINT_KEYS` | const | 146 | `export const NAVIGATOR_HINT_KEYS = "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close"` | `ui/navigator.ts` | — |
-| `NAVIGATOR_HINT_TOUCH` | const | 150 | `export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes"` | `ui/navigator.ts` | — |
-| `noticeCloseFrontmatter` | function | 153 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
-| `noticeCloseCodeBlock` | function | 158 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
-| `noticeLegacyFormat` | function | 163 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/start-entry.test.ts` |
+| `noticePortal` | function | 36 | `export function noticePortal(name: string, time: string, remainingSeconds: number): string` | `main.ts` | `tests/notices.test.ts` |
+| `noticePortalRefused` | function | 50 | `export function noticePortalRefused(reason: string): string` | — | — |
+| `NOTICE_PORTAL_UNAVAILABLE` | const | 55 | `export const NOTICE_PORTAL_UNAVAILABLE = `Weaver: that portal is no longer open. $` | — | — |
+| `NOTICE_STOP_FAILED` | const | 61 | `export const NOTICE_STOP_FAILED = "Weaver: the stopped time could not be saved; the clock is held where it stopped. Check the vault is writable, then stop again."` | `entries/engine.ts` | `tests/start-entry.test.ts` |
+| `NOTICE_WHISPERING` | const | 65 | `export const NOTICE_WHISPERING = "Whispering the day…"` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `NOTICE_WHISPER_UNREACHABLE` | const | 68 | `export const NOTICE_WHISPER_UNREACHABLE = "No whisper endpoint is reachable from this device."` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `WhisperPass` | interface | 71 | `export interface WhisperPass` | — | — |
+| `whisperFailurePhrase` | function | 94 | `export function whisperFailurePhrase(failure: WhisperFailure): string` | `entries/engine.ts`<br>`model/whisper-runner.ts` | — |
+| `noticeWhispered` | function | 125 | `export function noticeWhispered(pass: WhisperPass): string` | `entries/engine.ts` | `tests/whisper-act.test.ts` |
+| `NAVIGATOR_HINT_KEYS` | const | 148 | `export const NAVIGATOR_HINT_KEYS = "j k move · ⏎ open · ⇧⏎ branch · t new Thread · c continue · delete twice removes · ⌘[ ⌘] back forward · esc close"` | `ui/navigator.ts` | — |
+| `NAVIGATOR_HINT_TOUCH` | const | 152 | `export const NAVIGATOR_HINT_TOUCH = "tap a row to select · its buttons to act · delete twice removes"` | `ui/navigator.ts` | — |
+| `noticeCloseFrontmatter` | function | 156 | `export function noticeCloseFrontmatter(action: string): string` | `entries/engine.ts` | — |
+| `noticeCloseCodeBlock` | function | 161 | `export function noticeCloseCodeBlock(action: string): string` | `entries/engine.ts` | — |
+| `noticeLegacyFormat` | function | 166 | `export function noticeLegacyFormat(action: string): string` | `entries/engine.ts`<br>`main.ts` | `tests/start-entry.test.ts` |
 
 #### `src/reading/close-processor.ts`
 
@@ -1171,23 +1479,15 @@ Reading view: the same entry the editor draws, in the same frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `createEntryProcessor` | function | 132 | `export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClock): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
-
-#### `src/reading/portals.ts`
-
-Portals in Reading view: one tray at the end of each daily note that is open,
-
-| symbol | kind | line | signature | used by | tested by |
-| --- | --- | --- | --- | --- | --- |
-| `PortalReadingTray` | class | 61 | `export class PortalReadingTray` | `main.ts` | — |
+| `createEntryProcessor` | function | 132 | `export function createEntryProcessor( contexts: () => readonly WeavingContext[], openDayLink?: OpenDayLink, clock?: EntryClock ): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
 
 #### `src/settings-tab.ts`
 
-The settings surface: five groups, every control applied live.
+The settings surface: six groups, every control applied live.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverSettingTab` | class | 22 | `export class WeaverSettingTab extends PluginSettingTab` | `main.ts` | `tests/settings-tab.test.ts` |
+| `WeaverSettingTab` | class | 35 | `export class WeaverSettingTab extends PluginSettingTab` | `main.ts` | `tests/settings-tab.test.ts` |
 
 #### `src/settings.ts`
 
@@ -1195,14 +1495,26 @@ Weaver settings model.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverSettings` | interface | 15 | `export interface WeaverSettings` | `editor/entry-frame.ts`<br>`editor/portal-widget.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | — |
-| `WeaverData` | interface | 70 | `export interface WeaverData` | `main.ts` | — |
-| `DEFAULT_SETTINGS` | const | 76 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/day-note.test.ts`<br>`tests/portal-widget.test.ts`<br>`tests/reading-portals.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts` |
-| `isValidEntrySize` | function | 105 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
-| `isValidWhisperEndpoint` | function | 112 | `export function isValidWhisperEndpoint(value: string): boolean` | — | `tests/settings.test.ts` |
-| `whisperReachable` | function | 127 | `export function whisperReachable(endpoint: string, mobile: boolean): boolean` | `main.ts` | `tests/settings.test.ts` |
-| `normalizeSettings` | function | 192 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
-| `normalizeData` | function | 238 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
+| `WeaverSettings` | interface | 18 | `export interface WeaverSettings` | `editor/entry-frame.ts`<br>`entries/day-note.ts`<br>`main.ts`<br>`ui/css.ts` | `tests/day-note.test.ts` |
+| `WeaverData` | interface | 114 | `export interface WeaverData` | `main.ts` | — |
+| `DEFAULT_SETTINGS` | const | 120 | `export const DEFAULT_SETTINGS: WeaverSettings =` | `settings-tab.ts` | `tests/contexts.test.ts`<br>`tests/daily-log.test.ts`<br>`tests/day-note.test.ts`<br>`tests/settings.test.ts`<br>`tests/start-entry.test.ts` |
+| `isValidEntrySize` | function | 155 | `export function isValidEntrySize(value: string): boolean` | `settings-tab.ts`<br>`ui/css.ts` | — |
+| `isValidWhisperEndpoint` | function | 162 | `export function isValidWhisperEndpoint(value: string): boolean` | — | `tests/settings.test.ts` |
+| `whisperReachable` | function | 177 | `export function whisperReachable(endpoint: string, mobile: boolean): boolean` | `main.ts` | `tests/settings.test.ts` |
+| `normalizeSettings` | function | 245 | `export function normalizeSettings(data: unknown): WeaverSettings` | — | `tests/settings.test.ts` |
+| `normalizeData` | function | 303 | `export function normalizeData(data: unknown): WeaverData` | `main.ts` | `tests/settings.test.ts` |
+
+#### `src/ui/composer.ts`
+
+The one bottom surface: a thought being written, and the opening it may count
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `ComposerHost` | interface | 68 | `export interface ComposerHost` | — | — |
+| `PortalStripView` | interface | 105 | `export interface PortalStripView` | `main.ts`<br>`ui/portal.ts` | — |
+| `Composer` | class | 137 | `export class Composer` | `main.ts` | `tests/composer.test.ts` |
+| `styleOf` | function | 1312 | `export function styleOf(box: ComposerBox): string` | — | — |
+| `COMPOSER_HEIGHT_SHARE` | const | 1324 | `export const COMPOSER_HEIGHT_SHARE = composerHeightShare(false)` | — | — |
 
 #### `src/ui/css.ts`
 
@@ -1212,8 +1524,8 @@ The generated stylesheet: the five numbers a note is drawn with, the two
 | --- | --- | --- | --- | --- | --- |
 | `STYLE_ID` | const | 18 | `export const STYLE_ID = "weaver-style"` | — | — |
 | `buildCss` | function | 21 | `export function buildCss(settings: WeaverSettings): string` | — | — |
-| `applyCss` | function | 64 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
-| `removeCss` | function | 77 | `export function removeCss(): void` | `main.ts` | — |
+| `applyCss` | function | 66 | `export function applyCss(settings: WeaverSettings): void` | `main.ts` | — |
+| `removeCss` | function | 79 | `export function removeCss(): void` | `main.ts` | — |
 
 #### `src/ui/day-link.ts`
 
@@ -1234,16 +1546,30 @@ The digit-and-ink grammar: `B.D.N`, the clock row and the date label all split
 | `INK_CLASS` | const | 18 | `export const INK_CLASS = "weaver-dcn-ink"` | `editor/entry-decorations.ts` | — |
 | `Slice` | interface | 21 | `export interface Slice` | — | — |
 | `markerSlices` | function | 31 | `export function markerSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
-| `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/navigator.ts` | — |
-| `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/portal.ts` | — |
+| `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/composer.ts`<br>`ui/navigator.ts` | — |
+| `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
 
-#### `src/ui/navigator.ts`
+#### `src/ui/invitation.ts`
 
-The navigator: today's entries, the return stack, today's portal history, and
+How an invitation is named, in the words a writer reads.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `Navigator` | class | 82 | `export class Navigator` | `main.ts` | `tests/navigator.test.ts` |
+| `InvitationView` | interface | 14 | `export interface InvitationView` | — | — |
+| `openingTime` | function | 20 | `export function openingTime(occurrence: PortalOccurrence): string` | — | — |
+| `countdownLabel` | function | 28 | `export function countdownLabel(occurrence: PortalOccurrence, now: number): string` | — | — |
+| `arrivalLabel` | function | 35 | `export function arrivalLabel(occurrence: PortalOccurrence, contextName?: string): string` | — | — |
+| `invitationName` | function | 41 | `export function invitationName(occurrence: PortalOccurrence): string` | — | — |
+
+#### `src/ui/navigator.ts`
+
+The navigator: the Realm you are in, the day's thoughts across every Realm, and
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `NavigatorSection` | type | 47 | `export type NavigatorSection = "history" \| "realms" \| "portals"` | — | — |
+| `NavigatorOptions` | interface | 50 | `export interface NavigatorOptions` | `main.ts` | — |
+| `Navigator` | class | 75 | `export class Navigator` | `main.ts` | `tests/navigator.test.ts` |
 
 #### `src/ui/platform.ts`
 
@@ -1251,27 +1577,19 @@ Which platform this is, as one answer.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
+| `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`entries/context-workspaces.ts`<br>`main.ts`<br>`ui/composer.ts` | `tests/platform-classes.test.ts` |
 | `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts` | `tests/platform-classes.test.ts` |
-| `isTablet` | function | 28 | `export function isTablet(): boolean` | `main.ts` | `tests/platform-classes.test.ts` |
+| `isTablet` | function | 28 | `export function isTablet(): boolean` | `entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
 | `canHover` | function | 35 | `export function canHover(): boolean` | — | — |
 
 #### `src/ui/portal.ts`
 
-The pending portal, drawn once for every surface that can show one.
+The opening, drawn small: one strip, in the same surface as the draft.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `PortalDisplayPhase` | type | 37 | `export type PortalDisplayPhase = "approaching" \| "open" \| "held" \| "expired"` | — | — |
-| `PortalSurfaceMode` | type | 40 | `export type PortalSurfaceMode = "write" \| "reading"` | — | — |
-| `PortalSurfaceOptions` | interface | 43 | `export interface PortalSurfaceOptions` | — | `tests/portal-surface.test.ts` |
-| `PORTAL_REFUSAL` | const | 68 | `export const PORTAL_REFUSAL = "Could not start this entry"` | `editor/portal-widget.ts` | `tests/portal-surface.test.ts` |
-| `portalTimeLabel` | function | 81 | `export function portalTimeLabel(portal: PortalInstant): string` | — | `tests/portal-surface.test.ts` |
-| `portalCountdownLabel` | function | 91 | `export function portalCountdownLabel(portal: PortalInstant, now: number, prepared = false): string` | — | `tests/portal-surface.test.ts` |
-| `PortalSurface` | class | 103 | `export class PortalSurface` | `editor/portal-widget.ts`<br>`reading/portals.ts` | `tests/portal-surface.test.ts` |
-| `portalTrayElement` | function | 703 | `export function portalTrayElement(): HTMLElement` | `editor/portal-widget.ts` | — |
-| `mountPortalTray` | function | 711 | `export function mountPortalTray(container: HTMLElement): HTMLElement` | `reading/portals.ts` | `tests/portal-surface.test.ts` |
-| `mountPortalSurface` | function | 718 | `export function mountPortalSurface(container: HTMLElement, options: PortalSurfaceOptions): PortalSurface` | `editor/portal-widget.ts`<br>`reading/portals.ts` | `tests/portal-surface.test.ts` |
+| `InvitationDockOptions` | interface | 24 | `export interface InvitationDockOptions` | — | — |
+| `InvitationDock` | class | 45 | `export class InvitationDock` | `ui/composer.ts` | — |
 
 
 <!-- design:end -->

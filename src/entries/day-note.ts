@@ -1,19 +1,31 @@
 /**
- * The day plane, resolved against the vault: which file today's note is, and how
- * to create it.
+ * The day plane, resolved against the vault: which file a destination's note for
+ * a given day is, and how to create it.
  *
- * The core Daily Notes plugin is the source of truth for the folder and the
- * filename format, because it is what opens the note. Its configuration is not
+ * The core Daily Notes plugin is the source of truth for `main`'s folder and
+ * filename format, because it is what opens that note. Its configuration is not
  * part of Obsidian's published API, so the lookup is defensive: when the plugin
- * or its options cannot be read, the two fallback settings decide the path.
+ * or its options cannot be read, the two fallback settings decide the path. Every
+ * other destination is explicit and never inherits from it.
  *
- * The name itself is pure and lives in `core/day.ts`; only the `TFile` half is
- * here, so `core` stays free of the Obsidian runtime.
+ * A resolution always takes the day it is for. Reading "today" inside this module
+ * would let a thought begun before midnight be filed after it.
+ *
+ * The template itself is pure and lives in `core/contexts.ts`; only the `TFile`
+ * half is here, so `core` stays free of the Obsidian runtime.
  */
 
 import { TFile, type App } from "obsidian";
 
-import { dayFrontmatter, dayKey, dayNotePath, type DayNoteOptions } from "../core/day";
+import {
+  contextById,
+  contextDayPath,
+  effectiveContexts,
+  readContexts,
+  type ContextError,
+  type WeavingContext
+} from "../core/contexts";
+import { dayFrontmatter, type DayNoteOptions } from "../core/day";
 import type { WeaverSettings } from "../settings";
 
 interface DailyNotesShape {
@@ -63,33 +75,95 @@ export function dayNoteOptions(app: App, settings: WeaverSettings): DayNoteOptio
   );
 }
 
-/** Today's day note path, and the file when it already exists. */
-export function resolveDayNote(
+/**
+ * Every destination this vault can weave into: `main` first, then the usable
+ * additional contexts in stored order, with the reason each rejected row was not
+ * one of them.
+ *
+ * `main` is always present, because it is defined by the day plane rather than by
+ * a stored row; that is what keeps a vault with no additional contexts working
+ * exactly as it did before they existed.
+ */
+export function contextList(
+  app: App,
+  settings: WeaverSettings
+): { contexts: WeavingContext[]; errors: ContextError[] } {
+  const options = dayNoteOptions(app, settings);
+  const read = readContexts(settings.contexts, options);
+  return { contexts: effectiveContexts(options, read.valid), errors: read.errors };
+}
+
+/** The file a destination's note for `day` has, and whether it exists yet. */
+export type ResolvedContextDay =
+  | { ok: true; path: string; file: TFile | null }
+  | { ok: false; error: string };
+
+/**
+ * Resolves one destination's note for one day.
+ *
+ * A requested destination that is missing or unreadable is an error, never a
+ * silent fall back to `main`: writing a thought somewhere the writer did not
+ * choose is worse than refusing it. Nothing is created here — a passive read, a
+ * picker and the daily view all resolve notes without making any.
+ */
+export function resolveContextDay(
   app: App,
   settings: WeaverSettings,
-  now: Date
-): { path: string; file: TFile | null } {
-  const path = dayNotePath(now, dayNoteOptions(app, settings));
+  contextId: string,
+  day: string
+): ResolvedContextDay {
+  const { contexts, errors } = contextList(app, settings);
+  const context = contextById(contexts, contextId);
+  if (context === null) {
+    const reason = errors.length > 0 ? ` (${errors[0]?.message ?? ""})` : "";
+    return { ok: false, error: `there is no destination called ${JSON.stringify(contextId)}${reason}` };
+  }
+
+  const path = contextDayPath(context, day);
   const file = app.vault.getAbstractFileByPath(path);
-  return { path, file: file instanceof TFile ? file : null };
+  return { ok: true, path, file: file instanceof TFile ? file : null };
 }
 
 /**
- * Returns the day note, creating the folder and the file when they are missing.
+ * Returns the day note at `path`, creating every missing folder in order and the
+ * file itself when it is absent.
+ *
  * An existing note is never overwritten: creation only ever writes the
- * frontmatter block.
+ * frontmatter block. A concurrent create that wins the race is accepted by
+ * re-reading the exact path, because the file that now exists is the one the
+ * caller asked for. A folder sitting where the note belongs, or a file where one
+ * of its folders belongs, is an actionable failure rather than something to
+ * overwrite.
  */
-export async function ensureDayNote(app: App, path: string, now: Date): Promise<TFile> {
+export async function ensureDayNote(app: App, path: string, day: string): Promise<TFile> {
   const existing = app.vault.getAbstractFileByPath(path);
   if (existing instanceof TFile) return existing;
+  if (existing !== null) throw new Error(`${path} is a folder, not a note`);
 
-  const slash = path.lastIndexOf("/");
-  if (slash > 0) {
-    const folder = path.slice(0, slash);
-    if (app.vault.getAbstractFileByPath(folder) === null) {
+  const segments = path.split("/");
+  let folder = "";
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index] ?? "";
+    folder = folder === "" ? segment : `${folder}/${segment}`;
+    const found = app.vault.getAbstractFileByPath(folder);
+    if (found instanceof TFile) throw new Error(`${folder} is a file, not a folder`);
+    if (found !== null) continue;
+
+    try {
       await app.vault.createFolder(folder);
+    } catch {
+      // A concurrent create may have won the race; the note's own creation is
+      // what decides whether the tree is usable, and it reports its own reason.
     }
   }
 
-  return app.vault.create(path, dayFrontmatter(dayKey(now)));
+  try {
+    return await app.vault.create(path, dayFrontmatter(day));
+  } catch (error) {
+    // Only an existing file at the exact path is a recovery; anything else is
+    // the real reason the note could not be made.
+    const raced = app.vault.getAbstractFileByPath(path);
+    if (raced instanceof TFile) return raced;
+    throw error;
+  }
 }

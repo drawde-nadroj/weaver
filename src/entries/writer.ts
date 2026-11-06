@@ -13,7 +13,7 @@
  */
 
 import { Transaction } from "@codemirror/state";
-import type { App, TFile } from "obsidian";
+import { MarkdownView, type App, type TFile } from "obsidian";
 
 import {
   applyPlanToSource,
@@ -36,6 +36,31 @@ export interface RewriteResult {
 export type Rewrite = (source: string) => RewriteResult | null;
 
 /**
+ * A rewrite that was refused before the document was touched.
+ *
+ * The distinction matters to a capture: a refusal means the note is exactly as
+ * it was, so the writer may submit again, while a failure after the dispatch
+ * means the answer is unknown and nothing may be written twice.
+ */
+export class RewriteRefused extends Error {}
+
+/** Hooks that let a caller observe — or veto — one write before it happens. */
+export interface RewriteOptions {
+  /**
+   * Runs after the plan is built and before the document changes: the exact text
+   * that will be replaced, and the write that will replace it. Throwing refuses
+   * the whole write.
+   */
+  beforeCommit?: (before: string, planned: RewriteResult) => void;
+  /**
+   * Confirms the bytes reached the file. With an editor, the owning note is
+   * saved and the file re-read; with the vault, the write is already the file,
+   * and it is re-read all the same.
+   */
+  confirmPersistence?: boolean;
+}
+
+/**
  * Writes one rewrite to a file: through the editor that holds it, or through the
  * vault when none does.
  *
@@ -46,27 +71,71 @@ export async function rewriteDay(
   app: App,
   file: TFile,
   rewrite: Rewrite,
-  undoable: boolean
+  undoable: boolean,
+  options: RewriteOptions = {}
 ): Promise<RewriteResult | null> {
   const view = findEditorViewForFile(file);
-  if (view !== null) {
-    const result = rewrite(view.state.doc.toString());
+
+  /** The refusal boundary: a throw here means nothing was written. */
+  const plan = (source: string): RewriteResult | null => {
+    const result = rewrite(source);
     if (result === null || result.changes.length === 0) return null;
+    if (options.beforeCommit !== undefined) {
+      try {
+        options.beforeCommit(source, result);
+      } catch (error) {
+        throw new RewriteRefused(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return result;
+  };
+
+  if (view !== null) {
+    const result = plan(view.state.doc.toString());
+    if (result === null) return null;
 
     view.dispatch({
       changes: cmChanges(result.changes),
       annotations: [Transaction.addToHistory.of(undoable), programmaticWrite.of(true)]
     });
+    if (options.confirmPersistence !== true) return result;
+
+    // The editor holds the change in memory; the note holds it once Obsidian
+    // saves. Asking the owning view to save — without focusing it — and then
+    // reading the file is the only way to know which of those is true.
+    const owner = markdownViewFor(app, file);
+    if (owner !== null && typeof owner.save === "function") await owner.save();
+    await confirmBytes(app, file, result.source);
     return result;
   }
 
   const box: { result: RewriteResult | null } = { result: null };
   await app.vault.process(file, (data) => {
-    const result = rewrite(data);
+    const result = plan(data);
     box.result = result;
     return result === null ? data : result.source;
   });
+  if (options.confirmPersistence === true && box.result !== null) {
+    await confirmBytes(app, file, box.result.source);
+  }
   return box.result;
+}
+
+/** The note that owns `file` in an open markdown leaf, if there is one. */
+function markdownViewFor(app: App, file: TFile): MarkdownView | null {
+  for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+    const view = leaf.view;
+    if (view instanceof MarkdownView && view.file?.path === file.path) return view;
+  }
+  return null;
+}
+
+/** Re-reads the file and refuses when it does not hold what was written. */
+async function confirmBytes(app: App, file: TFile, expected: string): Promise<void> {
+  const actual = await app.vault.read(file);
+  if (actual !== expected) {
+    throw new Error("the note did not keep the bytes that were written");
+  }
 }
 
 /** Adapts an `InsertPlan` builder, so a plan is always built from the live text. */

@@ -1,8 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { readAlignments } from "../src/core/alignments";
 import { parseEntries } from "../src/core/entries";
-import { planDuration, planPortalEntry, planStartEntry } from "../src/core/insert";
-import { portalInstants } from "../src/core/portals";
+import { planCaptureEntry, planDuration } from "../src/core/insert";
+import { portalAt } from "../src/core/portals";
+import { captureBeginningAt, type CaptureRequest } from "../src/core/capture";
+
+/** A capture request for one root, so the writer tests speak the real shape. */
+function capture(text: string, began: Date, portal = null as ReturnType<typeof portalAt> | null): CaptureRequest {
+  return {
+    contextId: "main",
+    parent: null,
+    text,
+    beginning: captureBeginningAt(began.getTime()),
+    durationMs: 0,
+    portal
+  };
+}
 import { minimalChange, planRewrite, rewriteDay } from "../src/entries/writer";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 import {
@@ -73,7 +86,7 @@ describe("the one writer", () => {
     const result = await rewriteDay(
       app,
       file,
-      planRewrite((data) => planStartEntry(data, parseEntries(data))),
+      planRewrite((data) => planCaptureEntry(data, parseEntries(data), capture("a new thought", new Date(2026, 10, 5, 9, 0, 0)))),
       true
     );
 
@@ -141,12 +154,14 @@ describe("planRewrite", () => {
     // from the file.
     expect(parseEntries(earlier).maxN).toBe(1);
 
-    const rewrite = planRewrite((source) => planStartEntry(source, parseEntries(source)));
+    const rewrite = planRewrite((source) =>
+      planCaptureEntry(source, parseEntries(source), capture("third", new Date(2026, 10, 5, 9, 0, 0)))
+    );
     const result = rewrite(current);
     if (result === null) throw new Error("expected a rewrite");
 
     expect(result.source).toContain("{ 3.1.3 }");
-    expect(result.source.indexOf("- 00:00:00")).toBeGreaterThan(result.source.indexOf("second"));
+    expect(result.source.indexOf("third")).toBeGreaterThan(result.source.indexOf("second"));
     expect(result.changes.length).toBe(1);
   });
 
@@ -187,8 +202,7 @@ describe("portals through the one writer", () => {
 
     const opened = new Date(2026, 10, 5, 22, 55, 0);
     const began = new Date(2026, 10, 5, 22, 55, 0, 250);
-    const [portal] = portalInstants(opened.getTime(), opened.getTime());
-    if (portal === undefined) throw new Error("expected an opening");
+    const portal = portalAt(opened.getTime());
 
     let vaultWrites = 0;
     const process = app.vault.process.bind(app.vault);
@@ -201,7 +215,7 @@ describe("portals through the one writer", () => {
       app,
       file,
       planRewrite((current) =>
-        planPortalEntry(current, parseEntries(current), portal, began, "through the door")
+        planCaptureEntry(current, parseEntries(current), capture("through the door", began, portal))
       ),
       true
     );
@@ -213,7 +227,7 @@ describe("portals through the one writer", () => {
     const content = fileContent(file);
     expect(content).toContain("{ 2.1.2 }");
     expect(content).toContain("through the door");
-    expect(content).toMatch(/- 00:00:00 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n/);
+    expect(content).toMatch(/\+ 00:00:00 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n/);
     // The stats block keeps its own key and gains the record beside it.
     expect(content).toContain("travels: 1");
 

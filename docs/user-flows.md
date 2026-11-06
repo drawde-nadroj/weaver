@@ -3,22 +3,79 @@
 Each flow states what it writes, what one undo reverses, and what happens when
 there is nothing to do.
 
-## Flow: start an entry
+## Flow: weave a Thread
 
-1. `⌘⇧E`, or *Start an entry* from the palette or the toolbar. Today's note is
-   created if it does not exist; otherwise it is opened.
-2. An empty root entry is started at the tip: `{ 1.k.m }`, one blank prose line,
-   then its clock row `- 00:00:00`, and the caret on the blank line. `k` is
-   one past the day's depth-1 entries; `m` is one past its largest sequence. The
-   row carries only a duration: the entry is awaiting its first text, and the
-   date and moment are the time the writer types, not the time the block was made.
+1. `⌘⇧⏎`, or *Weave a Thread* from the palette or the toolbar, or `Weave` on a
+   Realm in the navigator. One surface opens at the bottom edge. The note you were
+   reading does not move, and no note is created.
+2. Its header names the Realm once — `Realm: <name>`, which opens the navigator's
+   Realms tab without travelling — defaulting to what the workspace is showing, else
+   Main. When the workspace shows a different Realm, one quiet line says
+   `Writing to <realm> · viewing <realm>`; nothing is repeated.
+3. Type. The first committed character freezes the draft's beginning: the local day
+   and the moment, a duration that counts only while you are writing here, and the
+   openings that instant qualifies for. Letters inside the input are prose; `N`, `T`,
+   `j`, `k`, `h` and `l` act on the saved selection in the resting state.
+4. `⏎` saves it. `Shift-⏎` is a newline, a soft keyboard's Return is a save, and
+   `Esc` hides the surface without losing a word.
 
-Writes: the marker and the clock row, plus the frontmatter block when the note is
-created. Undo: one step, the whole entry. The write goes through the editor when the
-note is open in one and through `Vault.process` otherwise — one writer per file,
-never both — and the plan is built from the exact text being written, so the start
-lands at the note's real end however much it grew since it was read. The file is
-revealed in a tab of its own, never replacing the tab you are in.
+Writes: nothing until `⏎`. The draft — its text, its beginning, its timing, its
+selection, the openings it qualified for — is device-local and stored under
+`weaver:capture:v1` so a reload does not lose it. Undo: the save is one
+transaction, so one undo removes the marker, the prose and the clock row together.
+
+## Flow: save a Thread
+
+1. `⏎` in the composer. The request is frozen: Realm, prose, beginning, duration,
+   and the openings if there were any.
+2. `Saving…`, with the submitted prose read-only. Nothing in the note was visible
+   before this, so there is no empty entry to finish.
+3. A success renders the saved prose with the recorded marker, duration and moment,
+   selects it, and focuses that selection — so the structural motions work at once.
+   A distinct second `⏎` — even one pressed while it was still saving — closes the
+   surface, and the note holds exactly one entry either way.
+4. The entry lands in the daily note for the day the thought **began**, which may be
+   yesterday's file. A branch lands in its parent's note, one dimension deeper, with
+   the parent's `B`.
+
+Writes: one settled entry, and the opening's record when the thought was a root
+whose first committed input fell inside that opening's minute. Undo: one step, in
+the note that received it — one undo unit in an open editor, and nothing claimed for
+a file that was never opened.
+
+Refused, with the text kept: a Realm that is gone or unreadable, a parent that is no
+longer in its note, a note whose frontmatter or code block is unclosed, a note in
+the old entry format, and prose that would break out of its own block (an unclosed
+fence, another marker line, a clock-shaped line). A record that cannot be *added*
+never refuses the thought: the entry is written and the evidence is dropped.
+Unconfirmed — an exception rather than a refusal — becomes *Check save*, which reads
+the note and either accepts it, offers one more `⏎`, or says the note changed in a
+way this save cannot explain.
+
+## Flow: branch from a Thread
+
+1. In the resting state, select a thought — the saved one, or one of the root's
+   branches — and press `N`, or press `Branch`. The parent is always the selected
+   thought; composing prose never changes it.
+2. Type and press `⏎`. The child lands in the parent's file, one dimension deeper.
+
+An empty branch offers *Back to saved thought*: leaving it writes nothing at all.
+`T` starts a fresh Thread — a new root, depth 1 — in the same destination.
+
+## Flow: travel to a destination
+
+1. `Go` on a context row, or `Go` in the composer's header.
+2. The current layout is stored as that destination's own, the draft's clock is
+   frozen and the draft stored, and the destination's last-used workspace is
+   restored — panes, files, and each pane's own caret and scroll.
+3. A destination visited for the first time opens today's note in it; that note is
+   created, because a visit is explicit.
+4. A destination that cannot be opened rolls back, keeps the draft and says
+   `Could not open <name>. Your draft is safe.` If even the rollback fails, the real
+   screen is left alone and labelled `Current workspace`.
+
+Writes: nothing but the note a first visit creates, and its frontmatter. Undo: not
+applicable — travel is navigation, and it stores layout, not note text.
 
 ## Flow: write
 
@@ -72,7 +129,7 @@ count from there.
 3. `⏎` again, on that settled entry: a child opens one dimension deeper, directly
    beneath it, above any older siblings, with the caret in its prose. It inherits
    the parent's `B` — a branch carries one branch id — and takes the next `N`. The
-   place the caret left is the first row of the return stack.
+   place the caret left is recorded in the visit history.
 
 Writes: the duration (one transaction), then the child's marker and clock row (a
 second, single change: an insert renumbers nothing). Each is undoable on its own.
@@ -176,29 +233,35 @@ Writes: the block, the blank separator below it, and the repaired `B` values. Un
 one step, the whole subtree and the old numbering. The row's `+N` child count is the
 whole blast radius, and the list stays open on what is left.
 
-## Flow: navigate today's entries
+## Flow: the navigator
 
-1. `⌘⇧P`, or a tap on the toolbar's list icon. Today's note is opened in source mode
-   if it is not on screen, and the card lists the return stack and then every entry
-   in document order, the caret's entry selected and marked.
-2. `↑`/`↓` move the selection; `⏎` puts the caret in the selected entry; `⇧⏎` settles
-   it and opens a child under it; `n` starts a root at the tip; `x` deletes the
-   selection's whole subtree; `⌘[` walks back one stop; `Esc` closes and puts the
-   caret back where the card opened.
-3. On a phone the same list is a full-height sheet: a row taps to jump, the caret's
-   own row taps to descend, and `✕` arms on the first tap.
+1. `⌘⇧P`, or a tap on the toolbar's list icon. No note is revealed and none is
+   created: the card reads the vault as it is.
+2. `History` is one chronology for the selected day across every Realm, with an
+   `All Realms` filter; `Realms` lists each Realm with `Travel` and `Write here`;
+   `Portals` lists the openings that can still be entered, the one that just closed,
+   and the captures the notes really recorded.
+3. `j`/`k` or `↑`/`↓` move the selection; `⏎` opens a row at its own note and
+   thought; `⇧⏎` or `n` branches under it into a draft; `t` starts a new Thread; `c`
+   continues the selected thought's Thread in the composer without travelling;
+   `Delete` twice removes the selection's whole
+   subtree; `⌘[` and `⌘]` walk the visit history; `Esc` closes.
+4. `t` and `c` close the card *before* the composer opens, so focus never jumps back
+   to the note behind it.
 
-Writes: one transaction per action — the child, the root, the deletion with its
-branch repair. A jump writes nothing at all. Undo: one step each.
+Writes: the branch (a note edit), the deletion with its branch repair, and the pause
+opening the card causes. A jump, a filter, a `Go` and a `c` write nothing at all.
+Undo: one step each.
 
 Opening pauses the stopwatch, which may write a `= ` duration — that is the only
 write, and it is the pause you would get by leaving the note anyway. `⌘,` and every
 other Obsidian chord still reach the app while the card is open: it never takes a
 `Scope`.
 
-Empty: `no entries yet — ＋ starts the first`, and nothing on screen. The first row
-is `＋ start an entry`. The list is today's note, the same target *Start an entry*
-writes to; reaching another day means opening that note.
+Empty: `No Threads for this day`, with a `Weave a Thread` row. A row reading *Entry
+unavailable* is a recorded beginning that no longer matches its entry — deletion, a
+reused number, or a hand edit — and it is never a jump target. An unreadable note is
+named with its path rather than quietly omitted.
 
 ## Flow: close the day
 
@@ -225,8 +288,8 @@ rail at the top-right corner and opens the current date.
 
 ## Flow: phone capture
 
-1. The toolbar's `+` runs *Start an entry*. The note opens with the caret in the
-   new entry.
+1. The toolbar's `+` runs *Weave a Thread*, which is the composer, not a note: the
+   keyboard opens on the draft and the screen behind it stays where it was.
 2. Type: after every keystroke the clock row is pinned to the bottom of the writing
    band above the soft keyboard, with the caret line directly above it.
 3. Scroll up without typing: the view stays where you put it, and the scroll itself

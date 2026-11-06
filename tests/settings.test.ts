@@ -20,7 +20,7 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ frameFollowsIndent: "no" }).frameFollowsIndent).toBe(true);
   });
 
-  it("offers portals by default, and only a real false turns them off", () => {
+  it("offers invitations by default, and only a real false turns them off", () => {
     expect(DEFAULT_SETTINGS.portalsEnabled).toBe(true);
     expect(normalizeSettings(null).portalsEnabled).toBe(true);
     expect(normalizeSettings({ portalsEnabled: false }).portalsEnabled).toBe(false);
@@ -28,11 +28,53 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ portalsEnabled: 0 }).portalsEnabled).toBe(true);
   });
 
+  it("keeps the rhythm on by default and reads its own switch", () => {
+    expect(DEFAULT_SETTINGS.rhythmicPortalsEnabled).toBe(true);
+    expect(normalizeSettings(null).rhythmicPortalsEnabled).toBe(true);
+    expect(normalizeSettings({ rhythmicPortalsEnabled: false }).rhythmicPortalsEnabled).toBe(false);
+  });
+
+  it("keeps a stored schedule list verbatim, even an unreadable one", () => {
+    const rows = [{ id: "a", name: "Morning" }, { id: "" }];
+    expect(normalizeSettings({ portalSchedules: rows }).portalSchedules).toEqual(rows);
+    expect(DEFAULT_SETTINGS.portalSchedules).toEqual([]);
+    expect(normalizeSettings({ portalSchedules: { oops: true } }).portalSchedules).toEqual({
+      oops: true
+    });
+  });
+
+  it("accepts only the four motion settings", () => {
+    expect(DEFAULT_SETTINGS.portalMotion).toBe("normal");
+    expect(normalizeSettings({ portalMotion: "off" }).portalMotion).toBe("off");
+    expect(normalizeSettings({ portalMotion: "slow" }).portalMotion).toBe("slow");
+    expect(normalizeSettings({ portalMotion: "fast" }).portalMotion).toBe("fast");
+    expect(normalizeSettings({ portalMotion: "wild" }).portalMotion).toBe("normal");
+  });
+
+  it("keeps a stored context list verbatim rather than normalising it away", () => {
+    const rows = [{ id: "ctx-a", name: "Spanish", folder: "Spanish/Daily", format: "YYYY.MM.DD" }];
+    expect(normalizeSettings({ contexts: rows }).contexts).toEqual(rows);
+    expect(DEFAULT_SETTINGS.contexts).toEqual([]);
+    expect(normalizeSettings({ contexts: "nonsense" }).contexts).toBe("nonsense");
+  });
+
   it("frames every entry unless the vault says otherwise", () => {
     expect(DEFAULT_SETTINGS.entryFrames).toBe(true);
     expect(normalizeSettings(null).entryFrames).toBe(true);
     expect(normalizeSettings({ entryFrames: false }).entryFrames).toBe(false);
     expect(normalizeSettings({ entryFrames: "no" }).entryFrames).toBe(true);
+  });
+
+  it("keeps Thread and branch spacing at zero unless the vault names a number", () => {
+    expect(DEFAULT_SETTINGS.threadSpacing).toBe(0);
+    expect(DEFAULT_SETTINGS.branchSpacing).toBe(0);
+    expect(normalizeSettings(null).threadSpacing).toBe(0);
+    expect(normalizeSettings(null).branchSpacing).toBe(0);
+    expect(normalizeSettings({ threadSpacing: 14 }).threadSpacing).toBe(14);
+    expect(normalizeSettings({ branchSpacing: 6 }).branchSpacing).toBe(6);
+    expect(normalizeSettings({ threadSpacing: 900 }).threadSpacing).toBe(48);
+    expect(normalizeSettings({ branchSpacing: -4 }).branchSpacing).toBe(0);
+    expect(normalizeSettings({ threadSpacing: "wide" }).threadSpacing).toBe(0);
   });
 
   it("drops every key the entry model no longer has", () => {

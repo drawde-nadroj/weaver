@@ -41,7 +41,7 @@ function collect(
   // One shared clock, sampled at a fixed instant: the decoration reads the last
   // painted snapshot, so a test never advances a real stopwatch to see digits.
   const clock = new EntryClock(session, () => at);
-  const set = entryDecorationSet(state, session, path, clock, openDayLink);
+  const set = entryDecorationSet(state, session, path, clock, [], openDayLink);
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -191,6 +191,25 @@ describe("the entry decorations", () => {
     // swaps the line's text for a drawn label any more.
     expect(headClass(stateAt())).toBe("weaver-entry-head");
     expect(headClass(stateAt(2))).toBe("weaver-entry-head");
+  });
+
+  it("stamps only the Thread and branch starts whose gap belongs above them", () => {
+    const doc = [
+      "{ 1.1.1 }", "root", "+ 00:01:00 10:00:00",
+      "{ 1.2.2 }", "first branch", "+ 00:01:00 10:01:00",
+      "{ 1.2.3 }", "second branch", "+ 00:01:00 10:02:00",
+      "{ 1.1.4 }", "second Thread", "+ 00:01:00 10:03:00"
+    ].join("\n");
+    const heads = collect(stateAt(doc.indexOf("root"), doc)).filter(
+      (range) => range.spec.class?.startsWith("weaver-entry-head") === true
+    );
+
+    expect(heads.map((range) => range.spec.class)).toEqual([
+      "weaver-entry-head",
+      "weaver-entry-head",
+      "weaver-entry-head weaver-branch-start",
+      "weaver-entry-head weaver-thread-start"
+    ]);
   });
 
   it("ticks a live session instead of showing the stored time", () => {

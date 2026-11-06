@@ -27,17 +27,19 @@ export const NOTICE_DAY_ALREADY_CLOSED = `Weaver: this day is already closed. ${
 export const NOTICE_NO_DAY_NOTE = `Weaver: today's day note could not be found. ${NOTICE_NOTHING_WRITTEN}`;
 
 /**
- * A portal's one invitation. It usually arrives at the eleven-minute boundary,
- * but an app that was asleep may wake later; the remaining time is then spoken
- * as what is actually left rather than as the time that has passed.
+ * One schedule's invitation.
+ *
+ * It usually arrives at the lead boundary, but an app that was asleep may wake
+ * later; the remaining time is then spoken as what is actually left rather than
+ * as the time that has passed.
  */
-export function noticePortal(time: string, remainingSeconds: number): string {
+export function noticePortal(name: string, time: string, remainingSeconds: number): string {
   const seconds = Math.ceil(remainingSeconds);
-  if (!Number.isFinite(seconds) || seconds <= 0) return `Portal · ${time} is open`;
-  if (seconds < 60) return `Portal · ${time} opens in ${seconds} second${seconds === 1 ? "" : "s"}`;
+  if (!Number.isFinite(seconds) || seconds <= 0) return `${name} · ${time} is open`;
+  if (seconds < 60) return `${name} · ${time} opens in ${seconds} second${seconds === 1 ? "" : "s"}`;
 
   const minutes = Math.ceil(seconds / 60);
-  return `Portal · ${time} opens in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return `${name} · ${time} opens in ${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
 /**
@@ -144,10 +146,11 @@ export function noticeWhispered(pass: WhisperPass): string {
 
 /** The navigator's footer on a desk: the whole key map, where it is pressed. */
 export const NAVIGATOR_HINT_KEYS =
-  "↑↓ move · ⏎ jump · ⇧⏎ descend · n start · x delete · ⌘[ back · esc close";
+  "j k move · ⏎ open · ⇧⏎ branch · t new Thread · c continue · delete twice removes · ⌘[ ⌘] back forward · esc close";
 
-/** The navigator's footer on a phone: the same three gestures, as taps. */
-export const NAVIGATOR_HINT_TOUCH = "tap to jump · tap the caret row to descend · ✕ twice deletes";
+/** The navigator's footer on a phone: the same gestures, as taps. */
+export const NAVIGATOR_HINT_TOUCH =
+  "tap a row to select · its buttons to act · delete twice removes";
 
 /** The refusal for a write aimed at a note with an unclosed frontmatter block. */
 export function noticeCloseFrontmatter(action: string): string {

@@ -22,8 +22,8 @@ vault otherwise, never both.
 The promise is unchanged: *begin where you are, and never leave the note to record
 what you are writing in it.* A capture surface that opens a dialog over the note it
 captures from has already failed the promise, because the dialog is a second place
-to be. The navigator exists only to move the caret — start, descend, jump — and
-never to write prose.
+to be. The navigator exists only to show the day and move the caret — choose a
+destination, descend, jump — and never to write prose.
 
 ## Vocabulary
 
@@ -37,9 +37,15 @@ never to write prose.
 | **Clock row** | The entry's last line: duration `[+-=] HH:MM:SS`, then creation moment `YYYY-MM-DD HH:MM:SS`. Either half may be absent; older undated moments inherit the filename day. | Prose, a heading, a timestamp in frontmatter. |
 | **Duration** | `[+-=] HH:MM:SS` — how long this entry was written, in the same clock as its moment. The only mutable field. | Time of day, a stopwatch in frontmatter, evidence of work. |
 | **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
-| **Settle** | `⏎` on an open entry: the duration becomes `+`, once, and the clock stops. Nothing else moves. | Saving, syncing, submitting. |
-| **Navigator** | The card that lists today's entries and the return stack, and starts, descends, jumps or deletes from it. | Search, a second editor, an outline, a dialog to write in. |
-| **Stop** | The place a move left: an entry, a caret and a scroll offset, remembered in the return stack. | A bookmark in the file, a link. |
+| **Thread** | A depth-1 entry and everything under it. `Thread` is capitalised in product copy; the stored `B`/`D`/`N` never change with it. | A file, a tag, a separate store. |
+| **Branch** | A thought below a Thread's root: one dimension deeper than its parent, inside the same Thread and the same note. | A new Thread, a second root. |
+| **Save** | `⏎` in the composer: one transaction writes marker, prose and a finished `+` row, once. The stored entry's own `Settle` is the same act inside a note. | Saving, syncing, submitting. |
+| **Realm** | A folder, a writing history and a remembered workspace: one place a thought can be written. `Main` is the one the Daily Notes plugin defines. | A tag, a vault, a filter. |
+| **Opening** | A minute a schedule offers, `[04:33:00, 04:34:00)`. Writing that *begins* inside it was written through it; a minute nobody entered is gone. | A lock, a permission, a gate. |
+| **Composer** | The one bottom surface a thought is written in from anywhere. It holds one unsaved draft, speaks the note's own frame and colour, and writes nothing until it is saved. | A modal, a second editor, a note. |
+| **Invitation** | A schedule's call to action, one strip in the same surface. It never writes and never takes focus; whether writing counts is decided by the beginning, not by a click. | A locked window, a prepared slot, an obligation. |
+| **Navigator** | The card with three tabs: the day's chronology across every Realm, the Realms themselves, and the openings still live — and it jumps, travels, branches or deletes from there. | Search, a second editor, an outline, a dialog to write in. |
+| **Stop** | The place a move left: a thought, a caret and a scroll offset — or a whole workspace — remembered in the history. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
 | **Whisper** | The model's reading of an entry: one to three `~` rows above its prose — a name, then at most one each of `learn:`, `next:`, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |
 | **Day plane** | Today's day note, `Chronomancer/YYYY.MM.DD.md` — the file the core Daily Notes plugin opens. | The ingest ledger under `Autonomic Ingest/`, which is machine-written. |
@@ -52,13 +58,16 @@ appears in copy — depth reads `1D`…`nD`.
 
 | Loop | Trigger | What moves | Lives in |
 | --- | --- | --- | --- |
-| Start | `⌘⇧E` — *Start an entry* | An empty root entry at the tip of today's note, with `- 00:00:00`. Works inside an editor too. | Evidence |
-| Write | The first committed text in an awaiting draft | The input's date and moment, once, and the session's clock; later input resumes without redating. | Evidence and session |
+| Weave | `⌘⇧⏎` — *Weave a Thread* | One composer, above the workspace, holding one draft. No note changes. Works inside an editor, in Reading view, or from nowhere. | Session |
+| Write | The first committed character in the composer, or the first text in an awaiting draft | The draft's beginning — its day, its moment — once, and a clock that counts only writing time; inside a note, the beginning is written into the row in the same transaction. | Evidence and session |
 | Settle | `⏎` on an open entry | `-` or `=` becomes `+`, once, and the clock stops. Nothing else moves. | Evidence |
-| Descend | `⏎` again, on a settled entry, or *Descend into a child entry* from the palette or toolbar | A child opens one dimension deeper with the caret in its prose. | Evidence |
+| Settle a Thread | `⏎` in the composer | Marker, prose and a `+` row with the draft's own day, moment and duration, in one transaction; the composer then rests on what it wrote. | Evidence |
+| Branch | `N` in the composer, or `⇧⏎` in the navigator | A child one dimension deeper, in its parent's note, with the caret in its prose. | Evidence |
+| Descend | `⏎` again, on a settled entry, or *Branch from this thought* from the palette or toolbar | A child opens one dimension deeper with the caret in its prose. | Evidence |
 | Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
 | Jump | `⏎` in the navigator | The caret, and the note on screen. Nothing is written. | Session |
-| Return | `⌘[` in the navigator | The caret, back to the last stop. Nothing is written. | Session |
+| Travel | `Travel` on a Realm row | That Realm's last-used workspace, and every pane's own position. The draft is untouched, and its destination does not follow. | Session |
+| Return | `⌘[` and `⌘]`, or the *Back* and *Forward* commands | The recorded stop — the exact screen or caret, not the Realm's latest one. Nothing is written. | Session |
 | Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `= `. | Evidence |
 | Close | *Close the day* | One `✓` line, then the day's own stats. | Evidence |
 | Whisper | the idle pause after typing, then `⏎`; or *Whisper the day* | One to three `~` rows above an entry's prose, written once and never rewritten. | Evidence (the model's, not the writer's) |
@@ -77,22 +86,24 @@ Evidence is what a reader of the vault would find and understand without the
 plugin: marker lines, prose, clock rows, `✓` close lines, whisper rows, and the
 frontmatter fields `date`, `travels`, `depth`, `duration` and `weaver-alignments`.
 Evidence is written by a command, first committed text, `⏎`, leaving the note,
-and — once, after the writing ended — the model. Portal history records actual
-beginnings, never passive invitations or missed attempts. A whisper is the only
+and — once, after the writing ended — the model. Invitation history records actual
+beginnings, never passive offers or missed attempts. A whisper is the only
 reading the writer did not author.
 
 Session is where this installation is working right now: which entry is being
-written, its baseline, the return stack, the caret. Session state is
+written, its baseline, the visit history, the caret. Session state is
 device-local. It is never synced and never counted. It becomes evidence only at the
 moment the engine writes it. That boundary is **publish**: a sigil and an elapsed
 time become the clock row; settle (`+`) and pause (`=`) are its two intents. A
 whisper crosses a different boundary — the model's reading of text that is already
 evidence — and it crosses it once, guarded by a fingerprint of the text it read.
 
-An approaching portal is session, not evidence: it has no entry sequence.
-Preparation only holds a place for first text. The actual first input crosses
-into evidence atomically as prose, a recorded beginning and its history event.
-Alignment is a reading of exact recorded seconds, never a target, score or obligation.
+An invitation is session, not evidence: it has no entry sequence, and dismissing
+one writes nothing. A draft is session too, held on this device, and it crosses
+into evidence only when it is settled — then as prose, a recorded beginning, a
+duration and, when an invitation really applied, its history event, all in one
+transaction. Alignment is a reading of exact recorded seconds, never a target,
+score or obligation.
 
 Two consequences follow, and both are implemented as such:
 

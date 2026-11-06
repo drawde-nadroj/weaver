@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { frameBox, frameColumn, frameSpan, trayFrame, type FrameColumn, type FrameSpan } from "../src/core/frame";
+import {
+  floatingComposerBox,
+  frameBox,
+  frameColumn,
+  frameSpan,
+  type FrameColumn,
+  type FrameSpan
+} from "../src/core/frame";
 
 const COLUMN: FrameColumn = { left: 100, right: 500 };
 /** Corner 10 + stub 14 + label pad 8: where the marker's ink starts inside its rail. */
@@ -29,54 +36,6 @@ describe("frameColumn", () => {
     const column = frameColumn({ pane: { left: 0, right: 320 }, content: { left: 16, right: 304 }, gutter: GUTTER });
 
     expect(column).toEqual({ left: 0, right: 320 });
-  });
-});
-
-describe("trayFrame", () => {
-  /** A root entry's marker ink starts at the content's own text edge. */
-  function rootEntry(contentLeft: number, column: FrameColumn) {
-    return frameBox({ column, textLeft: contentLeft, gutter: GUTTER });
-  }
-
-  it("reaches the same two edges as a root entry's frame on a desktop note", () => {
-    const content: FrameColumn = { left: 200, right: 1000 };
-    const column = frameColumn({ pane: { left: 0, right: 1400 }, content, gutter: GUTTER });
-
-    const entry = rootEntry(content.left, column);
-    // In the tray's own coordinates the content's text edge is zero.
-    const tray = trayFrame({
-      column: frameColumn({
-        pane: { left: -200, right: 1200 },
-        content: { left: 0, right: 800 },
-        gutter: GUTTER
-      }),
-      textLeft: 0,
-      gutter: GUTTER
-    });
-
-    expect(tray).toEqual({ marginLeft: -GUTTER, width: entry.width });
-    expect(content.left + (tray?.marginLeft ?? 0)).toBe(entry.left);
-  });
-
-  it("spans the whole pane on a phone, exactly as the entry frame does", () => {
-    const content: FrameColumn = { left: 16, right: 304 };
-    const entry = rootEntry(content.left, frameColumn({ pane: { left: 0, right: 320 }, content, gutter: GUTTER }));
-    const tray = trayFrame({
-      column: frameColumn({
-        pane: { left: -16, right: 304 },
-        content: { left: 0, right: 288 },
-        gutter: GUTTER
-      }),
-      textLeft: 0,
-      gutter: GUTTER
-    });
-
-    expect(entry).toEqual({ left: 0, width: 320, drawn: true });
-    expect(tray).toEqual({ marginLeft: -16, width: 320 });
-  });
-
-  it("never draws before the content has a width", () => {
-    expect(trayFrame({ column: { left: 0, right: 0 }, textLeft: 0, gutter: GUTTER })).toBeNull();
   });
 });
 
@@ -187,5 +146,145 @@ describe("frameSpan", () => {
       const lower = boxes[index + 1] as FrameSpan;
       expect(lower.top - upper.bottom).toBeGreaterThanOrEqual(AIR);
     }
+  });
+});
+
+describe("the floating composer's box", () => {
+  const VIEWPORT = { left: 0, right: 1200, top: 0, bottom: 800 };
+  const PANE = { left: 200, right: 1000, top: 40, bottom: 800 };
+  const CONTENT = { left: 320, right: 880 };
+
+  const box = (overrides: Partial<Parameters<typeof floatingComposerBox>[0]> = {}) =>
+    floatingComposerBox({
+      viewport: VIEWPORT,
+      pane: PANE,
+      content: CONTENT,
+      inset: 12,
+      wantedHeight: 420,
+      renderedHeight: 0,
+      phone: false,
+      bottomReserve: 0,
+      ...overrides
+    });
+
+  it("takes the writing column, never a widened one", () => {
+    const result = box();
+    expect(result.left).toBe(320);
+    expect(result.width).toBe(560);
+  });
+
+  it("centres in the pane when no markdown column can be measured", () => {
+    const result = box({ content: null });
+    expect(result.width).toBe(720);
+    expect(result.left).toBe(200 + (800 - 720) / 2);
+  });
+
+  it("keeps a deep underlying indent out of the surface's width", () => {
+    // A deeply nested entry is still written at depth 1 in the composer.
+    const shallow = box();
+    const indented = box({ content: { left: 320, right: 880 } });
+    expect(indented).toEqual(shallow);
+  });
+
+  it("clamps to a narrow pane rather than overflowing it", () => {
+    const narrow = box({ pane: { left: 200, right: 420, top: 40, bottom: 800 } });
+    expect(narrow.width).toBe(100);
+    expect(narrow.left + narrow.width).toBeLessThanOrEqual(420);
+  });
+
+  it("anchors above a phone keyboard and its toolbar", () => {
+    const phone = box({
+      phone: true,
+      bottomReserve: 48,
+      viewport: { left: 0, right: 390, top: 0, bottom: 500 },
+      pane: { left: 0, right: 390, top: 0, bottom: 800 },
+      content: null
+    });
+    expect(phone.top + phone.maxHeight).toBeLessThanOrEqual(500 - 12 - 48);
+  });
+
+  it("drops the preview when the usable height cannot hold both", () => {
+    const tiny = box({
+      viewport: { left: 0, right: 1200, top: 0, bottom: 90 },
+      pane: { left: 200, right: 1000, top: 0, bottom: 90 }
+    });
+    expect(tiny.preview).toBe(false);
+    expect(tiny.maxHeight).toBeLessThanOrEqual(90);
+    expect(box().preview).toBe(true);
+  });
+
+  it("caps the height by platform share and never by motion", () => {
+    // 45% of the usable height on a desk, even when the surface would like more.
+    expect(box().maxHeight).toBe(331);
+    const short = box({ viewport: { left: 0, right: 1200, top: 0, bottom: 400 } });
+    expect(short.maxHeight).toBeLessThanOrEqual(Math.round(400 * 0.45));
+    // The same numbers, whatever the invitation's rainbow is doing.
+    expect(short).toEqual(box({ viewport: { left: 0, right: 1200, top: 0, bottom: 400 } }));
+  });
+});
+
+describe("the bottom-anchored surface", () => {
+  const VIEWPORT = { left: 0, right: 1200, top: 0, bottom: 800 };
+  const PANE = { left: 200, right: 1000, top: 40, bottom: 800 };
+
+  const box = (overrides: Partial<Parameters<typeof floatingComposerBox>[0]> = {}) =>
+    floatingComposerBox({
+      viewport: VIEWPORT,
+      pane: PANE,
+      content: { left: 320, right: 880 },
+      inset: 12,
+      wantedHeight: 420,
+      renderedHeight: 0,
+      phone: false,
+      bottomReserve: 0,
+      ...overrides
+    });
+
+  it("sits on the bottom edge and grows upward by what it rendered", () => {
+    const short = box({ renderedHeight: 120 });
+    const tall = box({ renderedHeight: 260 });
+
+    // The bottom edge never moves; only the top does.
+    expect(short.top + 120).toBe(tall.top + 260);
+    expect(short.top).toBeGreaterThan(tall.top);
+  });
+
+  it("leaves no blank card below a short surface", () => {
+    const result = box({ renderedHeight: 100 });
+    // One inset of air from the pane's bottom edge, and nothing more.
+    expect(result.top).toBe(800 - 12 - 100);
+  });
+
+  it("caps the height and lets the inside scroll instead of overflowing", () => {
+    const result = box({ renderedHeight: 900 });
+    // The usable strip is the pane inside the insets, and the cap is its share.
+    const usable = 800 - 12 - (40 + 12);
+    expect(result.maxHeight).toBe(Math.round(usable * 0.45));
+    expect(result.top).toBe(800 - 12 - result.maxHeight);
+  });
+
+  it("reserves the phone's own bottom strip", () => {
+    const result = box({ renderedHeight: 200, phone: true, bottomReserve: 56 });
+    expect(result.top).toBe(800 - 12 - 56 - 200);
+  });
+
+  it("uses the visual viewport a keyboard shrinks", () => {
+    const result = box({
+      renderedHeight: 150,
+      viewport: { ...VIEWPORT, top: 100, bottom: 500 }
+    });
+    expect(result.top).toBe(500 - 12 - 150);
+  });
+
+  it("returns zero room rather than an inverted box when nothing fits", () => {
+    const result = box({
+      renderedHeight: 200,
+      viewport: { left: 0, right: 1200, top: 0, bottom: 20 },
+      pane: { left: 200, right: 1000, top: 0, bottom: 20 },
+      inset: 12
+    });
+
+    expect(result.maxHeight).toBe(0);
+    expect(result.top).toBe(12);
   });
 });

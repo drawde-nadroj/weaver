@@ -2,9 +2,10 @@
  * The two keys an entry owns, and the two edit events that keep the stopwatch
  * honest.
  *
- * `Mod-Shift-E` starts an entry from inside any editor as well as from the app.
- * It is not `Mod-Enter`: Obsidian's core "Open link under cursor in new tab"
- * owns that chord, and its scope runs before every plugin keymap.
+ * `Mod-Shift-Enter` opens the composer from inside any editor as well as from
+ * the app: writing a thought no longer starts an entry in a note, so the chord
+ * belongs to the surface that holds the draft. It replaces the old
+ * `Mod-Shift-E`, which started an entry at the note's tip and revealed it.
  *
  * `Enter` is two-way and stateless: on an open entry — `-` being written or `=`
  * paused — it settles the duration to `+` and stops the clock; on a settled
@@ -41,18 +42,19 @@ import { registeredEditorViews } from "./view-registry";
 /**
  * Every chord an entry claims, for review; `entryKeysExtension` binds each one.
  *
- * `Mod-Shift-E`, not `Mod-Enter`: Obsidian's core "Open link under cursor in new
- * tab" owns `Mod+Enter` and its scope runs in the document's capture phase, so
- * neither a `Prec.highest` editor binding nor a command hotkey ever sees that
- * chord. `Mod+Shift+E` belongs to no other command, so it reaches us.
+ * `Mod-Shift-Enter`, not `Mod-Enter`: Obsidian's core "Open link under cursor in
+ * new tab" owns `Mod+Enter` and its scope runs in the document's capture phase,
+ * so neither a `Prec.highest` editor binding nor a command hotkey ever sees that
+ * chord. The shifted chord belongs to no core command.
  */
-export const ENTRY_KEYS = ["Mod-Shift-E", "Enter"] as const;
+export const ENTRY_KEYS = ["Mod-Shift-Enter", "Enter"] as const;
 
-/** What a key handler may ask for: the session and the five entry edits. */
+/** What a key handler may ask for: the session, the edits, and the composer. */
 export interface EntryKeyHost {
   session: EntrySession;
+  /** Opens the one composer: from a note, from a view, or from nowhere. */
+  openComposer(options?: { contextId?: string; invitationId?: string }): void;
   entries: {
-    startEntry(now: Date): Promise<void>;
     settle(view: EditorView, entry: Entry): void;
     descend(view: EditorView, entry: Entry): void;
     deleteEntry(view: EditorView, entry: Entry): void;
@@ -109,13 +111,14 @@ export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean {
 }
 
 /**
- * Starts an entry at the tip of today's note, from inside the editor too.
+ * Opens the composer, from inside the editor too.
  *
- * Always handled: the chord is `Mod-Shift-E`, which no other command claims, so
- * claiming it here cannot take anything away from the writer.
+ * Always handled: the chord is `Mod-Shift-Enter`, which no other command claims,
+ * so claiming it here cannot take anything away from the writer. Opening it does
+ * not write a byte, and the note the caret is in is untouched.
  */
 export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean {
-  void host.entries.startEntry(new Date());
+  host.openComposer();
   return true;
 }
 
@@ -167,13 +170,13 @@ export function maybePinStopwatch(view: EditorView, host: EntryEditHost, phone =
   return true;
 }
 
-/** Binds `Mod-Shift-E` and `Enter` at the highest precedence. */
+/** Binds `Mod-Shift-Enter` and `Enter` at the highest precedence. */
 export function entryKeysExtension(host: EntryKeyHost): Extension {
   // Highest, not high: Obsidian's editor keymap is registered at `high`, and a
   // chord it owns there would take precedence over ours inside the editor.
   return Prec.highest(
     keymap.of([
-      { key: "Mod-Shift-e", run: (view) => handleStartKey(view, host) },
+      { key: "Mod-Shift-Enter", run: (view) => handleStartKey(view, host) },
       { key: "Enter", run: (view) => handleEnterKey(view, host) }
     ])
   );

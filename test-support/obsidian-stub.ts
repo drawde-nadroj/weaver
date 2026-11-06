@@ -37,7 +37,7 @@ export class TFile {
   }
 }
 
-class Component {
+export class Component {
   registerEvent(): void {}
   registerDomEvent(): void {}
   registerInterval(): void {}
@@ -51,6 +51,28 @@ class Component {
 }
 
 export class ComponentClass extends Component {}
+
+/**
+ * The public Markdown renderer.
+ *
+ * The stub writes the prose as text: a test cares that the thought was rendered
+ * into the element, not how Obsidian's own parser spells an emphasis span.
+ */
+export class MarkdownRenderer {
+  static async render(
+    app: unknown,
+    markdown: string,
+    element: unknown,
+    sourcePath: string,
+    component: unknown
+  ): Promise<void> {
+    void app;
+    void sourcePath;
+    void component;
+    const target = element as { textContent: string };
+    target.textContent = markdown;
+  }
+}
 
 export const Platform = {
   isDesktop: true,
@@ -480,9 +502,20 @@ export class App {
   scope = new Scope();
   /** Present but empty by default, like a vault with no Daily Notes options. */
   internalPlugins: unknown = null;
+  /** The vault-local storage the shipped app exposes to plugins. */
+  private readonly local = new Map<string, unknown>();
 
   constructor(files: TFile[] = []) {
     this.vault = new Vault(files);
+  }
+
+  loadLocalStorage(key: string): unknown | null {
+    return this.local.has(key) ? this.local.get(key) : null;
+  }
+
+  saveLocalStorage(key: string, value: unknown): void {
+    if (value === null) this.local.delete(key);
+    else this.local.set(key, value);
   }
 }
 

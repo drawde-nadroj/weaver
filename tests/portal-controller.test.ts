@@ -1,422 +1,433 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { formatLocalTimestamp, mergeAlignment } from "../src/core/alignments";
-import { dayKey } from "../src/core/day";
-import { portalInstants, type PortalInstant } from "../src/core/portals";
+import type { PortalSchedule } from "../src/core/portals";
 import { PortalController, type PortalHost } from "../src/entries/portals";
+import type { LocalStateRecord } from "../src/entries/local-state";
 
-/** A local wall-clock instant on 2026-11-05, at whole seconds. */
-const at = (hour: number, minute: number, second = 0): number =>
-  new Date(2026, 10, 5, hour, minute, second).getTime();
+/** A local instant, so the assertions read in the machine's own zone. */
+const local = (hour: number, minute: number, second = 0, day = 5) =>
+  new Date(2026, 10, day, hour, minute, second).getTime();
 
-/** The same clock one day later, for the rollover that moves today's note. */
-const nextDay = (hour: number, minute: number): number => new Date(2026, 10, 6, hour, minute).getTime();
-
-/** The one eligible opening that this local minute holds. */
-function opening(hour: number, minute: number): PortalInstant {
-  const [portal] = portalInstants(at(hour, minute), at(hour, minute));
-  if (portal === undefined) throw new Error(`${hour}:${minute} is not a portal minute`);
-  return portal;
+function schedule(overrides: Partial<PortalSchedule> = {}): PortalSchedule {
+  return {
+    id: "morning",
+    name: "Morning",
+    contextId: "main",
+    enabled: true,
+    createdAt: 0,
+    leadMinutes: 11,
+    when: { kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6], hour: 11, minute: 0 },
+    ...overrides
+  };
 }
 
-/** Today's day note path, exactly as the host would resolve it. */
-const todayPath = (instant: number): string => `Journal/${dayKey(new Date(instant))}.md`;
-const TODAY = "Journal/2026-11-05.md";
-const TOMORROW = "Journal/2026-11-06.md";
+interface Harness {
+  controller: PortalController;
+  at(ms: number): void;
+  advance(ms: number): void;
+  persist: LocalStateRecord[];
+  invites: string[];
+  setSchedules(list: PortalSchedule[]): void;
+  setEnabled(on: boolean): void;
+  setRhythm(on: boolean): void;
+  setVisible(on: boolean): void;
+  state: LocalStateRecord;
+  /** A fresh controller over the stored record, as a reload would build. */
+  restart(): PortalController;
+}
 
-/** An empty day note: no frontmatter, no history, nothing entered. */
-const EMPTY = "";
+function harness(options: { schedules?: PortalSchedule[]; rhythm?: boolean } = {}): Harness {
+  let now = local(0, 0);
+  let schedules = options.schedules ?? [schedule()];
+  let enabled = true;
+  let rhythmic = options.rhythm !== false;
+  let visible = true;
 
-let now = at(12, 1);
-let enabled = true;
-let visible = true;
-let active: string | null = null;
-let invites: { id: string; remaining: number }[] = [];
+  const persist: LocalStateRecord[] = [];
+  const invites: string[] = [];
+  const state: LocalStateRecord = {
+    workspaces: { activeContextId: null, snapshots: {}, selections: {} },
+    schedules: {}
+  };
 
-const host: PortalHost = {
-  now: () => now,
-  enabled: () => enabled,
-  todayPath,
-  activePath: () => active,
-  visible: () => visible,
-  invite: (portal, remainingSeconds) => {
-    invites.push({ id: portal.id, remaining: remainingSeconds });
-  }
-};
-
-let controller = new PortalController(host);
-
-beforeEach(() => {
-  now = at(12, 1);
-  enabled = true;
-  visible = true;
-  active = null;
-  invites = [];
-  vi.useFakeTimers();
-  controller = new PortalController(host);
-});
-
-afterEach(() => {
-  controller.destroy();
-  vi.useRealTimers();
-});
-
-describe("PortalController candidates", () => {
-  it("shows the eleven-minute lead and the open minute, and nothing else", () => {
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([11, 12]);
-
-    now = at(12, 11);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([11, 12, 22]);
-    expect(controller.phase(opening(12, 11))).toBe("open");
-    expect(controller.phase(opening(12, 12))).toBe("approaching");
-
-    // Exactly at the end of the opening's own minute it is no longer offered.
-    now = at(12, 12);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([12, 22]);
-    expect(controller.phase(opening(12, 11))).toBe("expired");
-  });
-
-  it("offers only today's note, never a historical one", () => {
-    expect(controller.candidates("Journal/2026-11-04.md", EMPTY)).toEqual([]);
-    // Nor a note nobody resolved as today, even at the same wall time.
-    expect(controller.candidates("", EMPTY)).toEqual([]);
-  });
-
-  it("previews the midnight opening at the end of today's note", () => {
-    now = at(23, 50);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => [portal.day, portal.minute])).toEqual([
-      ["2026-11-05", 55],
-      ["2026-11-06", 0]
-    ]);
-  });
-
-  it("still shows openings when the note's history cannot be read, so capture can refuse", () => {
-    const malformed = "---\nweaver-alignments:\n  - not json\n---\n";
-    expect(controller.candidates(TODAY, malformed).map((portal) => portal.minute)).toEqual([11, 12]);
-    expect(controller.candidates(TODAY, "---\nweaver-alignments:\nweaver-alignments:\n---\n")).toHaveLength(2);
-    expect(controller.candidates(TODAY, "---\nkind: day\n")).toHaveLength(2);
-
-    // A prepared opening survives the same unreadable source: the refusal is
-    // the capture's, and the frame the writer is typing into must not vanish.
-    now = at(11, 55);
-    const portal = opening(11, 55);
-    controller.prepare(portal.id);
-    now = at(11, 57);
-    controller.reconcile();
-    const shown = controller.candidates(TODAY, malformed).map((candidate) => candidate.minute);
-    expect(shown).toEqual([55, 0]);
-    expect(controller.phase(portal)).toBe("held");
-  });
-});
-
-describe("PortalController invitations", () => {
-  it("announces the nearest eligible opening once and only once per id", () => {
-    controller.reconcile();
-    expect(invites).toEqual([{ id: opening(12, 11).id, remaining: 600 }]);
-
-    // Re-deriving the same minute, and every second inside it, stays silent.
-    controller.reconcile();
-    now = at(12, 1, 30);
-    controller.reconcile();
-    expect(invites).toHaveLength(1);
-
-    // The next boundary crossing introduces exactly one new opening.
-    now = at(12, 11);
-    controller.reconcile();
-    expect(invites).toEqual([
-      { id: opening(12, 11).id, remaining: 600 },
-      { id: opening(12, 22).id, remaining: 660 }
-    ]);
-
-    now = at(12, 22);
-    controller.reconcile();
-    expect(invites.at(-1)).toEqual({ id: opening(12, 33).id, remaining: 660 });
-  });
-
-  it("speaks nothing while hidden and resumes with one truthful sentence", () => {
-    visible = false;
-    controller.reconcile();
-    now = at(12, 30);
-    controller.reconcile();
-    expect(invites).toEqual([]);
-
-    // Waking after many boundaries: one invitation, about actually remaining time.
-    visible = true;
-    controller.reconcile();
-    expect(invites).toEqual([{ id: opening(12, 33).id, remaining: 180 }]);
-
-    // A wake that lands inside an opening's minute announces that opening as
-    // here now, truthfully, rather than as a time already past.
-    visible = false;
-    now = at(12, 44, 30);
-    controller.reconcile();
-    visible = true;
-    controller.reconcile();
-    expect(invites.at(-1)).toEqual({ id: opening(12, 44).id, remaining: 0 });
-    expect(invites).toHaveLength(2);
-  });
-
-  it("never repeats a notice after the clock is corrected backwards", () => {
-    controller.reconcile();
-    now = at(12, 11);
-    controller.reconcile();
-    expect(invites.map((invite) => invite.id)).toEqual([
-      opening(12, 11).id,
-      opening(12, 22).id
-    ]);
-
-    // Both openings were already spoken for; an earlier instant inside their
-    // lead window must stay silent.
-    now = at(12, 5);
-    controller.reconcile();
-    expect(invites).toHaveLength(2);
-
-    now = at(12, 11);
-    controller.reconcile();
-    expect(invites).toHaveLength(2);
-  });
-
-  it("announces nothing at all when portals are switched off", () => {
-    enabled = false;
-    controller.reconcile();
-    now = at(12, 30);
-    controller.reconcile();
-    expect(invites).toEqual([]);
-  });
-});
-
-describe("PortalController hold", () => {
-  it("holds a prepared opening past its minute and removes it on release", () => {
-    now = at(11, 55);
-    const portal = opening(11, 55);
-    controller.prepare(portal.id);
-    expect(controller.held()).toEqual({ portal, path: TODAY });
-
-    now = at(11, 57);
-    controller.reconcile();
-    expect(controller.phase(portal)).toBe("held");
-    expect(controller.candidates(TODAY, EMPTY).map((candidate) => candidate.id)).toContain(portal.id);
-
-    controller.release();
-    expect(controller.held()).toBeNull();
-    expect(controller.candidates(TODAY, EMPTY).map((candidate) => candidate.id)).not.toContain(portal.id);
-    expect(controller.phase(portal)).toBe("expired");
-  });
-
-  it("releases the previous hold in the same emission when another is prepared", () => {
-    let emissions = 0;
-    controller.subscribe(() => {
-      emissions += 1;
-    });
-
-    controller.prepare(opening(12, 11).id);
-    expect(controller.held()?.portal.id).toBe(opening(12, 11).id);
-    controller.prepare(opening(12, 12).id);
-    expect(controller.held()?.portal.id).toBe(opening(12, 12).id);
-    expect(emissions).toBe(2);
-  });
-
-  it("ignores an unknown, out-of-window, expired or already-entered id", () => {
-    controller.prepare("1999-01-01T00:00:00.000Z");
-    controller.prepare(opening(12, 33).id);
-    expect(controller.held()).toBeNull();
-
-    // The end of the opening's own minute is already too late to prepare it.
-    now = at(12, 12);
-    controller.prepare(opening(12, 11).id);
-    expect(controller.held()).toBeNull();
-
-    now = at(12, 1);
-    controller.consume(opening(12, 11).id);
-    controller.prepare(opening(12, 11).id);
-    expect(controller.held()).toBeNull();
-  });
-
-  it("drops the hold when the app hides, when portals are disabled, or on unload", () => {
-    controller.prepare(opening(12, 11).id);
-    visible = false;
-    controller.reconcile();
-    expect(controller.held()).toBeNull();
-
-    visible = true;
-    controller.reconcile();
-    controller.prepare(opening(12, 11).id);
-    enabled = false;
-    controller.reconcile();
-    expect(controller.held()).toBeNull();
-    expect(controller.candidates(TODAY, EMPTY)).toEqual([]);
-
-    enabled = true;
-    controller.prepare(opening(12, 11).id);
-    controller.destroy();
-    expect(controller.held()).toBeNull();
-  });
-
-  it("clears the hold when its portal is entered", () => {
-    controller.prepare(opening(12, 11).id);
-    controller.consume(opening(12, 11).id);
-    expect(controller.held()).toBeNull();
-  });
-
-  it("keeps a hold pinned to its note across midnight while today moves on", () => {
-    now = at(23, 50);
-    const midnight = portalInstants(nextDay(0, 0), nextDay(0, 0))[0]!;
-    controller.prepare(midnight.id);
-    expect(controller.held()).toEqual({ portal: midnight, path: TODAY });
-
-    now = nextDay(0, 1);
-    controller.reconcile();
-
-    // The held opening is still offered in the note it was prepared in, and
-    // only there: today's new note offers today's own openings.
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.id)).toEqual([midnight.id]);
-    expect(controller.phase(midnight)).toBe("held");
-    expect(controller.candidates(TOMORROW, EMPTY).map((portal) => portal.minute)).toEqual([11]);
-  });
-
-  it("pins to today's note even when an unrelated note is active", () => {
-    active = "Notes/scratch.md";
-    controller.prepare(opening(12, 11).id);
-    expect(controller.held()?.path).toBe(TODAY);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toContain(11);
-  });
-});
-
-describe("PortalController consumption", () => {
-  it("never offers an entered portal again in this session", () => {
-    controller.consume(opening(12, 11).id);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([12]);
-    controller.consume(opening(12, 11).id);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([12]);
-  });
-
-  it("consults the note's own history after a reload", () => {
-    const portal = opening(12, 11);
-    const merged = mergeAlignment("---\nkind: day\n---\n\nbody\n", {
-      portal: portal.id,
-      opened: formatLocalTimestamp(new Date(portal.opensAt)),
-      began: formatLocalTimestamp(new Date(portal.opensAt + 55_500)),
-      entry: 1
-    });
-    if (!merged.ok) throw new Error(merged.error);
-    expect(merged.source).toContain("body");
-
-    const reloaded = new PortalController(host);
-    try {
-      expect(reloaded.candidates(TODAY, merged.source).map((candidate) => candidate.minute)).toEqual([12]);
-      // The history is per note: another day's note still offers its own times.
-      reloaded.consume(opening(12, 12).id);
-      expect(reloaded.candidates(TODAY, merged.source)).toEqual([]);
-    } finally {
-      reloaded.destroy();
+  const host = (): PortalHost => ({
+    now: () => now,
+    enabled: () => enabled,
+    rhythmic: () => rhythmic,
+    rhythmContext: () => "main",
+    schedules: () => schedules,
+    state: () => state,
+    persist: (record) => {
+      state.schedules = record.schedules;
+      persist.push(record);
+    },
+    visible: () => visible,
+    invite: (occurrence) => {
+      invites.push(occurrence.id);
     }
   });
-});
 
-describe("PortalController lifecycle emissions", () => {
-  it("emits on lifecycle changes only, never on a query or an elapsed second", () => {
-    let emissions = 0;
-    controller.subscribe(() => {
-      emissions += 1;
+  const controller = new PortalController(host());
+  const test: Harness = {
+    controller,
+    state,
+    persist,
+    invites,
+    at(ms) {
+      now = ms;
+    },
+    advance(ms) {
+      now += ms;
+    },
+    setSchedules(list) {
+      schedules = list;
+    },
+    setEnabled(on) {
+      enabled = on;
+    },
+    setRhythm(on) {
+      rhythmic = on;
+    },
+    setVisible(on) {
+      visible = on;
+    },
+    restart() {
+      const next = new PortalController(host());
+      next.start();
+      return next;
+    }
+  };
+
+  controller.start();
+  return test;
+}
+
+describe("one opening per schedule", () => {
+  it("is offered only inside its own minute, and withdrawn after it", () => {
+    const test = harness({ rhythm: false });
+
+    // Outside its lead window there is nothing to offer at all.
+    test.at(local(10, 40));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
+    expect(test.controller.outstanding()[0]?.phase).toBe("available");
+
+    // A minute later the opening is gone: an unentered minute was never a promise,
+    // and the next opening is a different one.
+    test.at(local(11, 1));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+    test.at(local(23, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+  });
+
+  it("shows an approaching invitation only inside its lead window", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(10, 40));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    test.at(local(10, 50));
+    test.controller.reconcile();
+    const approaching = test.controller.outstanding();
+    expect(approaching).toHaveLength(1);
+    expect(approaching[0]?.phase).toBe("approaching");
+  });
+
+  it("renews its own invitation with the newest due opening", () => {
+    const test = harness({
+      rhythm: false,
+      schedules: [schedule({ when: { kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6], hour: 11, minute: 0 } })]
     });
 
-    controller.reconcile();
-    expect(emissions).toBe(1);
-    controller.reconcile();
-    now = at(12, 1, 30);
-    controller.reconcile();
-    expect(emissions).toBe(1);
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    const first = test.controller.outstanding()[0]?.occurrence.id;
 
-    // Queries are free.
-    controller.candidates(TODAY, EMPTY);
-    controller.phase(opening(12, 11));
-    controller.held();
-    expect(emissions).toBe(1);
+    test.at(local(11, 0, 0, 6));
+    test.controller.reconcile();
+    const second = test.controller.outstanding()[0]?.occurrence.id;
 
-    // Sliding into the next second of the same minute changes nothing.
-    now = at(12, 2);
-    controller.reconcile();
-    expect(emissions).toBe(1);
-
-    // A new opening entering the lead does change the offered set, so surfaces
-    // redraw once for the minute, not once per second.
-    now = at(12, 11);
-    controller.reconcile();
-    expect(emissions).toBe(2);
-
-    // Entering a portal changes the set once, not once per call.
-    controller.consume(opening(12, 11).id);
-    controller.consume(opening(12, 11).id);
-    expect(emissions).toBe(3);
+    expect(first).not.toBe(second);
+    // One schedule, one outstanding invitation — not a stack of yesterday's.
+    expect(test.controller.outstanding()).toHaveLength(1);
   });
 
-  it("stops emitting and scheduling after destroy", () => {
-    let emissions = 0;
-    controller.subscribe(() => {
-      emissions += 1;
+  it("keeps different schedules distinct even at the same minute and destination", () => {
+    const test = harness({
+      rhythm: false,
+      schedules: [
+        schedule({ id: "a", name: "A" }),
+        schedule({ id: "b", name: "B" })
+      ]
     });
-    controller.reconcile();
-    const settled = emissions;
 
-    controller.destroy();
-    now = at(12, 11);
-    vi.advanceTimersByTime(120_000);
-    expect(emissions).toBe(settled);
-    expect(controller.candidates(TODAY, EMPTY)).toEqual([]);
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding().map((item) => item.occurrence.scheduleId)).toEqual(["a", "b"]);
+  });
+
+  it("keeps an hourly :11 apart from an hourly :00", () => {
+    const test = harness({
+      rhythm: false,
+      schedules: [schedule({ id: "every-hour-11", when: { kind: "hourly", minute: 11 } })]
+    });
+
+    test.at(local(9, 11));
+    test.controller.reconcile();
+    const due = test.controller.outstanding()[0]?.occurrence.portal;
+    expect(due?.minute).toBe(11);
+    expect(due?.hour).toBe(9);
   });
 });
 
-describe("isolated mirror boundaries", () => {
-  it("emits opening and held-expiry phases even when the candidate ids stay the same", () => {
-    now = at(15, 14, 59);
-    controller.reconcile();
-    const ids = controller.candidates(TODAY, EMPTY).map(portal => portal.id);
-    let emissions = 0;
-    controller.subscribe(() => { emissions += 1; });
-    now = at(15, 15);
-    controller.reconcile();
-    expect(controller.candidates(TODAY, EMPTY).map(portal => portal.id)).toEqual(ids);
-    expect(emissions).toBe(1);
-    controller.prepare(opening(15, 15).id);
-    now = at(15, 16);
-    controller.reconcile();
-    expect(controller.phase(opening(15, 15))).toBe("held");
-    expect(emissions).toBe(3);
+describe("activation and acknowledgement", () => {
+  it("never replays an opening from before the schedule was enabled", () => {
+    // The schedule is created (enabled) at noon: the eleven o'clock opening is
+    // already in its past and is never offered.
+    const test = harness({ rhythm: false, schedules: [schedule({ createdAt: local(12, 0) })] });
+    test.at(local(12, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    test.at(local(11, 0, 0, 6));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
   });
 
-  it("does not invite an already announced opening after disabling and re-enabling", () => {
-    controller.reconcile();
-    const before = invites.slice();
-    enabled = false;
-    controller.reconcile();
-    enabled = true;
-    controller.reconcile();
-    expect(invites).toEqual(before);
+  it("does not show a dismissed occurrence again, and does show the next", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    const first = test.controller.outstanding()[0]?.occurrence.id;
+    if (first === undefined) throw new Error("expected an invitation");
+
+    test.controller.dismiss(first);
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    test.at(local(11, 0, 0, 6));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
+    expect(test.controller.outstanding()[0]?.occurrence.id).not.toBe(first);
+  });
+
+  it("reconciles the latest due opening after a restart, without replaying every elapsed minute", () => {
+    const test = harness({ rhythm: false });
+    test.at(local(11, 0));
+    test.controller.reconcile();
+
+    const reloaded = test.restart();
+    expect(reloaded.outstanding()).toHaveLength(1);
+    expect(reloaded.outstanding()[0]?.occurrence.portal.opensAt).toBe(local(11, 0));
+  });
+
+  it("acknowledges only through its own opening, so a newer one survives", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0, 10));
+    test.controller.reconcile();
+    const first = test.controller.captureAt("main", local(11, 0, 10))[0];
+    if (first === undefined) throw new Error("expected a qualified opening");
+
+    // A newer occurrence arrives while the draft is still open.
+    test.at(local(11, 0, 20, 6));
+    test.controller.reconcile();
+    const newer = test.controller.outstanding()[0]?.occurrence.id;
+
+    // Saving the older draft acknowledges only through its own opening.
+    test.controller.acknowledge(first.occurrence, first.generation);
+    test.controller.reconcile();
+
+    expect(test.controller.outstanding()[0]?.occurrence.id).toBe(newer);
+  });
+
+  it("ignores an answer from an older generation", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0, 10));
+    test.controller.reconcile();
+    const frozen = test.controller.captureAt("main", local(11, 0, 10))[0];
+    if (frozen === undefined) throw new Error("expected a qualified opening");
+
+    // The schedule's time changes, which starts a new generation.
+    test.setSchedules([
+      schedule({ when: { kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6], hour: 12, minute: 0 } })
+    ]);
+    test.at(local(12, 0));
+    test.controller.reconcile();
+
+    test.controller.acknowledge(frozen.occurrence, frozen.generation);
+    test.controller.reconcile();
+
+    // The new generation's invitation is untouched by the old answer.
+    expect(test.controller.outstanding()).toHaveLength(1);
+  });
+
+  it("qualifies no beginning outside the opening's own minute", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(10, 50));
+    test.controller.reconcile();
+    const approaching = test.controller.outstanding()[0];
+    expect(approaching?.phase).toBe("approaching");
+
+    // An approaching notice is not an opening yet, so a beginning now (and one
+    // from before it) qualifies for nothing.
+    expect(test.controller.captureAt("main", local(10, 50))).toEqual([]);
+    expect(test.controller.captureAt("main", local(11, 0) - 1)).toEqual([]);
+
+    // Inside the minute it does, and only there.
+    expect(test.controller.captureAt("main", local(11, 0))).toHaveLength(1);
+    expect(test.controller.captureAt("main", local(11, 1))).toEqual([]);
   });
 });
 
-describe("PortalController scheduling", () => {
-  it("keeps one minute-boundary timer and derives status when it wakes", () => {
-    controller.reconcile();
-    expect(vi.getTimerCount()).toBe(1);
-    controller.prepare(opening(12, 11).id);
-    expect(vi.getTimerCount()).toBe(1);
+describe("settings and visibility", () => {
+  it("hides every invitation when the master switch is off, and writes nothing", () => {
+    const test = harness({ rhythm: false });
 
-    // A callback that wakes while the clock is still at 12:01 must reschedule
-    // from the actual instant instead of advancing anything by counting ticks.
-    vi.advanceTimersByTime(70_000);
-    expect(invites).toHaveLength(1);
-    expect(vi.getTimerCount()).toBe(1);
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
 
-    now = at(12, 2);
-    vi.advanceTimersByTime(60_000);
-    expect(controller.candidates(TODAY, EMPTY).map((portal) => portal.minute)).toEqual([11, 12]);
-    expect(vi.getTimerCount()).toBe(1);
+    test.setEnabled(false);
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+    // Only schedule runtime is stored; no note fact is ever produced here.
+    for (const record of test.persist) {
+      expect(Object.keys(record)).toEqual(["workspaces", "schedules"]);
+    }
   });
 
-  it("schedules nothing while portals are switched off", () => {
-    enabled = false;
-    controller.reconcile();
-    expect(vi.getTimerCount()).toBe(0);
+  it("offers the rhythm through its own switch, into Main", () => {
+    const test = harness({ schedules: [] });
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    const sources = test.controller.sources();
+    expect(sources[0]?.id).toBe("rhythm");
+    expect(sources[0]?.contextId).toBe("main");
+
+    test.setRhythm(false);
+    test.controller.reconcile();
+    expect(test.controller.sources().find((source) => source.id === "rhythm")).toBeUndefined();
+  });
+
+  it("does not speak about an invitation while the app is hidden", () => {
+    const test = harness({ rhythm: false });
+    test.setVisible(false);
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    expect(test.invites).toEqual([]);
+    expect(test.controller.outstanding()).toHaveLength(1);
+  });
+
+  it("speaks once per occurrence, and never once per second", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    test.controller.reconcile();
+    test.at(local(11, 0, 1));
+    test.controller.reconcile();
+
+    expect(test.invites).toHaveLength(1);
+  });
+
+  it("clears a schedule's pending invitation when its time changes", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
+
+    test.setSchedules([
+      schedule({ when: { kind: "weekly", weekdays: [0, 1, 2, 3, 4, 5, 6], hour: 13, minute: 0 } })
+    ]);
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    test.at(local(13, 0));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
+  });
+
+  it("offers nothing for a schedule that no longer exists", () => {
+    const test = harness({ rhythm: false });
+    test.at(local(11, 0));
+    test.controller.reconcile();
+
+    test.setSchedules([]);
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+  });
+});
+
+describe("the beginning a draft is written through", () => {
+  it("returns every schedule that shares the minute, sorted by schedule", () => {
+    const test = harness({
+      rhythm: false,
+      schedules: [
+        schedule({ id: "beta", name: "Beta" }),
+        schedule({ id: "alpha", name: "Alpha" })
+      ]
+    });
+
+    test.at(local(11, 0, 30));
+    test.controller.reconcile();
+
+    const qualified = test.controller.captureAt("main", local(11, 0, 30));
+    expect(qualified.map((entry) => entry.occurrence.scheduleId)).toEqual(["alpha", "beta"]);
+    // Each carries its own activation's generation, so each is answered alone.
+    for (const entry of qualified) expect(entry.generation).toBe(0);
+  });
+
+  it("qualifies only openings of the Realm the beginning was written in", () => {
+    const test = harness({
+      rhythm: false,
+      schedules: [schedule({ id: "spanish", contextId: "ctx-spanish" })]
+    });
+
+    test.at(local(11, 0, 30));
+    test.controller.reconcile();
+
+    expect(test.controller.captureAt("main", local(11, 0, 30))).toEqual([]);
+    expect(test.controller.captureAt("ctx-spanish", local(11, 0, 30))).toHaveLength(1);
+  });
+
+  it("stops qualifying an opening the writer put away", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0, 10));
+    test.controller.reconcile();
+    const offered = test.controller.outstanding()[0];
+    if (offered === undefined) throw new Error("expected an invitation");
+
+    test.controller.dismiss(offered.occurrence.id);
+    expect(test.controller.captureAt("main", local(11, 0, 20))).toEqual([]);
+  });
+
+  it("says which minute closed, and only while it is recent", () => {
+    const test = harness({ rhythm: false });
+
+    test.at(local(11, 0, 30));
+    test.controller.reconcile();
+    expect(test.controller.recentlyClosed(3000)).toEqual([]);
+
+    test.at(local(11, 1, 1));
+    expect(test.controller.recentlyClosed(3000).map((occurrence) => occurrence.portal.minute)).toEqual([0]);
+
+    // Long after: a wake replays nothing.
+    test.at(local(14, 30));
+    expect(test.controller.recentlyClosed(3000)).toEqual([]);
   });
 });

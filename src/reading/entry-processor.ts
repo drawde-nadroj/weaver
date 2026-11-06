@@ -21,7 +21,7 @@
 import { MarkdownRenderChild, type MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { entryDayLinkTarget } from "../core/day";
+import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseEntries, parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
@@ -129,11 +129,25 @@ class AwaitingClock extends MarkdownRenderChild {
  * preserves signed-list extraction; an optional shared clock paints awaiting
  * moments with section-owned subscription cleanup, without writing note bytes.
  */
-export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClock): MarkdownPostProcessor {
+export function createEntryProcessor(
+  contexts: () => readonly WeavingContext[],
+  openDayLink?: OpenDayLink,
+  clock?: EntryClock
+): MarkdownPostProcessor {
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
-    const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
     const open = openDayLink ?? (() => {});
+    // Only the fallback path uses these: with a source index every marker can ask
+    // the note itself whether a Thread or a branch came before it. The path reset
+    // keeps one document's last Thread from spacing the next document's first.
+    let fallbackPath: string | null = null;
+    let seenThread = false;
+    let previousDepth: number | null = null;
+    if (sourcePath !== fallbackPath) {
+      fallbackPath = sourcePath;
+      seenThread = false;
+      previousDepth = null;
+    }
     const renderClock = (parsed: ClockRow, d: number | null, labelled = false): HTMLElement => {
       const row = clockElement(parsed, d, labelled);
       if (clock !== undefined && parsed.time === null && parsed.duration !== null &&
@@ -191,6 +205,30 @@ export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClo
       );
       let entryDay: string | null = sourceEntry?.day ?? null;
 
+      // A Thread-start is every depth-1 entry after the note's first Thread; a
+      // branch-start is a branch whose predecessor is another branch, so the
+      // first branch stays close to its Thread's root. Reading the source index
+      // makes this independent of section render order; the fallback remembers
+      // the previous marker for a note whose source cannot be read.
+      const sourcePosition =
+        sourceEntry === undefined || sourceIndex === null
+          ? -1
+          : sourceIndex.entries.indexOf(sourceEntry);
+      let threadStart: boolean;
+      let branchStart: boolean;
+      if (sourcePosition >= 0 && sourceIndex !== null) {
+        threadStart =
+          prefix.d === 1 &&
+          sourceIndex.entries.slice(0, sourcePosition).some((entry) => entry.d === 1);
+        branchStart =
+          prefix.d > 1 && sourcePosition > 0 && sourceIndex.entries[sourcePosition - 1].d > 1;
+      } else {
+        threadStart = prefix.d === 1 && seenThread;
+        branchStart = prefix.d > 1 && previousDepth !== null && previousDepth > 1;
+      }
+      if (prefix.d === 1) seenThread = true;
+      previousDepth = prefix.d;
+
       const head = document.createElement("div");
       // The marker row is the frame's top rail: its own background cuts the rail
       // behind it, so the box reads as running into the row that names it.
@@ -230,7 +268,10 @@ export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClo
       entryDay = containedClock?.day ?? entryDay;
 
       const frame = document.createElement("div");
-      frame.className = "weaver-frame is-static";
+      const frameClasses = ["weaver-frame", "is-static"];
+      if (threadStart) frameClasses.push("weaver-thread-start");
+      if (branchStart) frameClasses.push("weaver-branch-start");
+      frame.className = frameClasses.join(" ");
       frame.setAttribute("style", dimensionColorVars(prefix.d));
       frame.setAttribute("data-weaver-d", String(prefix.d));
       paragraph.replaceWith(frame);
@@ -296,7 +337,7 @@ export function createEntryProcessor(openDayLink?: OpenDayLink, clock?: EntryClo
       // head, so the head stays exactly the marker's own characters. It is
       // inserted only for a different recorded day, and kept directly after the
       // head so the clock row remains the frame's last child.
-      const dayLinkTarget = entryDayLinkTarget(entryDay, basename);
+      const dayLinkTarget = entryDayLinkTarget(entryDay, sourcePath, contexts());
       if (dayLinkTarget !== null) {
         frame.insertBefore(dayLinkElement(dayLinkTarget, sourcePath, open), head.nextSibling);
       }

@@ -14,68 +14,18 @@ import {
   planDeleteEntry,
   planDuration,
   planEntryBeginning,
-  planPortalEntry,
-  planStartEntry,
+  planCaptureEntry,
   planWhisper,
   type InsertPlan
 } from "../src/core/insert";
-import { portalInstants, type PortalInstant } from "../src/core/portals";
+import { captureBeginningAt, thoughtRefOf, type CaptureRequest } from "../src/core/capture";
+import { portalAt, type PortalInstant } from "../src/core/portals";
 
 const AT_1337 = new Date(2026, 9, 27, 13, 27, 43);
 
 function applied(source: string, plan: InsertPlan): string {
   return applyPlanToSource(source, plan).source;
 }
-
-describe("planStartEntry", () => {
-  it("writes a root marker, a blank line and an awaiting clock row", () => {
-    const source = "";
-    const plan = planStartEntry(source, parseEntries(source));
-    expect(plan).not.toBeNull();
-    if (plan === null) return;
-
-    const next = applied(source, plan);
-    expect(next).toBe("{ 1.1.1 }\n\n- 00:00:00\n");
-
-    // The caret sits on the blank prose line, where the writing happens.
-    expect(next.slice(0, plan.selection.from)).toBe("{ 1.1.1 }\n");
-    expect(plan.selection.to).toBe(plan.selection.from);
-
-    // A duration with no moment: a draft that has not begun, not one begun at
-    // whatever time the block happened to be made.
-    const [entry] = parseEntries(next).entries;
-    expect(entry?.state).toBe("draft");
-    expect(entry?.duration?.ms).toBe(0);
-    expect(entry?.time).toBeNull();
-    expect(entry?.day).toBeNull();
-  });
-
-  it("appends a second root after the existing one", () => {
-    const source = ["{ 1.1.1 }", "prose", "+ 00:01:00 10:00:00"].join("\n");
-    const plan = planStartEntry(source, parseEntries(source));
-    if (plan === null) throw new Error("expected a plan");
-
-    const next = applied(source, plan);
-    expect(next).toContain("{ 2.1.2 }");
-    expect(next).toContain("- 00:00:00");
-  });
-
-  it("implies no beginning, so an older note's days stay the only written ones", () => {
-    // The note is a past day's; a root appended to it has not been written in.
-    // Its row records nothing, so no surface can claim it started that day.
-    const source = ["{ 1.1.1 }", "yesterday", "+ 00:01:00 2026-10-26 23:00:00"].join("\n");
-    const plan = planStartEntry(source, parseEntries(source));
-    if (plan === null) throw new Error("expected a plan");
-
-    const next = applied(source, plan);
-    expect(next).toContain("+ 00:01:00 2026-10-26 23:00:00");
-
-    const [old, written] = parseEntries(next).entries;
-    expect(old?.day).toBe("2026-10-26");
-    expect(written?.day).toBeNull();
-    expect(written?.time).toBeNull();
-  });
-});
 
 describe("planChildEntry", () => {
   const SOURCE = [
@@ -209,17 +159,21 @@ describe("planEntryBeginning", () => {
     // writer types in it, so both record the day they were actually written.
     let source = ["{ 1.1.1 }", "yesterday", "+ 00:01:00 2026-11-04 23:58:00"].join("\n");
 
-    const rootPlan = planStartEntry(source, parseEntries(source));
+    const beforeMidnightIndex = parseEntries(source);
+    const childOf = beforeMidnightIndex.entries[0];
+    if (childOf === undefined) throw new Error("expected a root");
+
+    const rootPlan = planChildEntry(source, beforeMidnightIndex, childOf);
     if (rootPlan === null) throw new Error("expected a root plan");
     source = applied(source, rootPlan);
 
-    const beforeMidnightIndex = parseEntries(source);
-    const root = beforeMidnightIndex.entries[1];
+    const createdIndex = parseEntries(source);
+    const root = createdIndex.entries[1];
     if (root === undefined) throw new Error("expected the new root");
     expect(root.time).toBeNull();
 
     // The child is opened under the root while the row is still awaiting.
-    const childPlan = planChildEntry(source, beforeMidnightIndex, root);
+    const childPlan = planChildEntry(source, createdIndex, root);
     if (childPlan === null) throw new Error("expected a child plan");
     source = applied(source, childPlan);
 
@@ -320,7 +274,7 @@ describe("planEntryBeginning", () => {
 describe("writing a plan through CodeMirror", () => {
   it("uses CodeMirror's change shape, then places a caret past the old document", () => {
     const source = "w";
-    const plan = planStartEntry(source, parseEntries(source));
+    const plan = planCaptureEntry(source, parseEntries(source), rootRequest("a thought", AT_1337));
     if (plan === null) throw new Error("expected a plan");
 
     // `text` is not a ChangeSpec key, so a plan handed to a view as-is writes
@@ -329,13 +283,12 @@ describe("writing a plan through CodeMirror", () => {
     const written = state.update({ changes: cmChanges(plan.changes) }).state;
     expect(written.doc.toString()).toBe(applied(source, plan));
 
-    // The caret sits past the end of the *old* document. Obsidian's CodeMirror
-    // maps a spec's selection through its own changes, so that caret cannot ride
-    // along with the change: the write and the caret are two updates.
-    expect(plan.selection.from).toBeGreaterThan(source.length);
+    // The caret sits inside the entry the plan wrote, right after the prose that
+    // was typed, so a caller can place it in one update after the write.
     const placed = written.update({ selection: { anchor: plan.selection.from } }).state;
     expect(placed.selection.main.head).toBe(plan.selection.from);
-    expect(placed.doc.lineAt(placed.selection.main.head).text).toBe("");
+    expect(placed.doc.sliceString(0, plan.selection.from).endsWith("a thought")).toBe(true);
+    expect(placed.doc.lineAt(placed.selection.main.head).text).toContain("a thought");
   });
 });
 
@@ -735,20 +688,25 @@ function historyView(doc: string): EditorView & { state: EditorState } {
   return view as unknown as EditorView & { state: EditorState };
 }
 
-/** An opening at a whole local minute. */
-function portalAt(ms: number): PortalInstant {
-  const [instant] = portalInstants(ms, ms);
-  if (instant === undefined) throw new Error("expected an opening");
-  return instant;
-}
-
 /** A local ISO timestamp with a numeric offset, at whole-second precision. */
 function expectInstant(value: string | undefined, ms: number): void {
   expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
   expect(Date.parse(value ?? "")).toBe(Math.floor(ms / 1000) * 1000);
 }
 
-describe("planPortalEntry", () => {
+/** A capture request for one root, with its beginning frozen at `began`. */
+function rootRequest(text: string, began: Date, portal: PortalInstant | null = null): CaptureRequest {
+  return {
+    contextId: "main",
+    parent: null,
+    text,
+    beginning: captureBeginningAt(began.getTime()),
+    durationMs: 4200,
+    portal
+  };
+}
+
+describe("planCaptureEntry", () => {
   const NOTE = [
     "---",
     "travels: 1",
@@ -760,11 +718,11 @@ describe("planPortalEntry", () => {
   ].join("\n");
 
   const OPENED = new Date(2026, 10, 5, 22, 55, 0);
-  const BEGAN = new Date(2026, 10, 5, 22, 55, 0, 200);
+  const BEGAN = new Date(2026, 10, 5, 22, 55, 7, 200);
   const PORTAL = portalAt(OPENED.getTime());
 
-  it("writes the prose, the actual clock row and the record as one plan", () => {
-    const plan = planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, "saw the eleven");
+  it("writes a settled root, the prose and its record as one plan", () => {
+    const plan = planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest("saw the eleven", BEGAN, PORTAL));
     if (plan === null) throw new Error("expected a plan");
 
     const next = applied(NOTE, plan);
@@ -772,60 +730,213 @@ describe("planPortalEntry", () => {
     expect(next).toContain("mood: quiet");
     expect(next.startsWith("---\ntravels: 1\nmood: quiet\n")).toBe(true);
 
+    // One record, already settled: the composer timed it, so nothing is left to
+    // begin or to fill in later.
     expect(
-      next.endsWith(`\n\n{ 2.1.2 }\n\nsaw the eleven\n- 00:00:00 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)
+      next.endsWith(`\n\n{ 2.1.2 }\n\nsaw the eleven\n+ 00:00:04 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)
     ).toBe(true);
 
-    // The entry began at the input, not at the opening and not at a rounded second.
     const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
-    expect(entry?.state).toBe("draft");
+    expect(entry?.state).toBe("settled");
     expect(entry?.day).toBe(dayKey(BEGAN));
     expect(entry?.time).toBe(formatClock(BEGAN));
-    expect(entry?.duration?.ms).toBe(0);
+    // The row records whole seconds: a clock may only show a second that happened.
+    expect(entry?.duration?.ms).toBe(4000);
 
     // The caret lands on the prose, right after what was typed.
     expect(next.slice(0, plan.selection.from).endsWith("saw the eleven")).toBe(true);
-    expect(plan.selection.to).toBe(plan.selection.from);
+    expect(next.slice(plan.selection.from)).toContain(`${"\n"}${"+"} 00:00:04`);
 
     const records = readAlignments(next);
     if (!records.ok) throw new Error(records.error);
     expect(records.records).toHaveLength(1);
-    const [record] = records.records;
-    expect(record?.portal).toBe(PORTAL.id);
-    expect(record?.entry).toBe(2);
-    expectInstant(record?.opened, OPENED.getTime());
-    expectInstant(record?.began, BEGAN.getTime());
+    expect(records.records[0]?.entry).toBe(2);
+    expectInstant(records.records[0]?.opened, OPENED.getTime());
+    expectInstant(records.records[0]?.began, BEGAN.getTime());
 
     // Body append and frontmatter record are two edits to one document; the plan
     // sends both without one offset standing in for the other.
     expect(plan.changes).toHaveLength(2);
-    expect(cmChanges(plan.changes).map((change) => change.insert)).toEqual([
-      expect.stringContaining("weaver-alignments"),
-      expect.stringContaining("saw the eleven")
-    ]);
+  });
+
+  it("writes a branch under its parent, one dimension deeper and on its branch", () => {
+    const index = parseEntries(NOTE);
+    const parentEntry = index.entries[0];
+    if (parentEntry === undefined) throw new Error("expected a parent");
+    const parent = thoughtRefOf(index, parentEntry, "Chronomancer/2026.11.05.md");
+
+    const plan = planCaptureEntry(NOTE, index, {
+      ...rootRequest("a branch", BEGAN, PORTAL),
+      parent
+    });
+    if (plan === null) throw new Error("expected a plan");
+
+    const next = applied(NOTE, plan);
+    const entries = parseEntries(next).entries;
+    const child = entries.find((candidate) => candidate.n === 2);
+    expect(child?.d).toBe(2);
+    expect(child?.b).toBe(1);
+    expect(child?.parent).toBe(0);
+
+    // A branch never carries the invitation's evidence.
+    const records = readAlignments(next);
+    if (!records.ok) throw new Error(records.error);
+    expect(records.records).toHaveLength(0);
+  });
+
+  it("places the newest branch above older siblings", () => {
+    const withChild = `${NOTE}\n\n{ 1.2.2 }\n\nan older branch\n+ 00:00:01 ${dayKey(BEGAN)} 09:00:00`;
+    const index = parseEntries(withChild);
+    const parentEntry = index.entries[0];
+    if (parentEntry === undefined) throw new Error("expected a parent");
+
+    const plan = planCaptureEntry(withChild, index, {
+      ...rootRequest("the newest branch", BEGAN),
+      parent: thoughtRefOf(index, parentEntry, "Chronomancer/2026.11.05.md")
+    });
+    if (plan === null) throw new Error("expected a plan");
+
+    const entries = parseEntries(applied(withChild, plan)).entries;
+    expect(entries.map((entry) => entry.n)).toEqual([1, 3, 2]);
+    expect(entries.map((entry) => entry.d)).toEqual([1, 2, 2]);
+  });
+
+  it("records no evidence for a draft begun before its opening", () => {
+    const early = new Date(2026, 10, 5, 22, 54, 30);
+    const plan = planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest("too early", early, PORTAL));
+    if (plan === null) throw new Error("expected a plan");
+
+    const records = readAlignments(applied(NOTE, plan));
+    if (!records.ok) throw new Error(records.error);
+    expect(records.records).toHaveLength(0);
+  });
+
+  it("keeps the opening's frozen local facts after a timezone change", () => {
+    const opensAt = Date.UTC(2026, 10, 6, 6, 55, 0);
+    const machineOffset = -new Date(opensAt).getTimezoneOffset();
+    const offsetMinutes = machineOffset === 540 ? -480 : 540;
+    const wall = new Date(opensAt + offsetMinutes * 60_000);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const day = `${wall.getUTCFullYear()}-${pad(wall.getUTCMonth() + 1)}-${pad(wall.getUTCDate())}`;
+    const portal: PortalInstant = {
+      id: new Date(opensAt).toISOString(),
+      opensAt,
+      day,
+      hour: wall.getUTCHours(),
+      minute: wall.getUTCMinutes(),
+      offsetMinutes
+    };
+
+    // Inside the opening's own minute: the beginning is what qualifies, and the
+    // frozen local facts are the opening's, not the machine's current zone's.
+    const began = new Date(opensAt + 7_100);
+    const plan = planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest("arrived late", began, portal));
+    if (plan === null) throw new Error("expected a plan");
+
+    const records = readAlignments(applied(NOTE, plan));
+    if (!records.ok) throw new Error(records.error);
+    const opened = records.records[0]?.opened ?? "";
+    const expectedOffset = `${offsetMinutes < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(offsetMinutes) / 60))}:${pad(Math.abs(offsetMinutes) % 60)}`;
+    expect(opened).toBe(`${day}T${pad(wall.getUTCHours())}:${pad(wall.getUTCMinutes())}:00${expectedOffset}`);
+    expect(Date.parse(opened)).toBe(opensAt);
+    expectInstant(records.records[0]?.began, began.getTime());
+  });
+
+  it("keeps multi-line prose, spacing and all", () => {
+    for (const text of ["first line\nsecond line", "first paragraph\n\nsecond paragraph", "breathe\n", "\nsteady"]) {
+      const plan = planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest(text, BEGAN));
+      if (plan === null) throw new Error(`expected a plan for ${JSON.stringify(text)}`);
+
+      const next = applied(NOTE, plan);
+      const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
+      if (entry === undefined) throw new Error("expected the captured entry");
+      // Blank lines at the edges are spacing; what was typed is kept byte for byte.
+      expect(next.slice(entry.proseFrom, entry.proseTo)).toBe(text.trim());
+      expect(next.slice(0, plan.selection.from).endsWith(text)).toBe(true);
+    }
+  });
+
+  it("keeps a balanced code fence as the entry's prose", () => {
+    const text = "```\nconst ticket = 11;\n```";
+    const plan = planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest(text, BEGAN, PORTAL));
+    if (plan === null) throw new Error("expected a plan");
+
+    const next = applied(NOTE, plan);
+    const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
+    expect(entry?.proseLines).toHaveLength(3);
+    expect(entry?.day).toBe(dayKey(BEGAN));
+    expect(entry?.time).toBe(formatClock(BEGAN));
+
+    const records = readAlignments(next);
+    if (!records.ok) throw new Error(records.error);
+    expect(records.records[0]?.entry).toBe(2);
+  });
+
+  it("refuses text that would turn the block into something else", () => {
+    const refused = [
+      "```\nsaw this",
+      "saw this\n{ 9.1.9 }\nand this",
+      `saw this\n- 00:00:00 ${dayKey(BEGAN)} ${formatClock(BEGAN)}`,
+      `saw this\n+ 00:00:04 ${dayKey(BEGAN)} ${formatClock(BEGAN)}`
+    ];
+
+    for (const text of refused) {
+      expect(planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest(text, BEGAN, PORTAL))).toBeNull();
+      const records = readAlignments(NOTE);
+      if (!records.ok) throw new Error(records.error);
+      expect(records.records).toHaveLength(0);
+    }
+  });
+
+  it("refuses an empty or whitespace-only thought", () => {
+    for (const text of ["", "   ", "\n \t\n"]) {
+      expect(planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest(text, BEGAN))).toBeNull();
+    }
+    expect(planCaptureEntry(NOTE, parseEntries(NOTE), rootRequest("x", BEGAN))).not.toBeNull();
+  });
+
+  it("refuses a parent that is no longer in the note", () => {
+    const index = parseEntries(NOTE);
+    const stale = { ...thoughtRefOf(index, index.entries[0]!, "Chronomancer/2026.11.05.md"), prose: "gone" };
+    expect(planCaptureEntry(NOTE, index, { ...rootRequest("child", BEGAN), parent: stale })).toBeNull();
+  });
+
+  it("refuses unreadable metadata and notes before changing a byte", () => {
+    const malformed = "---\nweaver-alignments:\n  - {oops}\n---\n";
+    expect(planCaptureEntry(malformed, parseEntries(malformed), rootRequest("x", BEGAN, PORTAL))).toBeNull();
+
+    // An unreadable history refuses only when a record would join it.
+    const duplicate = "---\nweaver-alignments:\nweaver-alignments:\n---\n";
+    expect(planCaptureEntry(duplicate, parseEntries(duplicate), rootRequest("x", BEGAN, PORTAL))).toBeNull();
+    expect(planCaptureEntry(duplicate, parseEntries(duplicate), rootRequest("x", BEGAN))).not.toBeNull();
+
+    const unclosed = "---\ntravels: 1\n";
+    expect(planCaptureEntry(unclosed, parseEntries(unclosed), rootRequest("x", BEGAN))).toBeNull();
+
+    const fenced = "{ 1.1.1 }\n```\n";
+    expect(planCaptureEntry(fenced, parseEntries(fenced), rootRequest("x", BEGAN))).toBeNull();
+
+    const legacy = "{ 1.1.1 } - 10:00:00\nprose";
+    expect(parseEntries(legacy).legacyFormat).toBe(true);
+    expect(planCaptureEntry(legacy, parseEntries(legacy), rootRequest("x", BEGAN))).toBeNull();
   });
 
   it("keeps both records when two openings are written on one day", () => {
     const empty = "";
-    const first = planPortalEntry(empty, parseEntries(empty), PORTAL, BEGAN, "one");
+    const first = planCaptureEntry(empty, parseEntries(empty), rootRequest("one", BEGAN, PORTAL));
     if (first === null) throw new Error("expected a plan");
     const afterFirst = applied(empty, first);
 
     const secondOpening = new Date(2026, 10, 5, 23, 23, 0);
     const secondBegan = new Date(2026, 10, 5, 23, 23, 11, 900);
-    const second = planPortalEntry(
+    const second = planCaptureEntry(
       afterFirst,
       parseEntries(afterFirst),
-      portalAt(secondOpening.getTime()),
-      secondBegan,
-      "two"
+      rootRequest("two", secondBegan, portalAt(secondOpening.getTime()))
     );
     if (second === null) throw new Error("expected a plan");
 
     const next = applied(afterFirst, second);
-    // A truly empty note is all new text: one change, still one undo.
-    expect(first.changes).toHaveLength(1);
-
     const records = readAlignments(next);
     if (!records.ok) throw new Error(records.error);
     expect(records.records.map((record) => record.entry)).toEqual([1, 2]);
@@ -833,212 +944,32 @@ describe("planPortalEntry", () => {
       PORTAL.id,
       portalAt(secondOpening.getTime()).id
     ]);
-    expectInstant(records.records[1]?.began, secondBegan.getTime());
-
-    const entries = parseEntries(next).entries;
-    expect(entries.map((entry) => entry.n)).toEqual([1, 2]);
-    expect(entries.map((entry) => entry.day)).toEqual([dayKey(BEGAN), dayKey(secondBegan)]);
-  });
-
-  it("refuses unreadable metadata and notes before changing a byte", () => {
-    const malformed = "---\nweaver-alignments:\n  - {oops}\n---\n";
-    expect(planPortalEntry(malformed, parseEntries(malformed), PORTAL, BEGAN, "x")).toBeNull();
-
-    const duplicate = "---\nweaver-alignments:\nweaver-alignments:\n---\n";
-    expect(planPortalEntry(duplicate, parseEntries(duplicate), PORTAL, BEGAN, "x")).toBeNull();
-
-    const unclosed = "---\ntravels: 1\n";
-    expect(planPortalEntry(unclosed, parseEntries(unclosed), PORTAL, BEGAN, "x")).toBeNull();
-
-    const fenced = "{ 1.1.1 }\n```\n";
-    expect(planPortalEntry(fenced, parseEntries(fenced), PORTAL, BEGAN, "x")).toBeNull();
-
-    const legacy = "{ 1.1.1 } - 10:00:00\nprose";
-    expect(parseEntries(legacy).legacyFormat).toBe(true);
-    expect(planPortalEntry(legacy, parseEntries(legacy), PORTAL, BEGAN, "x")).toBeNull();
-  });
-
-  it("refuses an empty first input: a portal is entered by deliberate text", () => {
-    const ok = "---\ntravels: 1\n---\n";
-    expect(planPortalEntry(ok, parseEntries(ok), PORTAL, BEGAN, "")).toBeNull();
-    expect(planPortalEntry(ok, parseEntries(ok), PORTAL, BEGAN, "   ")).toBeNull();
-    expect(planPortalEntry(ok, parseEntries(ok), PORTAL, BEGAN, "\n \t\n")).toBeNull();
-    expect(planPortalEntry(ok, parseEntries(ok), PORTAL, BEGAN, "x")).not.toBeNull();
-  });
-
-  it("records the moment that was typed, even after the opening minute", () => {
-    const late = new Date(2026, 10, 5, 22, 56, 15, 700);
-    const plan = planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, late, "held too long");
-    if (plan === null) throw new Error("expected a plan");
-
-    const next = applied(NOTE, plan);
-    const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
-    expect(entry?.time).toBe(formatClock(late));
-    expect(entry?.day).toBe(dayKey(late));
-
-    const records = readAlignments(next);
-    if (!records.ok) throw new Error(records.error);
-    expectInstant(records.records[0]?.began, late.getTime());
-    expectInstant(records.records[0]?.opened, OPENED.getTime());
-  });
-
-  it("keeps the opening's frozen local facts after a timezone change", () => {
-    // A portal announced at 22:55-08:00. Whatever timezone the machine is in
-    // when the text is typed, the record must still name 22:55, not the local
-    // rendering of the same epoch.
-    const opensAt = Date.UTC(2026, 10, 6, 6, 55, 0);
-    const machineOffset = -new Date(opensAt).getTimezoneOffset();
-    // A zone the machine is not in, so the frozen facts and a live rendering of
-    // the same epoch cannot coincide.
-    const offsetMinutes = machineOffset === 540 ? -480 : 540;
-    const wall = new Date(opensAt + offsetMinutes * 60_000);
-    const pad = (value: number) => String(value).padStart(2, "0");
-    const day = `${wall.getUTCFullYear()}-${pad(wall.getUTCMonth() + 1)}-${pad(wall.getUTCDate())}`;
-    const hour = wall.getUTCHours();
-    const minute = wall.getUTCMinutes();
-    const portal: PortalInstant = {
-      id: new Date(opensAt).toISOString(),
-      opensAt,
-      day,
-      hour,
-      minute,
-      offsetMinutes
-    };
-
-    const began = new Date(2026, 10, 5, 23, 0, 7, 100);
-    const plan = planPortalEntry(NOTE, parseEntries(NOTE), portal, began, "arrived late");
-    if (plan === null) throw new Error("expected a plan");
-
-    const records = readAlignments(applied(NOTE, plan));
-    if (!records.ok) throw new Error(records.error);
-    const opened = records.records[0]?.opened ?? "";
-    const expectedOffset = `${offsetMinutes < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(offsetMinutes) / 60))}:${pad(Math.abs(offsetMinutes) % 60)}`;
-    expect(opened).toBe(`${day}T${pad(hour)}:${pad(minute)}:00${expectedOffset}`);
-
-    // Same instant as the portal, and still the announced local minute.
-    expect(Date.parse(opened)).toBe(opensAt);
-
-    // The beginning is the machine's own local wall clock, not the portal's.
-    expectInstant(records.records[0]?.began, began.getTime());
-  });
-
-  it("keeps multi-line first text as prose above the clock row", () => {
-    const plan = planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, "first line\nsecond line");
-    if (plan === null) throw new Error("expected a plan");
-
-    const next = applied(NOTE, plan);
-    const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
-    expect(entry?.proseLines).toHaveLength(2);
-    expect(entry?.title).toBe("first line");
-    expect(next).toContain("first line\nsecond line");
-    expect(next.slice(0, plan.selection.from).endsWith("second line")).toBe(true);
-  });
-
-  it("refuses first text that would turn the block into something else", () => {
-    const refused = [
-      // Leaves a fence open, so the generated row would sit inside code.
-      "```\nsaw this",
-      // Writes another marker, so the allocated entry ends above its own row.
-      "saw this\n{ 9.1.9 }\nand this",
-      // Ends the prose with a clock row, which the parser would take as the row.
-      "saw this\n- 00:00:00 2026-01-02 03:04:05"
-    ];
-
-    for (const text of refused) {
-      expect(planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, text)).toBeNull();
-
-      // No plan, so no partial capture: the day's history is still empty.
-      const records = readAlignments(NOTE);
-      if (!records.ok) throw new Error(records.error);
-      expect(records.records).toHaveLength(0);
-    }
-  });
-
-  it("refuses text whose clock row reads exactly like the planned one", () => {
-    // The first clock-shaped line in the block wins, so a copy of the generated
-    // row typed as prose would label the entry in place of the planned row.
-    const forged = `saw this\n- 00:00:00 ${dayKey(BEGAN)} ${formatClock(BEGAN)}`;
-    expect(planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, forged)).toBeNull();
-  });
-
-  it("keeps a balanced code fence as the entry's prose", () => {
-    const text = "```\nconst ticket = 11;\n```";
-    const plan = planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, text);
-    if (plan === null) throw new Error("expected a plan");
-
-    const next = applied(NOTE, plan);
-    const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
-    expect(entry?.proseLines).toHaveLength(3);
-    expect(entry?.title).toBe("```");
-    expect(entry?.day).toBe(dayKey(BEGAN));
-    expect(entry?.time).toBe(formatClock(BEGAN));
-
-    // The fence is text; the row that labels the entry is still the generated
-    // one, below the closed fence, with the same clock and the same record.
-    expect(next.endsWith(`${text}\n- 00:00:00 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)).toBe(true);
-
-    const records = readAlignments(next);
-    if (!records.ok) throw new Error(records.error);
-    expect(records.records).toHaveLength(1);
-    expect(records.records[0]?.entry).toBe(2);
-    expectInstant(records.records[0]?.began, BEGAN.getTime());
-  });
-
-  it("accepts ordinary multi-paragraph text, spacing and all", () => {
-    for (const text of ["first paragraph\n\nsecond paragraph", "breathe\n", "\nsteady"]) {
-      const plan = planPortalEntry(NOTE, parseEntries(NOTE), PORTAL, BEGAN, text);
-      if (plan === null) throw new Error(`expected a plan for ${JSON.stringify(text)}`);
-
-      const next = applied(NOTE, plan);
-      expect(
-        next.endsWith(`\n\n{ 2.1.2 }\n\n${text}\n- 00:00:00 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)
-      ).toBe(true);
-      expect(parseEntries(next).entries.find((candidate) => candidate.n === 2)?.title).toBe(
-        text.split("\n").find((line) => line.trim() !== "")?.trim()
-      );
-    }
   });
 });
 
-describe("portal history through a delete", () => {
-  const OPENED = new Date(2026, 10, 5, 22, 55, 0);
+describe("a captured entry through a delete", () => {
   const BEGAN = new Date(2026, 10, 5, 22, 55, 22, 0);
 
-  /** A note whose newest entry, `{ 3.1.3 }`, is a captured portal. */
+  /** A note whose newest entry is a captured root, with its record. */
   function capturedNote(): string {
-    const base = [
-      "---",
-      "travels: 1",
-      "---",
-      "{ 1.1.1 }",
-      "first",
-      "+ 00:01:00 10:00:00"
-    ].join("\n");
-
-    const ordinary = planStartEntry(base, parseEntries(base));
-    if (ordinary === null) throw new Error("expected a plan");
-    const withOrdinary = applied(base, ordinary);
-
-    const portal = planPortalEntry(
-      withOrdinary,
-      parseEntries(withOrdinary),
-      portalAt(OPENED.getTime()),
-      BEGAN,
-      "through the door"
+    const base = ["---", "travels: 1", "---", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
+    const plan = planCaptureEntry(
+      base,
+      parseEntries(base),
+      rootRequest("through the door", BEGAN, portalAt(new Date(2026, 10, 5, 22, 55, 0).getTime()))
     );
-    if (portal === null) throw new Error("expected a plan");
-    return applied(withOrdinary, portal);
+    if (plan === null) throw new Error("expected a plan");
+    return applied(base, plan);
   }
 
   it("nulls the deleted entry's association and keeps the event", () => {
     const source = capturedNote();
     const index = parseEntries(source);
-    const entry = index.entries.find((candidate) => candidate.n === 3);
-    if (entry === undefined) throw new Error("expected the portal entry");
+    const entry = index.entries.find((candidate) => candidate.n === 2);
+    if (entry === undefined) throw new Error("expected the captured entry");
 
     const before = readAlignments(source);
     if (!before.ok) throw new Error(before.error);
-    expect(before.records[0]?.entry).toBe(3);
 
     const plan = planDeleteEntry(source, index, entry);
     if (plan === null) throw new Error("expected a plan");
@@ -1051,102 +982,37 @@ describe("portal history through a delete", () => {
     expect(after.records).toHaveLength(1);
     expect(after.records[0]?.entry).toBeNull();
     expect(after.records[0]?.portal).toBe(before.records[0]?.portal);
-    expect(after.records[0]?.opened).toBe(before.records[0]?.opened);
     expect(after.records[0]?.began).toBe(before.records[0]?.began);
-    expect(plan.changes).toHaveLength(2);
-  });
-
-  it("reusing the freed number never links the old event to a new entry", () => {
-    const source = capturedNote();
-    const index = parseEntries(source);
-    const entry = index.entries.find((candidate) => candidate.n === 3);
-    if (entry === undefined) throw new Error("expected the portal entry");
-
-    const plan = planDeleteEntry(source, index, entry);
-    if (plan === null) throw new Error("expected a plan");
-    const afterDelete = applied(source, plan);
-
-    // `N` is one past the largest remaining number, so the deleted 3 comes back.
-    const restarted = planStartEntry(afterDelete, parseEntries(afterDelete));
-    if (restarted === null) throw new Error("expected a plan");
-    const next = applied(afterDelete, restarted);
-
-    const written = parseEntries(next).entries.find((candidate) => candidate.n === 3);
-    expect(written).toBeDefined();
-
-    const records = readAlignments(next);
-    if (!records.ok) throw new Error(records.error);
-    expect(records.records[0]?.entry).toBeNull();
-  });
-
-  it("refuses to delete an entry when the day's history cannot be read", () => {
-    const malformed = [
-      "---",
-      "weaver-alignments:",
-      "  - {oops}",
-      "---",
-      "{ 1.1.1 }",
-      "prose",
-      "- 00:00:00"
-    ].join("\n");
-    const index = parseEntries(malformed);
-    const entry = index.entries[0];
-    if (entry === undefined) throw new Error("expected an entry");
-
-    // Removing the text while leaving unreadable history behind would be a
-    // half-write of the day: the whole delete is refused instead.
-    expect(planDeleteEntry(malformed, index, entry)).toBeNull();
-  });
-
-  it("takes the associations of a whole subtree and spares the survivors", () => {
-    const rows = [2, 3].map(
-      (entry) =>
-        `  - {"portal":"2026-11-06T06:55:00.000Z","opened":"2026-11-05T22:55:00-08:00","began":"2026-11-05T22:55:22-08:00","entry":${entry}}`
-    );
-    const source = [
-      "---",
-      "travels: 2",
-      "weaver-alignments:",
-      ...rows,
-      "---",
-      "{ 1.1.1 }",
-      "root",
-      "+ 00:01:00 10:00:00",
-      "{ 1.2.2 }",
-      "child",
-      "+ 00:00:30 10:01:00",
-      "{ 2.1.3 }",
-      "sibling",
-      "+ 00:00:20 10:02:00",
-      ""
-    ].join("\n");
-
-    const index = parseEntries(source);
-    const root = index.entries.find((candidate) => candidate.n === 1);
-    if (root === undefined) throw new Error("expected the root");
-
-    const plan = planDeleteEntry(source, index, root);
-    if (plan === null) throw new Error("expected a plan");
-    const next = applied(source, plan);
-
-    // The child went with its root; the sibling kept its own association.
-    expect(next).not.toContain("child");
-    expect(next).toContain("sibling");
-
-    const records = readAlignments(next);
-    if (!records.ok) throw new Error(records.error);
-    expect(records.records.map((entry) => entry.entry)).toEqual([null, 3]);
-    expect(records.records.map((entry) => entry.began)).toEqual([
-      "2026-11-05T22:55:22-08:00",
-      "2026-11-05T22:55:22-08:00"
-    ]);
   });
 });
 
-describe("portal plans through real CodeMirror history", () => {
-  const OPENED = new Date(2026, 10, 5, 22, 55, 0);
+describe("a capture through real CodeMirror history", () => {
   const BEGAN = new Date(2026, 10, 5, 22, 55, 0, 400);
-  const SOURCE = [
+  const SOURCE = ["---", "travels: 1", "---", "{ 1.1.1 }", "first", "+ 00:01:00 10:00:00"].join("\n");
+
+  it("undoes the entry and its record together, then redoes both", () => {
+    const opened = new Date(2026, 10, 5, 22, 55, 0);
+    const plan = planCaptureEntry(SOURCE, parseEntries(SOURCE), rootRequest("entered", BEGAN, portalAt(opened.getTime())));
+    if (plan === null) throw new Error("expected a plan");
+    const written = applied(SOURCE, plan);
+
+    const view = historyView(SOURCE);
+    view.dispatch({ changes: cmChanges(plan.changes), selection: { anchor: plan.selection.from } });
+    expect(view.state.doc.toString()).toBe(written);
+
+    expect(undo({ state: view.state, dispatch: (transaction) => view.dispatch(transaction) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(SOURCE);
+
+    expect(redo({ state: view.state, dispatch: (transaction) => view.dispatch(transaction) })).toBe(true);
+    expect(view.state.doc.toString()).toBe(written);
+    const records = readAlignments(view.state.doc.toString());
+    if (!records.ok) throw new Error(records.error);
+    expect(records.records[0]?.entry).toBe(2);
+  });
+});
+
+describe("planCaptureEntry and an unwritable record", () => {
+  const NOTE = [
     "---",
     "travels: 1",
     "---",
@@ -1155,49 +1021,24 @@ describe("portal plans through real CodeMirror history", () => {
     "+ 00:01:00 10:00:00"
   ].join("\n");
 
-  it("undoes the entry and its record together, then redoes both", () => {
-    const plan = planPortalEntry(SOURCE, parseEntries(SOURCE), portalAt(OPENED.getTime()), BEGAN, "entered");
+  it("writes the thought without evidence when the record cannot be added", () => {
+    // An opening whose id is not a whole minute cannot be named by a record. The
+    // thought is the record and the evidence is extra, so the words still land —
+    // losing a written thought to an unwritable detail would be the worse trade.
+    const opened = new Date(2026, 10, 5, 22, 55, 0);
+    const portal = portalAt(opened.getTime() + 4_000);
+    const plan = planCaptureEntry(
+      NOTE,
+      parseEntries(NOTE),
+      rootRequest("the words still land", new Date(opened.getTime() + 4_500), portal)
+    );
     if (plan === null) throw new Error("expected a plan");
-    const written = applied(SOURCE, plan);
 
-    const view = historyView(SOURCE);
-    view.dispatch({ changes: cmChanges(plan.changes), selection: { anchor: plan.selection.from } });
-    expect(view.state.doc.toString()).toBe(written);
-    expect(view.state.selection.main.head).toBe(plan.selection.from);
+    const written = applied(NOTE, plan);
+    expect(written).toContain("the words still land");
 
-    expect(undo({ state: view.state, dispatch: (transaction) => view.dispatch(transaction) })).toBe(true);
-    expect(view.state.doc.toString()).toBe(SOURCE);
-    expect(readAlignments(SOURCE).ok).toBe(true);
-
-    expect(redo({ state: view.state, dispatch: (transaction) => view.dispatch(transaction) })).toBe(true);
-    expect(view.state.doc.toString()).toBe(written);
-    const records = readAlignments(view.state.doc.toString());
+    const records = readAlignments(written);
     if (!records.ok) throw new Error(records.error);
-    expect(records.records[0]?.entry).toBe(2);
-  });
-
-  it("restores a deleted portal entry's association with one undo", () => {
-    const plan = planPortalEntry(SOURCE, parseEntries(SOURCE), portalAt(OPENED.getTime()), BEGAN, "entered");
-    if (plan === null) throw new Error("expected a plan");
-    const captured = applied(SOURCE, plan);
-
-    const index = parseEntries(captured);
-    const entry = index.entries.find((candidate) => candidate.n === 2);
-    if (entry === undefined) throw new Error("expected the portal entry");
-    const deletion = planDeleteEntry(captured, index, entry);
-    if (deletion === null) throw new Error("expected a plan");
-    const deleted = applied(captured, deletion);
-
-    const view = historyView(captured);
-    view.dispatch({ changes: cmChanges(deletion.changes), selection: { anchor: deletion.selection.from } });
-    expect(view.state.doc.toString()).toBe(deleted);
-
-    expect(undo({ state: view.state, dispatch: (transaction) => view.dispatch(transaction) })).toBe(true);
-    expect(view.state.doc.toString()).toBe(captured);
-
-    const restored = readAlignments(view.state.doc.toString());
-    if (!restored.ok) throw new Error(restored.error);
-    expect(restored.records[0]?.entry).toBe(2);
-    expect(parseEntries(view.state.doc.toString()).entries.map((candidate) => candidate.n)).toEqual([1, 2]);
+    expect(records.records).toHaveLength(0);
   });
 });

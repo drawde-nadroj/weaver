@@ -1,33 +1,46 @@
 /**
- * Weaver: a day note is a linear list of entries.
+ * Weaver: a day note is a linear list of entries, and a thought may be written
+ * from anywhere.
  *
- * An entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS HH:MM:SS`.
- * The note and the navigator are the whole surface: nothing else navigates, and
- * every write of a day note goes through one writer.
+ * An entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS YYYY-MM-DD
+ * HH:MM:SS`. Writing happens in two places that share one writer: inside a note,
+ * where the entry is the note's own text, and in the floating composer, which
+ * holds one unsaved thought until it is settled. The navigator is the only list
+ * and the only navigation.
+ *
+ * This module is wiring, and only wiring: settings, the one writer, the one clock,
+ * the composer, the invitation dock, the workspace service, commands, and the two
+ * listeners that keep derived facts (day counters, portal association) true.
  */
 
-import { Notice, Plugin, TFile, type MarkdownView } from "obsidian";
+import { Component, MarkdownRenderer, Notice, Plugin, TFile, MarkdownView } from "obsidian";
 
 import { readAlignments } from "./core/alignments";
-import { formatClock, pad2 } from "./core/clock";
+import { formatClock } from "./core/clock";
 import { parseClose, planCloseDay } from "./core/close";
 import { applyDayStats, recountDay } from "./core/day-stats";
-import { dayKey } from "./core/day";
 import { entryBySeq, parseEntries } from "./core/entries";
 import { applyPlanToSource } from "./core/insert";
-import type { Stop } from "./core/navigator-stack";
-import { closeDecorationsExtension } from "./editor/close-decorations";
+import { MAIN_CONTEXT_ID, sourceDayOf } from "./core/contexts";
+import { dayKey as dayKeyOf } from "./core/day";
+import { threadViewOf, type ThoughtRef } from "./core/capture";
+import { portalAlignments, readPortalSchedules } from "./core/portals";
 import { editorPathOf } from "./editor/editor-path";
+import { back, canGoBack, canGoForward, forward, initialHistory, record, type NavigationHistory, type Stop } from "./core/navigation";
+import { OPENING_WINDOW_MS, portalTime } from "./core/portals";
+import { closeDecorationsExtension } from "./editor/close-decorations";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
 import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, programmaticWrite, refreshEntriesEffect } from "./editor/entry-field";
-import { portalExtension } from "./editor/portal-widget";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
+import { CaptureController, type CaptureHost } from "./entries/capture";
 import { EntryClock } from "./entries/clock";
+import { ContextWorkspaces, type LayoutApi } from "./entries/context-workspaces";
+import { ensureDayNote, contextList, resolveContextDay } from "./entries/day-note";
 import { EntryEngine } from "./entries/engine";
-import { resolveDayNote } from "./entries/day-note";
-import { PortalController } from "./entries/portals";
+import { LocalState, type WorkspaceSnapshot } from "./entries/local-state";
+import { PortalController, type OfferedInvitation } from "./entries/portals";
 import { EntrySession } from "./entries/session";
 import { minimalChange, rewriteDay } from "./entries/writer";
 import { NoModel, OmLxModel, type WhisperModel } from "./model/whisper-model";
@@ -43,25 +56,24 @@ import {
 } from "./notices";
 import { createCloseProcessor } from "./reading/close-processor";
 import { createEntryProcessor } from "./reading/entry-processor";
-import { PortalReadingTray } from "./reading/portals";
 import { normalizeData, whisperReachable, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
-import { Navigator } from "./ui/navigator";
+import { Composer, type PortalStripView } from "./ui/composer";
+import type { WeavingContext } from "./core/contexts";
+import { Navigator, type NavigatorOptions } from "./ui/navigator";
 import { isMobile, isPhone, isTablet } from "./ui/platform";
 
-/** Hand edits in the day note settle for this long before the stats follow. */
+/** How long a minute that has closed keeps saying so, once. */
+const CLOSED_WINDOW_MS = 3000;
+
+/** Hand edits in a day note settle for this long before the counters follow. */
 const DAY_STATS_DELAY_MS = 2000;
 
 /** How long a captured exact-second alignment shows its one acknowledgement. */
 const ALIGNED_ACK_MS = 800;
 
-/**
- * The local stamp an alignment record writes: `2026-11-05T22:55:00-08:00`.
- * A record is only trusted for an entry when its beginning names the very day
- * and moment the entry's clock row holds — after a hand edit, a deletion or a
- * reused `N`, proximity is not evidence.
- */
+/** The local stamp an alignment record writes: `2026-11-05T22:55:00-08:00`. */
 const LOCAL_STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$/;
 
 const BODY_CLASSES = [
@@ -72,7 +84,7 @@ const BODY_CLASSES = [
   "weaver-tablet"
 ];
 
-/** Wiring only: settings, editor extensions, commands, and the day-stats listener. */
+/** Wiring only: settings, editor extensions, commands, and the two derived facts. */
 export default class WeaverPlugin extends Plugin {
   data: WeaverData = normalizeData(null);
   settings: WeaverSettings = this.data.settings;
@@ -80,18 +92,26 @@ export default class WeaverPlugin extends Plugin {
   session = new EntrySession();
   /** The one clock every stopwatch surface reads; owned for the plugin's life. */
   clock!: EntryClock;
-  /** Ephemeral portal lifecycle: the held opening, its notices, its candidates. */
+  /** Invitations: which schedule is offering what, right now. */
   portals!: PortalController;
   entries!: EntryEngine;
   /** The model that reads settled entries, and the cache it reads them into. */
   whisper!: WhisperRunner;
-  /** Where the navigator's last moves came from, oldest first. */
-  stack: { stops: Stop[] } = { stops: [] };
+  /** Where the navigator's moves came from, and where it can go again. */
+  history = initialHistory();
+  /** This device's unsent draft, layouts and acknowledgements. */
+  local!: LocalState;
+  /** The one floating thread surface. */
+  composer!: Composer;
+  /** Destination travel: what the workspace was, and what it becomes. */
+  workspaces!: ContextWorkspaces;
+  /** The draft, its timing, and its one submission. */
+  controller!: CaptureController;
 
   private navigator: Navigator | null = null;
   private dayStatsTimer: number | null = null;
-  /** Reading-view portal trays: one lifecycle component for every preview view. */
-  private portalReading: PortalReadingTray | null = null;
+  /** True while one navigation transaction is running. */
+  private navigating = false;
   /**
    * Which entries of which note were entered from a portal, validated against
    * the note's own readable history: `path` → entry `N`s whose recorded
@@ -108,43 +128,78 @@ export default class WeaverPlugin extends Plugin {
     applyCss(this.settings);
 
     this.session = new EntrySession();
-    // One clock per plugin: a session, one timer, and every surface subscribed
-    // to the same painted second. `Date.now` is injected so the sampling is
-    // testable, and `onunload` cancels what it scheduled.
     this.clock = new EntryClock(this.session, () => Date.now());
-    // The portal lifecycle depends only on the injected host, so it is built
-    // before the engine that will later hand it first input. It owns the held
-    // opening and the single invitation per announcement, deriving every state
-    // from actual time rather than counting timer callbacks. Main only
-    // reconciles it; pending frames are rendered from its candidates by the
-    // editor surface.
+
+    this.local = new LocalState({
+      load: (key) => this.loadLocal(key),
+      save: (key, value) => this.saveLocal(key, value)
+    });
+
     this.portals = new PortalController({
       now: () => Date.now(),
       enabled: () => this.settings.portalsEnabled,
-      todayPath: (at) => resolveDayNote(this.app, this.settings, new Date(at)).path,
-      activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
+      rhythmic: () => this.settings.rhythmicPortalsEnabled,
+      rhythmContext: () => MAIN_CONTEXT_ID,
+      schedules: () => this.schedules(),
+      state: () => this.local.workspace(),
+      persist: (record) => this.local.saveWorkspace(record),
       visible: () => document.visibilityState !== "hidden",
-      invite: (portal, remainingSeconds) => {
-        new Notice(
-          noticePortal(`${pad2(portal.hour)}:${pad2(portal.minute)}`, remainingSeconds),
-          NOTICE_NOOP_MS
-        );
+      invite: (occurrence) => {
+        new Notice(noticePortal(occurrence.name, portalTime(occurrence.portal), 0), NOTICE_NOOP_MS);
       }
     });
-    this.portals.reconcile();
 
     this.entries = new EntryEngine(this);
     this.whisper = new WhisperRunner({
-      // Read fresh every call: a changed endpoint or model takes effect at once.
-      // `NoModel` when the feature is off, and when a loopback address arrives on
-      // a phone — an address that can only ever mean the reader's own device.
       model: () => this.whisperModel(),
       land: (path, n, key, whisper) => this.entries.landWhisper(path, n, key, whisper),
       log: (...args: unknown[]) => this.log(...args),
-      // A box's effect is chosen while measuring, so the frame has to be told
-      // when an entry starts or stops waiting.
       onChange: () => this.repaintFrames()
     });
+
+    this.controller = new CaptureController(this.captureHost());
+    this.composer = new Composer({
+      app: this.app,
+      controller: this.controller,
+      clock: this.clock,
+      contexts: () => this.contexts(),
+      loadThread: async (target) => {
+        const source = await this.readNote(target.path);
+        return source === null ? null : threadViewOf(parseEntries(source), target.path, target);
+      },
+      travel: (contextId) => this.visitRealm(contextId),
+      viewing: () => this.workspaces.viewing(),
+      renderMarkdown: (element, markdown, sourcePath, component) => {
+        void this.renderMarkdown(element, markdown, sourcePath, component);
+      },
+      openRealms: () => void this.openNavigator({ section: "realms" }),
+      portalStrip: () => this.portalStrip(),
+      weaveOpening: (occurrenceId) => {
+        const offered = this.portals
+          .outstanding()
+          .find((candidate) => candidate.occurrence.id === occurrenceId);
+        this.openComposer(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
+      },
+      dismissOpening: (occurrenceId) => {
+        this.portals.dismiss(occurrenceId);
+        this.repaintSurface();
+      },
+      openPortals: () => void this.openNavigator({ section: "portals" })
+    });
+
+    this.workspaces = new ContextWorkspaces({
+      app: this.app,
+      layout: () => this.layoutApi(),
+      contexts: () => this.contexts(),
+      state: () => this.local.workspace(),
+      save: (record) => this.local.saveWorkspace(record),
+      freezeDraft: () => this.controller.pause(),
+      openNote: (path) => this.openNote(path),
+      notify: (message) => new Notice(message, NOTICE_NOOP_MS)
+    });
+
+    this.portals.subscribe(() => this.repaintSurface());
+
     this.registerEditorExtension([
       viewRegistryExtension,
       entryIndexExtension(),
@@ -152,6 +207,7 @@ export default class WeaverPlugin extends Plugin {
         () => this.session,
         () => this.app.workspace.getActiveFile()?.path ?? "",
         () => this.clock,
+        () => this.contexts(),
         (target, sourcePath) => {
           void this.app.workspace.openLinkText(target, sourcePath, false);
         }
@@ -161,10 +217,6 @@ export default class WeaverPlugin extends Plugin {
         settings: () => this.settings,
         session: () => this.session,
         reading: (path, n) => this.whisper.pendingFor(path, n),
-        // An entry is "from a portal" only while the note's readable history
-        // still names this entry's own recorded beginning; the acknowledgement
-        // is the short window after capture, and both are repainted when they
-        // change.
         portal: (path, n) => this.portalEntries.get(path)?.has(n) === true,
         aligned: (path, n) => {
           const until = this.alignedUntil.get(path)?.get(n);
@@ -172,67 +224,63 @@ export default class WeaverPlugin extends Plugin {
         },
         fallbackPath: () => this.app.workspace.getActiveFile()?.path ?? ""
       }),
-      portalExtension({
-        controller: this.portals,
-        clock: this.clock,
-        settings: () => this.settings,
-        capture: (view, id, text, at) => this.entries.capturePortal(view, id, text, at),
-        lastFailure: (id) => this.entries.portalFailure(id)
-      }),
       entryKeysExtension(this),
       entryEditExtension(this)
     ]);
 
-    // Frames ask whether an entry came from a portal; the answer is read from
-    // the notes that are already open, before the first paint that needs it.
     this.app.workspace.onLayoutReady(() => {
+      // Ownership is decided against the real screen before anything is labelled
+      // a Realm, so a workspace rearranged between sessions is not relabelled.
+      this.workspaces.adopt();
       this.repaintFrames();
+      this.portals.start();
+      this.repaintSurface();
+      // A recovered draft is offered, never forced: it shows hidden and paused.
+      this.controller.recover();
+      this.composer.mount();
     });
 
+    // A pane the host created after a restore gets its position on the first
+    // layout that holds it, rather than being left at the host's own offset.
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        this.workspaces.flushPending();
+      })
+    );
+
     this.registerMarkdownPostProcessor(
-      createEntryProcessor((target, sourcePath) => {
-        void this.app.workspace.openLinkText(target, sourcePath, false);
-      }, this.clock)
+      createEntryProcessor(
+        () => this.contexts(),
+        (target, sourcePath) => {
+          void this.app.workspace.openLinkText(target, sourcePath, false);
+        },
+        this.clock
+      )
     );
     this.registerMarkdownPostProcessor(createCloseProcessor());
-
-    // One lifecycle owner for Reading-view portals: it watches the visible
-    // preview views, never the post-processor callbacks, so a tray cannot be
-    // attached twice for one note.
-    this.portalReading = new PortalReadingTray(this);
-    this.portalReading.start();
 
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         this.scheduleDayStats(file instanceof TFile ? file : null);
-        // Hand edits and reloads can add or remove a recorded beginning; the
-        // validated association is cheap to re-derive from what is open.
         this.syncPortalEntries();
       })
     );
-    let portalLeaf = this.app.workspace.activeLeaf;
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", (leaf) => {
-        // A mode switch in the same leaf retains preparation. Departing to
-        // another leaf releases it even when both panes show the same note.
-        if (leaf !== portalLeaf) this.portals.release();
-        portalLeaf = leaf;
+      this.app.workspace.on("active-leaf-change", () => {
         void this.entries.pause();
       })
     );
     this.registerDomEvent(document, "visibilitychange", () => {
       if (document.visibilityState === "hidden") {
-        // Stop before the window is gone: the hidden session must keep the
-        // second that was on screen, not one sampled on the way out. A hidden
-        // app also cannot hold or announce a portal.
-        this.portals.release();
+        // Stop before the window is gone: the hidden session keeps the second
+        // that was on screen. A hidden app also cannot offer an invitation.
+        this.workspaces.remember();
+        this.controller.pause();
         void this.entries.pause();
         return;
       }
-      // A hidden app missed ticks rather than seconds; resampling reconciles
-      // the one snapshot every surface will paint, without replaying a backlog,
-      // and portal state is derived from the instant rather than a notice queue.
       this.portals.reconcile();
+      this.repaintSurface();
       this.clock.refresh();
     });
 
@@ -243,9 +291,10 @@ export default class WeaverPlugin extends Plugin {
   }
 
   onunload(): void {
-    this.portalReading?.destroy();
-    this.portalReading = null;
-    this.portals.release();
+    this.workspaces?.remember();
+    this.composer?.destroy();
+    this.navigator?.close();
+    this.navigator = null;
     this.portals.destroy();
     this.clock.destroy();
     this.whisper.clear();
@@ -260,8 +309,6 @@ export default class WeaverPlugin extends Plugin {
       this.dayStatsTimer = null;
     }
 
-    this.navigator?.close();
-    this.navigator = null;
     removeCss();
     document.body.classList.remove(...BODY_CLASSES);
   }
@@ -269,6 +316,21 @@ export default class WeaverPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     this.data.settings = this.settings;
     await this.saveData(this.data);
+  }
+
+  /**
+   * Every destination a thought may be woven into, `main` first.
+   *
+   * Read fresh at each call: the list is cheap, and a settings change must take
+   * effect in the next frame rather than at the next reload.
+   */
+  contexts(): readonly WeavingContext[] {
+    return contextList(this.app, this.settings).contexts;
+  }
+
+  /** Every configured schedule, validated. */
+  schedules() {
+    return readPortalSchedules(this.settings.portalSchedules).valid;
   }
 
   log(...args: unknown[]): void {
@@ -295,12 +357,8 @@ export default class WeaverPlugin extends Plugin {
   }
 
   /**
-   * The body classes every stylesheet rule hangs off: the two setting-driven
-   * ones, and the platform itself.
-   *
-   * The platform classes are set here, from Obsidian's own flags, rather than by
-   * whichever surface happens to be running: a phone's CSS must not depend on a
-   * surface being open.
+   * The body classes every stylesheet rule hangs off: the setting-driven ones and
+   * the platform itself, set here rather than by whichever surface is open.
    */
   syncBodyClasses(): void {
     const body = document.body.classList;
@@ -310,6 +368,7 @@ export default class WeaverPlugin extends Plugin {
     body.toggle("weaver-platform-mobile", isMobile());
     body.toggle("weaver-phone", isPhone());
     body.toggle("weaver-tablet", isTablet());
+    document.body.setAttribute("data-weaver-motion", this.settings.portalMotion);
   }
 
   /** Applies every setting that can change live, without a reload. */
@@ -318,12 +377,9 @@ export default class WeaverPlugin extends Plugin {
     applyCss(this.settings);
     // An answer from the previous endpoint or model must not be served.
     this.whisper.clear();
-    // The toggle is honoured here: turning portals off drops the hold and the
-    // pending surfaces, without touching entries or recorded history.
+    // Schedules and the master switch are read fresh by the controller.
     this.portals.reconcile();
-    // Reading surfaces carry their frame setting at mount, so they are rebuilt
-    // when it changes rather than keeping an old look.
-    this.portalReading?.settingsChanged();
+    this.repaintSurface();
 
     for (const view of registeredEditorViews()) {
       view.dispatch({ effects: refreshEntriesEffect.of(undefined) });
@@ -331,12 +387,32 @@ export default class WeaverPlugin extends Plugin {
   }
 
   /**
-   * Re-measures the open notes, so a frame effect that changed on its own is drawn.
+   * Opens the composer: the one entry point every gesture shares.
+   *
+   * The destination defaults to what the workspace is showing, so a capture from
+   * inside a note lands where the note lives, and `main` when the screen is not a
+   * destination. An opening is not passed in: an invitation only chooses the
+   * Realm, and whether the writing counts as entered is decided by the first
+   * committed input itself.
+   *
+   * The surface is mounted and drawn before the input is touched, so the caret can
+   * only be restored into a textarea that is already on screen — a phone will not
+   * raise a keyboard for an element the writer cannot see.
    */
+  openComposer(options: { contextId?: string } = {}): void {
+    const contextId = options.contextId ?? this.workspaces.viewing() ?? MAIN_CONTEXT_ID;
+    // Where focus came from, remembered before the surface takes it, so Hide can
+    // put it back exactly there.
+    this.composer.rememberFocus();
+    this.controller.open(contextId === "" ? MAIN_CONTEXT_ID : contextId);
+    this.composer.mount();
+    this.composer.render();
+    this.composer.restoreSelection();
+    if (this.controller.state.phase === "editing") this.composer.focusInput();
+  }
+
+  /** Re-measures the open notes, so a frame effect that changed on its own is drawn. */
   repaintFrames(): void {
-    // The frame's portal query reads validated history; every repaint refreshes
-    // it from the live documents first, so an undo that removed a record is
-    // reflected in the same paint.
     this.syncPortalEntries();
     for (const view of registeredEditorViews()) {
       view.dispatch({
@@ -349,11 +425,6 @@ export default class WeaverPlugin extends Plugin {
   /**
    * Records that an entry was just entered from a portal, and starts its one
    * acknowledgement if the input landed on an exact second.
-   *
-   * The association is added directly because the capture that produced it is
-   * the evidence; the next history sync re-derives the same answer from the
-   * note. The acknowledgement expires after {@link ALIGNED_ACK_MS} and repaints
-   * once — it is a moment, not a state the frame keeps.
    */
   portalEntered(path: string, n: number, aligned: boolean): void {
     let entries = this.portalEntries.get(path);
@@ -390,9 +461,8 @@ export default class WeaverPlugin extends Plugin {
    *
    * The note's own history is the only evidence: a record is trusted for an
    * entry only when its recorded beginning names the same day and moment the
-   * entry's clock row holds, so a manually edited row, a deleted entry, and a
-   * reused `N` are all rejected. Unreadable history contributes nothing rather
-   * than an empty history, and nothing here writes.
+   * entry's clock row holds, so an edited row, a deleted entry and a reused `N`
+   * are all rejected. Nothing here writes.
    */
   syncPortalEntries(): void {
     this.portalEntries.clear();
@@ -418,30 +488,26 @@ export default class WeaverPlugin extends Plugin {
     }
   }
 
-  /** Explicit preparation preserves a Reading surface's owning leaf when supplied. */
-  async preparePortal(id: string, owner?: MarkdownView): Promise<void> {
-    await this.entries.revealPortal(id, owner);
-  }
-
-  /**
-   * Opens the navigator over today's entries, on the note as it is on screen.
-   *
-   * The engine speaks for a missing note — one refusal, in one place — so this
-   * returns quietly when there is nothing to show.
-   */
-  async openNavigator(): Promise<void> {
-    const view = await this.entries.revealToday(new Date());
-    if (view === null || this.navigator?.isOpen === true) return;
-
+  /** Opens the navigator over the workspace, without revealing or creating a note. */
+  async openNavigator(options: NavigatorOptions = {}): Promise<void> {
+    if (this.navigator?.isOpen === true) {
+      await this.navigator.choose(options);
+      return;
+    }
     this.navigator = new Navigator(this);
-    this.navigator.open(view);
+    await this.navigator.open(options);
   }
 
-  /** Closes today's day note: one mark, then the day's own stats. */
+  /** Closes the day note on screen, else today's in the current destination. */
   async closeDay(): Promise<void> {
     const now = new Date();
-    const file = resolveDayNote(this.app, this.settings, now).file;
+    const active = this.app.workspace.getActiveFile();
+    const target =
+      active !== null && sourceDayOf(active.path, this.contexts()) !== null
+        ? { ok: true as const, file: active }
+        : resolveContextDay(this.app, this.settings, this.currentContext(), dayKeyOf(now));
 
+    const file = target.ok ? target.file : null;
     if (file === null) {
       new Notice(NOTICE_NO_DAY_NOTE, NOTICE_REFUSAL_MS);
       return;
@@ -473,38 +539,429 @@ export default class WeaverPlugin extends Plugin {
     new Notice(NOTICE_DAY_CLOSED(formatClock(now)), NOTICE_NOOP_MS);
   }
 
+  /** The destination the composer would write into: the workspace's, else Main. */
+  private currentContext(): string {
+    const viewing = this.workspaces?.viewing() ?? "";
+    return viewing === "" ? MAIN_CONTEXT_ID : viewing;
+  }
+
+  // ── the composer's world ─────────────────────────────────────────────────
+
+  private captureHost(): CaptureHost {
+    return {
+      now: () => Date.now(),
+      contexts: () => this.contexts(),
+      capture: (request, invitations) =>
+        this.entries.capture(
+          request,
+          (receipt) => this.controller.attachReceipt(receipt),
+          invitations
+        ),
+      read: (path) => this.readNote(path),
+      editInNote: (target) => this.editInNote(target),
+      freezeNative: () => {
+        // Synchronous, so the note's clock stops on the second on screen before
+        // the composer takes focus.
+        if (this.session.active() !== null) this.session.freezeDisplay();
+      },
+      pauseNative: async () => {
+        await this.entries.pause();
+        return this.session.active() === null;
+      },
+      invitationsAt: (contextId, at) =>
+        this.portals.captureAt(contextId, at).map(({ occurrence, generation }) => ({
+          occurrenceId: occurrence.id,
+          scheduleId: occurrence.scheduleId,
+          name: occurrence.name,
+          generation,
+          portal: occurrence.portal,
+          contextId: occurrence.contextId
+        })),
+      acknowledge: (invitation, saved, beginning) => {
+        this.portals.acknowledge(
+          {
+            id: invitation.occurrenceId,
+            scheduleId: invitation.scheduleId,
+            contextId: invitation.contextId,
+            name: invitation.name,
+            portal: invitation.portal
+          },
+          invitation.generation
+        );
+        // The frame acknowledges an entry only when its first input landed on an
+        // exact second of the opening it was written into.
+        this.portalEntered(
+          saved.thought.path,
+          saved.thought.n,
+          portalAlignments(invitation.portal, beginning.at).length > 0
+        );
+      },
+      store: this.local,
+      onChange: () => this.composer?.render()
+    };
+  }
+
+  private async readNote(path: string): Promise<string | null> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return null;
+    try {
+      return await this.app.vault.cachedRead(file);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Opens one note and puts the caret in a thought, without starting a clock. */
+  private async editInNote(target: ThoughtRef): Promise<boolean> {
+    return this.visitThought(target, true);
+  }
+
+  /** Opens a destination's note for a visit, creating it because a visit is explicit. */
+  private async openNote(path: string): Promise<boolean> {
+    const day = sourceDayOf(path, this.contexts());
+    const file =
+      this.app.vault.getAbstractFileByPath(path) instanceof TFile
+        ? (this.app.vault.getAbstractFileByPath(path) as TFile)
+        : day === null
+          ? null
+          : await ensureDayNote(this.app, path, day).catch(() => null);
+    if (file === null) return false;
+
+    const existing = this.app.workspace
+      .getLeavesOfType("markdown")
+      .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === path);
+    if (existing !== undefined) {
+      this.app.workspace.setActiveLeaf(existing, { focus: false });
+      await this.app.workspace.revealLeaf(existing);
+      return true;
+    }
+
+    await this.app.workspace.getLeaf("tab").openFile(file);
+    return true;
+  }
+
+  /** The host's layout API, or null when it does not expose one. */
+  private layoutApi(): LayoutApi | null {
+    const workspace = this.app.workspace as unknown as {
+      getLayout?: () => unknown;
+      changeLayout?: (layout: unknown) => Promise<void>;
+    };
+    if (typeof workspace.getLayout !== "function" || typeof workspace.changeLayout !== "function") {
+      return null;
+    }
+
+    const getLayout = workspace.getLayout.bind(workspace);
+    const changeLayout = workspace.changeLayout.bind(workspace);
+    return { getLayout: () => getLayout(), applyLayout: (layout) => changeLayout(layout) };
+  }
+
+  /**
+   * Renders saved prose as Markdown, so a link in a thought is still a link.
+   *
+   * The public renderer, not a workspace-internal one, so embedded notes, tags and
+   * links behave exactly as they do in a note — and the component the composer
+   * owns is what unloads them when the surface repaints.
+   */
+  private async renderMarkdown(
+    element: HTMLElement,
+    markdown: string,
+    sourcePath: string,
+    component: Component
+  ): Promise<void> {
+    try {
+      await MarkdownRenderer.render(this.app, markdown, element, sourcePath, component);
+    } catch {
+      // A note that cannot be rendered is still readable as its own text.
+      element.textContent = markdown;
+    }
+  }
+
+  /**
+   * The one door to another Realm.
+   *
+   * The departure is captured *now*, not trusted from the last visit, because a
+   * reading position drifts without a layout change. The arrival is recorded only
+   * after it succeeded, so a failed visit leaves the history where it was and
+   * `Back` can never walk into a place that was not reached.
+   */
+  async visitRealm(contextId: string): Promise<boolean> {
+    return this.navigate(async () => {
+      const departure = this.workspaceStop();
+      const moved = await this.workspaces.visit(contextId);
+      if (!moved) return false;
+      this.history = this.arrivedAt(this.workspaceStop(), departure);
+      return true;
+    });
+  }
+
+  /**
+   * The one door to a written thought.
+   *
+   * `edit` is the bounded correction route: the caret goes into the thought's own
+   * prose and the composer keeps its draft. Both routes are the same jump, and
+   * both are preflighted by the engine, so a thought that has changed is refused
+   * instead of landing somewhere else.
+   */
+  async visitThought(target: ThoughtRef, edit: boolean): Promise<boolean> {
+    return this.navigate(async () => {
+      const departure = this.departureStop();
+      const moved = await this.entries.jumpTo(target.path, target.n, undefined, edit);
+      if (!moved) {
+        if (departure !== null) await this.restoreStop(departure);
+        return false;
+      }
+      this.history = this.arrivedAt(this.currentStop(), departure);
+      return true;
+    });
+  }
+
+  /** Back one visit, restored from the place it was, not from its Realm's latest. */
+  async goBack(): Promise<boolean> {
+    return this.navigate(async () => {
+      if (!canGoBack(this.history)) return false;
+      const step = back(this.history);
+      if (step.stop === null) return false;
+      const moved = await this.restoreStop(step.stop);
+      if (moved) this.history = step.history;
+      return moved;
+    });
+  }
+
+  /** Forward one visit, exactly as it was left. */
+  async goForward(): Promise<boolean> {
+    return this.navigate(async () => {
+      if (!canGoForward(this.history)) return false;
+      const step = forward(this.history);
+      if (step.stop === null) return false;
+      const moved = await this.restoreStop(step.stop);
+      if (moved) this.history = step.history;
+      return moved;
+    });
+  }
+
+  /**
+   * One navigation transaction at a time.
+   *
+   * Two moves racing would leave the screen in neither place, and the second
+   * would record an arrival that the first is still describing. A refused
+   * transaction changes nothing at all.
+   */
+  private async navigate(action: () => Promise<boolean>): Promise<boolean> {
+    if (this.navigating) return false;
+    this.navigating = true;
+    try {
+      return await action();
+    } finally {
+      this.navigating = false;
+    }
+  }
+
+  /** The whole screen as a stop, for moving between Realms. */
+  private workspaceStop(): Stop {
+    const snapshot = this.workspaces.snapshot();
+    const viewing = this.workspaces.viewing();
+    return {
+      kind: "workspace",
+      contextId: viewing === "" ? null : viewing,
+      layout: snapshot?.layout ?? null,
+      panes: snapshot?.panes ?? [],
+      activePath: snapshot?.activePath ?? null,
+      activeLeafId: snapshot?.activeLeafId ?? null
+    };
+  }
+
+  /** The place the caret is, or the whole screen when no editor has it. */
+  private currentStop(): Stop {
+    return this.entries.stopHere() ?? this.workspaceStop();
+  }
+
+  /** The place being left, captured before anything moves. */
+  private departureStop(): Stop | null {
+    const here = this.entries.stopHere();
+    if (here !== null) return here;
+    return this.workspaces.snapshot() === null ? null : this.workspaceStop();
+  }
+
+  /**
+   * Records arriving somewhere, with the place being left made exact first.
+   *
+   * Refreshing the current stop is what keeps `Back` honest: the writer may have
+   * scrolled or moved the caret since the last visit, and the stop that describes
+   * where they are *now* is the one `Back` must return them to. When the history
+   * is empty, the departure seeds it, so the first `Back` has somewhere to go.
+   */
+  private arrivedAt(arrival: Stop, departure: Stop | null): NavigationHistory {
+    let history = this.history;
+
+    if (departure !== null) {
+      const current = history.visits[history.cursor];
+      if (current === undefined) {
+        history = record(history, departure);
+      } else {
+        const visits = [...history.visits];
+        visits[history.cursor] = departure;
+        history = { visits, cursor: history.cursor };
+      }
+    }
+
+    return record(history, arrival);
+  }
+
+  /** Restores one recorded stop: a whole screen, or a caret in a note. */
+  private async restoreStop(stop: Stop): Promise<boolean> {
+    if (stop.kind === "workspace") {
+      const snapshot: WorkspaceSnapshot = {
+        layout: stop.layout,
+        panes: stop.panes,
+        activePath: stop.activePath,
+        activeLeafId: stop.activeLeafId
+      };
+      return this.workspaces.restoreSnapshot(snapshot, stop.contextId);
+    }
+    return this.entries.jumpTo(stop.path, stop.n, stop);
+  }
+
+  /**
+   * Repaints the one bottom surface from the openings and the draft.
+   *
+   * There is no separate dock to keep in step any more: the strip is part of the
+   * composer, so one call draws both, and the navigator (when it is open) only
+   * re-derives its own list.
+   */
+  repaintSurface(): void {
+    this.composer?.render();
+    void this.navigator?.refresh();
+  }
+
+  /**
+   * The opening the surface should speak about, if any.
+   *
+   * Closed, this is the whole surface: the nearest offering in the order the
+   * controller sorts — open first, then by opening time. A draft speaks about its
+   * own Realm only, and a draft that already qualified says `Through` itself,
+   * because an opening it already counts for is not something to offer again.
+   */
+  portalStrip(): PortalStripView | null {
+    const now = Date.now();
+    const state = this.controller.state;
+    const outstanding = this.portals.outstanding();
+
+    if (state.phase === "editing") {
+      if (state.invitations.length > 0) return null;
+      const mine = outstanding.find(
+        (candidate) => candidate.occurrence.contextId === state.contextId
+      );
+      if (mine !== undefined) {
+        const others = outstanding.filter(
+          (candidate) => candidate.occurrence.contextId !== state.contextId
+        ).length;
+        return this.offeredStrip(mine, now, others);
+      }
+      return this.closedStrip(state.contextId, true, 0);
+    }
+
+    if (state.phase !== "closed") return null;
+
+    const primary = outstanding[0];
+    if (primary !== undefined) return this.offeredStrip(primary, now, outstanding.length - 1);
+    return this.closedStrip(null, false, 0);
+  }
+
+  /** One outstanding opening, as the strip says it. */
+  private offeredStrip(
+    offered: OfferedInvitation,
+    now: number,
+    others: number
+  ): PortalStripView {
+    const opensAt = offered.occurrence.portal.opensAt;
+    const live = offered.phase === "available";
+    return {
+      occurrenceId: offered.occurrence.id,
+      contextName: this.contextName(offered.occurrence.contextId),
+      opening: portalTime(offered.occurrence.portal),
+      phase: live ? "available" : "approaching",
+      remainingMs: live ? opensAt + OPENING_WINDOW_MS - now : opensAt - now,
+      others,
+      writingNormally: false,
+      actionable: true
+    };
+  }
+
+  /**
+   * A minute that has just closed, said once and then forgotten.
+   *
+   * It is derived from the calendar rather than remembered, so waking after a long
+   * sleep replays nothing and no missed opening leaves a trace in any note.
+   */
+  private closedStrip(
+    contextId: string | null,
+    writingNormally: boolean,
+    others: number
+  ): PortalStripView | null {
+    const closed = this.portals
+      .recentlyClosed(CLOSED_WINDOW_MS)
+      .find((occurrence) => contextId === null || occurrence.contextId === contextId);
+    if (closed === undefined) return null;
+
+    return {
+      occurrenceId: closed.id,
+      contextName: this.contextName(closed.contextId),
+      opening: portalTime(closed.portal),
+      phase: "closed",
+      remainingMs: 0,
+      others,
+      writingNormally,
+      actionable: false
+    };
+  }
+
+  /** One Realm's display name, or its id when the settings cannot name it. */
+  private contextName(contextId: string): string {
+    return this.contexts().find((context) => context.id === contextId)?.name ?? contextId;
+  }
+
   private registerCommands(): void {
     // Every command carries an icon so Obsidian's mobile toolbar can show it.
     this.addCommand({
       id: "start-entry",
-      name: "Start an entry",
+      name: "Weave a Thread",
       icon: "plus",
-      // `Mod+Enter` is taken by the core "Open link under cursor in new tab",
-      // whose scope runs before any plugin keymap — see `ENTRY_KEYS`.
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "E" }],
-      // Not an editor callback: today's note is the target even from Reading
-      // view, and from no note at all.
-      callback: () => void this.entries.startEntry(new Date())
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "Enter" }],
+      // Not an editor callback: a thought may be woven from any view, or none.
+      callback: () => this.openComposer()
     });
 
     this.addCommand({
       id: "descend",
-      name: "Descend into a child entry",
+      name: "Branch from this thought",
       icon: "arrow-down-right",
       callback: () => this.entries.descendAtCaret()
     });
 
-    // The one navigation: start, descend and jump in a single list, with the
-    // return stack inside it.
+    this.addCommand({
+      id: "back",
+      name: "Back",
+      icon: "arrow-left",
+      // No default hotkey: a global binding would shadow the writer's own Vim
+      // motions and Obsidian chords. Anyone who wants one can bind it.
+      callback: () => void this.goBack()
+    });
+
+    this.addCommand({
+      id: "forward",
+      name: "Forward",
+      icon: "arrow-right",
+      callback: () => void this.goForward()
+    });
+
     this.addCommand({
       id: "navigate",
-      name: "Today's entries",
+      name: "Navigator",
       icon: "list",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "P" }],
       callback: () => void this.openNavigator()
     });
 
-    // The retroactive pass: every settled entry that has no whisper yet.
     this.addCommand({
       id: "whisper-day",
       name: "Whisper the day",
@@ -531,14 +988,35 @@ export default class WeaverPlugin extends Plugin {
     }
   }
 
-  /** Recounts the day's stats and merges them into the note. */
+  /** Vault-local storage, when this host exposes it. */
+  private loadLocal(key: string): unknown {
+    const storage = this.app as unknown as { loadLocalStorage?: (key: string) => unknown };
+    if (typeof storage.loadLocalStorage !== "function") return null;
+    try {
+      return storage.loadLocalStorage(key);
+    } catch {
+      return null;
+    }
+  }
+
+  private saveLocal(key: string, value: unknown): void {
+    const storage = this.app as unknown as {
+      saveLocalStorage?: (key: string, value: unknown) => void;
+    };
+    if (typeof storage.saveLocalStorage !== "function") {
+      throw new Error("this host has no vault-local storage");
+    }
+    storage.saveLocalStorage(key, value);
+  }
+
+  /** Recounts a day's stats and merges them into the note. */
   private withDayStats(source: string, now: Date): string {
     if (!this.settings.writeDayCounters) return source;
     const stats = recountDay(source, parseClose(source).closedAt);
-    return applyDayStats(source, stats, dayKey(now)).source;
+    return applyDayStats(source, stats, dayKeyOf(now)).source;
   }
 
-  /** Debounced recount for edits made by hand in the day note. */
+  /** Debounced recount for edits made by hand in any recognized day note. */
   private scheduleDayStats(file: TFile | null): void {
     if (!this.settings.writeDayCounters || file === null) return;
     if (this.dayStatsTimer !== null) window.clearTimeout(this.dayStatsTimer);
@@ -552,10 +1030,13 @@ export default class WeaverPlugin extends Plugin {
   /**
    * The stats pass, through the same writer as every other day-note write: the
    * open editor when there is one, so a hand edit and the counters cannot cross.
+   *
+   * Every recognized day note is counted, not just `main`'s today: a thought may
+   * be woven into any destination, and that note's own numbers are derived from
+   * its own text.
    */
   private async refreshDayStats(file: TFile): Promise<void> {
-    const today = resolveDayNote(this.app, this.settings, new Date()).file;
-    if (today === null || today.path !== file.path) return;
+    if (sourceDayOf(file.path, this.contexts()) === null) return;
 
     const now = new Date();
     await rewriteDay(
