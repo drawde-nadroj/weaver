@@ -222,9 +222,10 @@ describe("the entry processor", () => {
     expect(root.querySelectorAll(".weaver-entry-prose").length).toBe(1);
   });
 
-  it("puts the daily-note link in the frame's top-right corner", () => {
+  it("opens a different creation day from the frame's top-right corner", () => {
     const root = container();
     paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
     const opened: [string, string][] = [];
 
     createEntryProcessor((target, source) => {
@@ -233,20 +234,22 @@ describe("the entry processor", () => {
 
     const link = root.querySelector(".weaver-entry-daylink");
     expect(link?.hasClass("weaver-frame-label")).toBe(true);
-    // The entry's day is the date in the note, independent of the viewing date.
-    expect(link?.textContent).toBe("[[2026.10.26]]");
+    expect(link?.textContent).toBe("[[2026.11.05]]");
     // It is a child of the frame, not of the shrink-wrapped head.
     expect(link?.parentElement?.hasClass("weaver-frame")).toBe(true);
 
     link?.click();
-    expect(opened).toEqual([["2026.10.26", PATH]]);
+    expect(opened).toEqual([["2026.11.05", PATH]]);
   });
 
-  it.each(["2026.10.26", "2026-10-26", "2040.01.01"])("uses the recorded day %s in Reading view", (name) => {
-    const root = container();
-    paragraph(root, "{ 2.1.3 }");
-    createEntryProcessor()(root as never, context(`Chronomancer/${name}.md`));
-    expect(root.querySelector(".weaver-entry-daylink")?.textContent).toBe(`[[${name}]]`);
+  it.each(["2026.11.02", "2026-11-02"])("omits same-day and historical dates in %s", (name) => {
+    for (const clock of ["+ 00:01:00 10:00:00", "+ 00:01:00 2026-11-02 10:00:00"]) {
+      const root = container();
+      paragraph(root, "{ 2.1.3 }");
+      paragraph(root, clock);
+      createEntryProcessor()(root as never, context(`Chronomancer/${name}.md`));
+      expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
+    }
   });
 
   it.each([
@@ -274,7 +277,6 @@ describe("the entry processor", () => {
     createEntryProcessor()(root as never, context("Chronomancer/2026.11.02.md"));
 
     expect(root.querySelectorAll(".weaver-entry-daylink").map((link) => link.textContent)).toEqual([
-      "[[2026.11.02]]",
       "[[2026.11.05]]"
     ]);
   });

@@ -10,7 +10,6 @@ import { EntrySession } from "../src/entries/session";
 
 
 const DOC = ["{ 1.2.1 }", "prose here", "+ 00:01:00 10:00:00"].join("\n");
-// Not today: the run below is dated 27 October 2026.
 const PATH = "Chronomancer/2026-10-26.md";
 const NOW = new Date(2026, 9, 27, 12, 0, 0).getTime();
 
@@ -237,8 +236,9 @@ describe("the entry decorations", () => {
     widget.destroy();
   });
 
-  it("labels a past entry with its recorded day, not the day of viewing", () => {
-    const link = dayLinkWidget(collect(stateAt()));
+  it("labels a different-day entry with its recorded creation day", () => {
+    const doc = DOC.replace("10:00:00", "2026-11-05 10:00:00");
+    const link = dayLinkWidget(collect(stateAt(doc.indexOf("prose"), doc)));
     const dom = link?.spec.widget?.toDOM?.() as
       | (ShimNode & { click: () => void })
       | undefined;
@@ -247,46 +247,39 @@ describe("the entry decorations", () => {
     // not a second line.
     expect(link?.spec.block).toBeUndefined();
     expect(link?.from).toBe(DOC.indexOf("\n"));
-    expect(dom?.textContent).toBe("[[2026-10-26]]");
+    expect(dom?.textContent).toBe("[[2026-11-05]]");
   });
 
   it("opens the daily note from the day link", () => {
     const opened: [string, string][] = [];
+    const doc = DOC.replace("10:00:00", "2026-11-05 10:00:00");
     const link = dayLinkWidget(
-      collect(stateAt(), new EntrySession(), PATH, (target, source) => {
+      collect(stateAt(doc.indexOf("prose"), doc), new EntrySession(), PATH, (target, source) => {
         opened.push([target, source]);
       })
     );
     const dom = link?.spec.widget?.toDOM?.() as { click: () => void } | undefined;
 
     dom?.click();
-    expect(opened).toEqual([["2026-10-26", PATH]]);
+    expect(opened).toEqual([["2026-11-05", PATH]]);
   });
 
-  it("reveals only the entry containing the selection head, including its rails", () => {
-    const doc = `${DOC}\n\n{ 2.1.2 }\nsecond prose\n+ 00:00:02 11:00:00\n\noutside`;
-    const revealed = (anchor: number, head = anchor): string[] => {
-      const state = stateAt(anchor, doc).update({ selection: { anchor, head } }).state;
-      return collect(state)
-        .filter((range) => range.spec.widget !== undefined &&
-          !(range.spec.widget instanceof DurationWidget))
-        .filter((range) => {
-          const dom = range.spec.widget?.toDOM?.() as unknown as HTMLElement;
-          return dom.classList.contains("weaver-daylink-caret");
-        })
-        .map((range) => state.doc.lineAt(range.from).text);
-    };
-    expect(revealed(0)).toEqual(["{ 1.2.1 }"]);
-    expect(revealed(DOC.length)).toEqual(["{ 1.2.1 }"]);
-    expect(revealed(doc.indexOf("second prose"))).toEqual(["{ 2.1.2 }"]);
-    expect(revealed(0, doc.indexOf("second prose"))).toEqual(["{ 2.1.2 }"]);
-    expect(revealed(DOC.length + 1)).toEqual([]);
-    expect(revealed(doc.length)).toEqual([]);
+  it("keeps different-day links present regardless of caret position", () => {
+    const doc = `${DOC}\n\n{ 2.1.2 }\nsecond prose\n+ 00:00:02 2026-11-05 11:00:00\n\noutside`;
+    for (const anchor of [0, doc.indexOf("second prose"), doc.length]) {
+      const links = dayLinkWidgets(collect(stateAt(anchor, doc)));
+      expect(links.map((link) => link.spec.widget?.toDOM?.().textContent)).toEqual([
+        "[[2026-11-05]]"
+      ]);
+    }
   });
 
-  it("shows the entry day on today's note too", () => {
-    const link = dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/2026-10-27.md"));
-    expect(link?.spec.widget?.toDOM?.().textContent).toBe("[[2026-10-27]]");
+  it.each(["2026.10.26", "2026-10-26"])("omits same-day and historical dates in %s", (name) => {
+    for (const doc of [DOC, DOC.replace("10:00:00", "2026-10-26 10:00:00")]) {
+      expect(dayLinkWidget(collect(
+        stateAt(doc.indexOf("prose"), doc), new EntrySession(), `Chronomancer/${name}.md`
+      ))).toBeUndefined();
+    }
   });
 
   it.each([
@@ -318,7 +311,6 @@ describe("the entry decorations", () => {
     );
 
     expect(links.map((link) => link.spec.widget?.toDOM?.().textContent)).toEqual([
-      "[[2026.11.02]]",
       "[[2026.11.05]]"
     ]);
   });
@@ -335,12 +327,13 @@ describe("the entry decorations", () => {
     widget?.destroy();
   });
 
-  it("keeps entry dates stable across midnight and preserves filename style", () => {
-    for (const name of ["2026-10-26", "2026.10.26"]) {
-      for (const now of [NOW, NOW + 86_400_000 * 10]) {
-        const link = dayLinkWidget(collect(stateAt(), new EntrySession(), `Chronomancer/${name}.md`, undefined, now));
-        expect(link?.spec.widget?.toDOM?.().textContent).toBe(`[[${name}]]`);
-      }
+  it("keeps a different-day link stable across midnight", () => {
+    const doc = DOC.replace("10:00:00", "2026-11-05 10:00:00");
+    for (const now of [NOW, NOW + 86_400_000 * 10]) {
+      const link = dayLinkWidget(collect(
+        stateAt(doc.indexOf("prose"), doc), new EntrySession(), PATH, undefined, now
+      ));
+      expect(link?.spec.widget?.toDOM?.().textContent).toBe("[[2026-11-05]]");
     }
   });
 
@@ -365,11 +358,11 @@ describe("the entry decorations", () => {
     expect(dayLinkWidget(found)).toBeUndefined();
   });
 
-  it("keeps the day link off a marker row that also carries prose", () => {
-    const doc = ["{ 1.1.1 } a title", "prose", "+ 00:01:00 10:00:00"].join("\n");
+  it("keeps a different-day link on a legacy inline-prose entry", () => {
+    const doc = ["{ 1.1.1 } a title", "prose", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
     const found = collect(stateAt(doc.indexOf("prose"), doc));
 
-    expect(dayLinkWidget(found)).toBeUndefined();
+    expect(dayLinkWidget(found)?.spec.widget?.toDOM?.().textContent).toBe("[[2026-11-05]]");
   });
 
   it("decorates nothing when the note has no entries", () => {

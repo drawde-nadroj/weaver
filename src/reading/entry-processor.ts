@@ -23,7 +23,7 @@
 import type { MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { entryDayName, dayKeyFromName } from "../core/day";
+import { entryDayLinkTarget } from "../core/day";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseEntries, parseMarkerPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
@@ -111,9 +111,6 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
     const basename = (sourcePath.split("/").pop() ?? "").replace(/\.md$/, "");
-    // A non-day note has no daily note to open and no filename to fall back to,
-    // so it generates no link; the day is computed per entry below.
-    const dayNote = dayKeyFromName(basename) !== null;
     const open = openDayLink ?? (() => {});
 
     // Obsidian renders each Markdown block separately. A canonical + or - clock
@@ -266,10 +263,9 @@ export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostPro
 
       // The entry-day label is a child of the frame, not of the shrink-wrapped
       // head, so the head stays exactly the marker's own characters. It is
-      // inserted once the day is known — the recorded day if the clock row holds
-      // one, else the note's filename, and nothing on a non-day note — and kept
-      // directly after the head so the clock row remains the frame's last child.
-      const dayLinkTarget = dayNote ? entryDayName(entryDay, basename) : null;
+      // inserted only for a different recorded day, and kept directly after the
+      // head so the clock row remains the frame's last child.
+      const dayLinkTarget = entryDayLinkTarget(entryDay, basename);
       if (dayLinkTarget !== null) {
         frame.insertBefore(dayLinkElement(dayLinkTarget, sourcePath, open), head.nextSibling);
       }

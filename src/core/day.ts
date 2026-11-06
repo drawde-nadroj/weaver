@@ -4,10 +4,9 @@
  * `dayKey` is the frontmatter's `date`; `dayNotePath` is the file the core Daily
  * Notes plugin opens; `dayKeyFromName` is the way back from a filename, so a
  * surface can tell a past day from today's without reading the vault.
- * `entryDayName` is the one rule both surfaces label an entry with: the day its
- * clock row records, else the day-note filename, written in the filename's own
- * dotted or dashed style. It takes no `Date`, so reading a note on another day
- * never moves a label.
+ * `entryDayLinkTarget` labels only an entry whose recorded creation day differs
+ * from its day-note filename, using that filename's dotted or dashed style.
+ * It takes no `Date`, so reading a note later never changes a label.
  *
  * This is the pure half of the day plane. Resolving a path to a `TFile`, and
  * creating the note, touches Obsidian and lives in `entries/day-note.ts` — the
@@ -48,20 +47,15 @@ export function dayKeyFromName(basename: string): string | null {
 }
 
 /**
- * The day label for one entry, in the note's own filename style.
+ * A creation-day link only when the recorded day differs from the note's day.
  *
- * `day` is the entry's explicit day (`Entry.day`, canonical `YYYY-MM-DD`) when
- * its clock row records one; `null` is a historical undated row, which inherits
- * the day-note filename. `basename` chooses the style: a dotted day note keeps
- * dots, and anything else writes the canonical dashes. A note whose filename is
- * not a day has no day to fall back to, so an undated entry there has no label;
- * an explicit day still formats, and the surfaces keep their own
- * non-day-note gate.
+ * Historical undated entries inherit the filename day and need no label.
+ * Non-day notes provide no comparison day and carry no generated link.
  */
-export function entryDayName(day: string | null, basename: string): string | null {
-  const key = day ?? dayKeyFromName(basename);
-  if (key === null) return null;
-  return DOTTED_DAY.test(basename) ? key.replace(/-/g, ".") : key;
+export function entryDayLinkTarget(day: string | null, basename: string): string | null {
+  const noteDay = dayKeyFromName(basename);
+  if (day === null || noteDay === null || day === noteDay) return null;
+  return DOTTED_DAY.test(basename) ? day.replace(/-/g, ".") : day;
 }
 
 /** The frontmatter a brand-new day note carries, and nothing else. */

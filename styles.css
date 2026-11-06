@@ -334,9 +334,6 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   color: color-mix(in oklab, var(--weaver-dcolor, var(--text-normal)) 75%, transparent);
   cursor: pointer;
   white-space: nowrap;
-  /* Opacity preserves both geometry and keyboard access; focus reveals the link. */
-  opacity: 0;
-  pointer-events: none;
 }
 
 .weaver-entry-daylink:focus-visible {
@@ -344,14 +341,6 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   outline-offset: 2px;
 }
 
-.weaver-entry-daylink.weaver-daylink-caret,
-.weaver-entry-daylink.weaver-daylink-hover,
-.weaver-entry-daylink:focus-visible,
-.markdown-rendered .weaver-frame.is-static:hover > .weaver-entry-daylink,
-.markdown-rendered .weaver-frame.is-static:focus-within > .weaver-entry-daylink {
-  opacity: 1;
-  pointer-events: auto;
-}
 
 .markdown-source-view.mod-cm6 .cm-line.weaver-entry-head {
   position: relative;
@@ -362,6 +351,12 @@ body.weaver-phone .markdown-source-view.mod-cm6 .cm-line.weaver-duration-raw {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* Legacy inline prose sits below its top rail, rather than under the date. */
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-inline .weaver-entry-daylink {
+  top: -12px;
+  transform: translateY(-100%);
 }
 
 .markdown-rendered .weaver-frame.is-static .weaver-entry-daylink {

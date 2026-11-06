@@ -4,7 +4,7 @@
   "counts": {
     "modules": 39,
     "exports": 202,
-    "classes": 45,
+    "classes": 44,
     "testFiles": 31
   },
   "modules": [
@@ -345,8 +345,8 @@
     {
       "file": "src/core/day.ts",
       "layer": "core",
-      "lines": 79,
-      "doc": "The day's name, and nothing else.\n\n`dayKey` is the frontmatter's `date`; `dayNotePath` is the file the core Daily\nNotes plugin opens; `dayKeyFromName` is the way back from a filename, so a\nsurface can tell a past day from today's without reading the vault.\n`entryDayName` is the one rule both surfaces label an entry with: the day its\nclock row records, else the day-note filename, written in the filename's own\ndotted or dashed style. It takes no `Date`, so reading a note on another day\nnever moves a label.\n\nThis is the pure half of the day plane. Resolving a path to a `TFile`, and\ncreating the note, touches Obsidian and lives in `entries/day-note.ts` — the\nsplit is what keeps `core` free of an `obsidian` import.",
+      "lines": 73,
+      "doc": "The day's name, and nothing else.\n\n`dayKey` is the frontmatter's `date`; `dayNotePath` is the file the core Daily\nNotes plugin opens; `dayKeyFromName` is the way back from a filename, so a\nsurface can tell a past day from today's without reading the vault.\n`entryDayLinkTarget` labels only an entry whose recorded creation day differs\nfrom its day-note filename, using that filename's dotted or dashed style.\nIt takes no `Date`, so reading a note later never changes a label.\n\nThis is the pure half of the day plane. Resolving a path to a `TFile`, and\ncreating the note, touches Obsidian and lives in `entries/day-note.ts` — the\nsplit is what keeps `core` free of an `obsidian` import.",
       "obsidian": false,
       "imports": [
         "src/core/clock"
@@ -355,7 +355,7 @@
         {
           "name": "DayNoteOptions",
           "kind": "interface",
-          "line": 20,
+          "line": 19,
           "signature": "export interface DayNoteOptions",
           "doc": "The folder and the filename format a day-note path is expanded from.",
           "hash": "a9dbbfb0fa",
@@ -369,7 +369,7 @@
         {
           "name": "dayKey",
           "kind": "function",
-          "line": 26,
+          "line": 25,
           "signature": "export function dayKey(now: Date): string",
           "doc": "`YYYY-MM-DD`, the day key the frontmatter and the calendar use.",
           "hash": "62990fa9fb",
@@ -387,7 +387,7 @@
         {
           "name": "dayNotePath",
           "kind": "function",
-          "line": 31,
+          "line": 30,
           "signature": "export function dayNotePath(now: Date, options: DayNoteOptions): string",
           "doc": "Expands `YYYY`, `MM` and `DD` and joins the result with the folder.",
           "hash": "27c21473b0",
@@ -404,29 +404,27 @@
         {
           "name": "dayKeyFromName",
           "kind": "function",
-          "line": 44,
+          "line": 43,
           "signature": "export function dayKeyFromName(basename: string): string | null",
           "doc": "`2026.10.27` or `2026-10-27` becomes `2026-10-27`; anything else is null.",
           "hash": "9020197622",
           "bytes": 237,
           "refs": [
-            "src/editor/entry-decorations.ts",
-            "src/entries/engine.ts",
-            "src/reading/entry-processor.ts"
+            "src/entries/engine.ts"
           ],
-          "refCount": 7,
+          "refCount": 3,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
         },
         {
-          "name": "entryDayName",
+          "name": "entryDayLinkTarget",
           "kind": "function",
-          "line": 61,
-          "signature": "export function entryDayName(day: string | null, basename: string): string | null",
-          "doc": "The day label for one entry, in the note's own filename style.\n\n`day` is the entry's explicit day (`Entry.day`, canonical `YYYY-MM-DD`) when\nits clock row records one; `null` is a historical undated row, which inherits\nthe day-note filename. `basename` chooses the style: a dotted day note keeps\ndots, and anything else writes the canonical dashes. A note whose filename is\nnot a day has no day to fall back to, so an undated entry there has no label;\nan explicit day still formats, and the surfaces keep their own\nnon-day-note gate.",
-          "hash": "9f5e4f5051",
-          "bytes": 232,
+          "line": 55,
+          "signature": "export function entryDayLinkTarget(day: string | null, basename: string): string | null",
+          "doc": "A creation-day link only when the recorded day differs from the note's day.\n\nHistorical undated entries inherit the filename day and need no label.\nNon-day notes provide no comparison day and carry no generated link.",
+          "hash": "511df91423",
+          "bytes": 274,
           "refs": [
             "src/editor/entry-decorations.ts",
             "src/reading/entry-processor.ts"
@@ -439,7 +437,7 @@
         {
           "name": "dayFrontmatter",
           "kind": "function",
-          "line": 68,
+          "line": 62,
           "signature": "export function dayFrontmatter(day: string): string",
           "doc": "The frontmatter a brand-new day note carries, and nothing else.",
           "hash": "6234648b81",
@@ -691,14 +689,13 @@
           "hash": "e7dd0a2e68",
           "bytes": 609,
           "refs": [
-            "src/core/day.ts",
             "src/core/insert.ts",
             "src/editor/entry-keys.ts",
             "src/entries/engine.ts",
             "src/settings-tab.ts",
             "src/ui/navigator.ts"
           ],
-          "refCount": 22,
+          "refCount": 21,
           "testedBy": [
             "tests/settings-tab.test.ts"
           ]
@@ -1810,8 +1807,8 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 289,
-      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe marker row's third piece of markup is the entry-day link at the top-right\ncorner. The entry's own clock row supplies its day when one was recorded, and\na historical undated row inherits the day-note filename; the clock row also\nsupplies the entry's time. Neither changes just because the note is read on\nanother day, and the date is not drawn a second time into the clock widget.",
+      "lines": 270,
+      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The marker keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe marker row also carries a persistent creation-day link when the recorded\nday differs from the day-note filename. Same-day and historical undated\nentries need no label. The date is not repeated in the clock widget.",
       "obsidian": true,
       "imports": [
         "src/core/color",
@@ -1829,11 +1826,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 117,
+          "line": 111,
           "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, now: number, openDayLink?: OpenDayLink ): DecorationSet",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "0e6886baaf",
-          "bytes": 5423,
+          "hash": "4a22fd3cbd",
+          "bytes": 4675,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -1843,7 +1840,7 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 267,
+          "line": 248,
           "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, openDayLink?: OpenDayLink ): Extension",
           "doc": "Publishes the entry decorations as one state field.",
           "hash": "11faf9599e",
@@ -1856,9 +1853,9 @@
         }
       ],
       "classes": [
-        "weaver-daylink-caret",
         "weaver-duration-raw",
         "weaver-entry-head",
+        "weaver-entry-inline",
         "weaver-entry-prose",
         "weaver-entry-whisper",
         "weaver-frame-label"
@@ -1961,8 +1958,8 @@
     {
       "file": "src/editor/entry-frame.ts",
       "layer": "editor",
-      "lines": 405,
-      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its duration at the left corner, its moment at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nThe entry's creation day labels the top-right corner, taken from its clock row\nor the filename for an undated historical entry. The decoration draws it — never this layer,\nwhich paints no text — and its background cuts the rail like the other labels.",
+      "lines": 370,
+      "doc": "The frame around every entry, drawn.\n\nCodeMirror gives each line its own element and offers no way to wrap a range of\nlines in a container, so the box is drawn *over* the note: one absolutely\npositioned layer inside the scroller, one box per entry, in document\ncoordinates. The layer draws the border and the live highlight, and no text.\n\nThree consequences, all deliberate:\n\n- **Nothing reflows.** The box catches up to the text; the text never moves to\n  fit the box. Every pixel-stability invariant the decorations already keep —\n  the clock row's top across a run of insertions — survives.\n- **Scrolling is free.** The layer lives inside `.cm-scroller`, which is\n  already `position: relative`, so its children scroll with the content and a\n  scroll needs no re-measure. Only a reflow does.\n- **Editing is untouched.** The layer is `pointer-events: none`.\n\nThe file's own rows are the box's rails, and each rail runs through the centre\nof the row that labels it: the marker row is the top-left label, the clock row\nthe bottom edge — its duration at the left corner, its moment at the right —\nand each label's own background cuts the rail behind it, so the box reads as\nrunning into the text that names it. Nothing is at `opacity: 0`, nothing is\npainted twice, and the frame survives its ends scrolling out of the render\nrange because a row that is not rendered falls back to the line block's centre.\n\nA different creation day labels the top-right corner. The decoration draws it\n— never this layer, which paints no text — and its background cuts the rail.",
       "obsidian": true,
       "imports": [
         "src/core/color",
@@ -1979,7 +1976,7 @@
         {
           "name": "FrameHost",
           "kind": "interface",
-          "line": 51,
+          "line": 50,
           "signature": "export interface FrameHost",
           "doc": "What the layer may ask the plugin: settings, the session, the model, and a fallback path.",
           "hash": "0cbb7c436e",
@@ -1991,7 +1988,7 @@
         {
           "name": "entryFrameExtension",
           "kind": "function",
-          "line": 396,
+          "line": 361,
           "signature": "export function entryFrameExtension(host: FrameHost): Extension",
           "doc": "Draws one box per entry in a layer inside the scroller.",
           "hash": "049f956468",
@@ -2004,12 +2001,11 @@
         }
       ],
       "classes": [
-        "weaver-daylink-hover",
         "weaver-duration",
         "weaver-duration-raw",
-        "weaver-entry-daylink",
         "weaver-entry-head",
         "weaver-frame",
+        "weaver-frame-label",
         "weaver-frame-layer"
       ],
       "dataAttrs": [
@@ -3254,7 +3250,7 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 279,
+      "lines": 275,
       "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe marker paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the marker row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe marker's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe marker stays in the DOM untouched, links and emphasis included. A link to\nthe entry's recorded day is appended at the frame's top-right corner: the day\nits clock row holds, else the day-note filename, so a historical undated row\nstill names the note's day and a newly dated row names its own. The label\nnever reads the wall clock, and the clock row's two halves stay time-only —\nthe date is drawn once, at the top-right. The clock row's halves\nare digit and punctuation runs, exactly as in the editor.",
       "obsidian": true,
       "imports": [
@@ -3274,8 +3270,8 @@
           "line": 110,
           "signature": "export function createEntryProcessor(openDayLink?: OpenDayLink): MarkdownPostProcessor",
           "doc": "Builds the post processor that frames entries in Reading view. It reads the\nrendered paragraphs and their source section — no settings or vault access —\nand takes only the opener the frame's day link needs.",
-          "hash": "1491103263",
-          "bytes": 8093,
+          "hash": "ffa390ccef",
+          "bytes": 7776,
           "refs": [
             "src/main.ts"
           ],
@@ -3998,8 +3994,6 @@
     "defined": [
       "weaver-close-mark",
       "weaver-close-mark-line",
-      "weaver-daylink-caret",
-      "weaver-daylink-hover",
       "weaver-dcn-ink",
       "weaver-dcn-num",
       "weaver-duration",
@@ -4010,6 +4004,7 @@
       "weaver-duration-sigil",
       "weaver-entry-daylink",
       "weaver-entry-head",
+      "weaver-entry-inline",
       "weaver-entry-prose",
       "weaver-entry-whisper",
       "weaver-frame",

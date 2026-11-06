@@ -69,10 +69,11 @@ re-read: the hash exists to make that impossible, not to be bypassed.
 - **The frame:** the marker row is the top-left rail label; the clock row labels the
   bottom edge at both corners — the duration left, the moment right. New clock
   rows record creation date and time once: `[+-=] HH:MM:SS YYYY-MM-DD HH:MM:SS`.
-  The creation-day link is the top-right label; undated historical entries use the filename day.
-  The rails pass through those rows' centres and are cut behind their labels; rows are found by
+  A creation day different from the filename day is a persistent top-right link;
+  same-day and undated historical entries have none. Undated entries inherit the filename day.
+  The rails pass through the marker and clock rows' centres and are cut behind their labels; rows are found by
   `data-weaver-n`, not DOM position; the extent is `frameSpan`. No entry fact is
-  rendered twice: the date labels the top-right and time the bottom-right.
+  rendered twice: a different date labels the top-right and time the bottom-right.
   The filename is the note's day, not necessarily a new entry's creation day.
 - **Mobile is not a fork.** One implementation; platform differences are geometry,
   row height, and — for a whisper — the address: a phone does not call a loopback

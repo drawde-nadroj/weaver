@@ -417,9 +417,9 @@ card open.
   both labels read as white digits around dimension-coloured colons. The stopwatch
   carries a real space after its sigil, exactly as the file writes it. Marker,
   moment and stopwatch all read at the note's own weight — no bold. The top-right
-  corner carries a link to the entry's creation day, recorded in its clock row;
-  older undated entries use the filename day. Caret, hover or keyboard focus reveals it; hovering
-  another frame can reveal a second link. Both rails are cut behind their labels,
+  corner carries a persistent link to the entry's recorded creation day only
+  when it differs from the filename day. Same-day and historical undated entries
+  have no date link, even on hover or caret focus. Both rails are cut behind their labels,
   with `16 px + 0.45em` of air on each side so the corners stay curved and no glyph or label
   background is clipped at the row's bottom. Scroll to the middle of a long entry:
   the box stays whole with its last line still off-screen. Two neighbouring boxes
@@ -442,11 +442,13 @@ card open.
 - Frames, phone: the box reaches the pane's edge, and the duration and the moment
   read on one line at the bottom two corners; the entry-day link sits at the
   top-right without covering the marker.
-- Frames, entry dates: open an older day note and reveal its date link with the
-  caret or hover. An old undated entry reads that note's day; create a child there
-  now and its date is today's actual creation day, recorded beside its time.
-  Both use the note's dotted or dashed filename style. Reading view agrees,
-  Source mode carries no generated link, and reopening later changes neither date.
+- Frames, entry dates: open an older day note. Same-day and historical undated
+  entries carry no date link; create a child there now and its different creation
+  day is visible immediately, without hover or caret focus. Links use the note's
+  dotted or dashed filename style and work with mouse and keyboard. Check an
+  inline-prose entry too: its date stays above the text without covering it.
+  Reading view agrees, Source mode carries no generated link, and reopening
+  later changes neither recorded date nor visibility.
 - Whisper, warm: with *Whisper settled entries* on and oMLX answering, write about
   forty dictated words, pause two seconds, press `⏎`. The `~` rows appear above the
   prose in the same undo as `+` — one `⌘Z` removes both — neutral where the prose is

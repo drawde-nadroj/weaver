@@ -5,7 +5,7 @@ import {
   dayKey,
   dayKeyFromName,
   dayNotePath,
-  entryDayName
+  entryDayLinkTarget
 } from "../src/core/day";
 import { ensureDayNote, resolveDayNote } from "../src/entries/day-note";
 import { DEFAULT_SETTINGS } from "../src/settings";
@@ -42,22 +42,23 @@ describe("day keys", () => {
 
 });
 
-describe("entryDayName", () => {
-  it("prefers the entry's own recorded day to the filename", () => {
-    // A row written today into an older day note keeps today's date.
-    expect(entryDayName("2026-11-05", "2026.11.02")).toBe("2026.11.05");
-    expect(entryDayName("2026-11-05", "2026-11-02")).toBe("2026-11-05");
+describe("entryDayLinkTarget", () => {
+  it.each(["2026.11.02", "2026-11-02"])("omits same-day and historical dates in %s", (name) => {
+    expect(entryDayLinkTarget("2026-11-02", name)).toBeNull();
+    expect(entryDayLinkTarget(null, name)).toBeNull();
   });
 
-  it("falls back to the note's day for a historical undated row", () => {
-    expect(entryDayName(null, "2026.11.02")).toBe("2026.11.02");
-    expect(entryDayName(null, "2026-11-02")).toBe("2026-11-02");
+  it.each([
+    ["2026.11.02", "2026.11.05", "2026.11.01"],
+    ["2026-11-02", "2026-11-05", "2026-11-01"]
+  ])("labels earlier and later creation days in the style of %s", (name, later, earlier) => {
+    expect(entryDayLinkTarget("2026-11-05", name)).toBe(later);
+    expect(entryDayLinkTarget("2026-11-01", name)).toBe(earlier);
   });
 
-  it("names no day on a note whose filename is not a day", () => {
-    expect(entryDayName(null, "Meeting notes")).toBeNull();
-    // An explicit day still formats; the surfaces keep the non-day-note gate.
-    expect(entryDayName("2026-11-05", "Meeting notes")).toBe("2026-11-05");
+  it("omits links without a day-note context", () => {
+    expect(entryDayLinkTarget(null, "Meeting notes")).toBeNull();
+    expect(entryDayLinkTarget("2026-11-05", "Meeting notes")).toBeNull();
   });
 });
 

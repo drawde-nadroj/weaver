@@ -119,15 +119,15 @@ Every surface must answer three questions; one that cannot is not a surface.
 - A half the row does not carry is not drawn: the frame labels only what the note
   holds, never an invented `00:00:00`.
 - New entries record creation date and time in their clock row; historical
-  undated entries inherit the filename day. The top-right corner links to that
-  creation day in the note's date style: `ui/day-link.ts` builds it, the marker
-  row positions it absolutely in Live Preview, and the static frame does the same
-  in Reading view. Opening or resuming an entry never redates it. It is
-  invisible until the caret is inside that entry (marker through clock row), the pointer hovers over
-  its frame, or the link receives keyboard focus. Hovering another frame can reveal
-  a second link without hiding the caret's link; leaving hides that second link.
-  Reading view has no caret, so it reveals the link on hover or focus within the
-  frame. Revealing changes no geometry. Source mode and non-day notes carry none.
+  undated entries inherit the filename day. A creation day different from the
+  filename day has a permanently visible top-right link in the note's date
+  style. Same-day and historical undated entries have no date link, including
+  no hidden keyboard stop. `core/day.ts` makes the shared decision;
+  `ui/day-link.ts` builds the link. The marker row positions it absolutely in
+  Live Preview, and the static frame does the same in Reading view. Caret,
+  hover and focus never change visibility; keyboard focus retains its outline.
+  Opening or resuming an entry never redates it. Source mode and non-day notes
+  carry no generated link.
 - The frame's labels — marker, entry-day link, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
@@ -183,7 +183,8 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
   clock. When the rails touch or cross, there is no interior and no box.
 - A marker row that also carries prose (the inline-title case, `{ B.D.N } a title`)
   keeps its rail *above* the row, by 12 px, or the rail would cut the entry's own
-  first line.
+  first line. `.weaver-entry-inline` raises any different-day label above the
+  row too, without joining the text flow.
 - An entry without a clock row has no bottom label, so its box closes 8 px below its
   last prose row — on air, not on a rail.
 - There is no width below which a box is withheld: a narrow pane gets a narrow box.
@@ -245,8 +246,8 @@ Nesting is carried by the frame's left margin rather than by padding on the text
 inside it, and the text inside gives up its own indent so it is not indented twice.
 Inline markup inside the prose is untouched, and only the marker's own characters
 leave the marker paragraph — a title typed after the clock, with its links and
-emphasis, stays in the DOM exactly as Obsidian made it. The entry's recorded-day
-link is appended to the static frame and positioned at its top-right corner; it
+emphasis, stays in the DOM exactly as Obsidian made it. A different-day entry's
+creation-day link is appended to the static frame at its top-right corner; it
 is a child of the frame, not of the shrink-wrapped head.
 
 ### The navigator

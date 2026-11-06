@@ -16,11 +16,9 @@
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
  *
- * The marker row's third piece of markup is the entry-day link at the top-right
- * corner. The entry's own clock row supplies its day when one was recorded, and
- * a historical undated row inherits the day-note filename; the clock row also
- * supplies the entry's time. Neither changes just because the note is read on
- * another day, and the date is not drawn a second time into the clock widget.
+ * The marker row also carries a persistent creation-day link when the recorded
+ * day differs from the day-note filename. Same-day and historical undated
+ * entries need no label. The date is not repeated in the clock widget.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -33,7 +31,7 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { entryDayName, dayKeyFromName } from "../core/day";
+import { entryDayLinkTarget } from "../core/day";
 import type { EntrySession } from "../entries/session";
 import { INK_CLASS, markerSlices, NUM_CLASS } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
@@ -79,21 +77,17 @@ class DayLinkWidget extends WidgetType {
   constructor(
     readonly target: string,
     readonly sourcePath: string,
-    readonly open: OpenDayLink,
-    readonly caret: boolean
+    readonly open: OpenDayLink
   ) {
     super();
   }
 
   eq(other: DayLinkWidget): boolean {
-    return other.target === this.target && other.sourcePath === this.sourcePath &&
-      other.caret === this.caret;
+    return other.target === this.target && other.sourcePath === this.sourcePath;
   }
 
   toDOM(): HTMLElement {
-    const link = dayLinkElement(this.target, this.sourcePath, this.open);
-    link.classList.toggle("weaver-daylink-caret", this.caret);
-    return link;
+    return dayLinkElement(this.target, this.sourcePath, this.open);
   }
 
   ignoreEvent(): boolean {
@@ -126,23 +120,17 @@ export function entryDecorationSet(
 
   const ranges: Range<Decoration>[] = [];
 
-  // A day note is the only surface that can label an entry: without a day
-  // filename there is no note to open and no fallback for an undated row. The
-  // label for one entry is its recorded day, else that filename — computed per
-  // entry, so a newly dated row in an older note names its own day. The wall
-  // clock is only for elapsed duration, never for dating an entry read later.
+  // Visibility depends on the record and its note, never the pointer or caret.
   const basename = basenameOf(path);
-  const dayNote = dayKeyFromName(basename) !== null;
-  const showDayLinks = state.field(editorLivePreviewField, false) === true && dayNote;
+  const livePreview = state.field(editorLivePreviewField, false) === true;
 
   for (const entry of index.entries) {
     if (entry.line >= state.doc.lines) continue;
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
-    const dayLinkTarget = showDayLinks ? entryDayName(entry.day, basename) : null;
-    // The legacy inline-title row carries prose beside the marker, so an
-    // absolute label at its right would sit on top of the writer's first line.
+    const dayLinkTarget = livePreview ? entryDayLinkTarget(entry.day, basename) : null;
+    // Legacy inline prose keeps its rail and date label above the text.
     const inlineTitle =
       entry.firstProseLine !== null && entry.firstProseLine === entry.line;
 
@@ -153,7 +141,7 @@ export function entryDecorationSet(
       from: head.from,
       to: head.from,
       value: Decoration.line({
-        class: "weaver-entry-head",
+        class: inlineTitle ? "weaver-entry-head weaver-entry-inline" : "weaver-entry-head",
         attributes: { style: vars, "data-weaver-n": String(entry.n) }
       })
     });
@@ -169,21 +157,14 @@ export function entryDecorationSet(
     });
     addMarkerRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
 
-    // The top-right corner's label: generated, absolutely positioned, and the
-    // only text on this row that the file does not hold.
-    if (dayLinkTarget !== null && !inlineTitle) {
+    // The date labels the top rail without joining the text flow.
+    if (dayLinkTarget !== null) {
       ranges.push({
         from: head.to,
         to: head.to,
         value: Decoration.widget({
           side: 1,
-          widget: new DayLinkWidget(
-            dayLinkTarget, path, openDayLink ?? (() => {}),
-            state.selection.main.head >= entry.from &&
-              state.selection.main.head <= state.doc.line(
-                (entry.clockLine ?? entry.proseLines.at(-1) ?? entry.whisperLines.at(-1) ?? entry.line) + 1
-              ).to
-          )
+          widget: new DayLinkWidget(dayLinkTarget, path, openDayLink ?? (() => {}))
         })
       });
     }
