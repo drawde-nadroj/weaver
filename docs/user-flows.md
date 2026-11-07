@@ -12,16 +12,16 @@ there is nothing to do.
    chooser without travelling. When viewing differs from writing, a quiet line
    says `viewing <realm>`. Choosing another destination with words present still
    requires accepting the proposed change; it never silently retargets the draft.
-3. Type. The first committed character freezes the draft's beginning: the local day
-   and the moment, a duration that counts only while you are writing here, and the
-   openings that instant qualifies for. Letters and arrows in the prose stay
-   ordinary writing and text selection, never hidden navigation commands.
+3. Before typing, the clock icon previews the current time, marked Now; the
+   stopwatch shows zero. The first committed character freezes the local beginning
+   and starts counting composing time. A pause is labelled explicitly. Letters
+   and arrows in the prose stay ordinary writing and text selection.
 4. `⏎` saves it. `Shift-⏎` is a newline, a soft keyboard's Return is a save, and
    `Esc` hides the surface without losing a word.
 
 Writes: nothing until `⏎`. The draft — its text, its beginning, its timing, its
-selection, the openings it qualified for — is device-local and stored under
-`weaver:capture:v1` so a reload does not lose it. Undo: the save is one
+selection, the openings it qualified for — is device-local through `CaptureStoreV2`
+so a reload does not lose it. Undo: the save is one
 transaction, so one undo removes the address, the prose and the clock row together.
 
 ## Flow: save a Thread
@@ -31,11 +31,11 @@ transaction, so one undo removes the address, the prose and the clock row togeth
 2. `Saving…`, with the submitted prose read-only. Nothing in the note was visible
    before this, so there is no empty entry to finish.
 3. The same prose pane becomes a rendered reading with its real, colour-coded
-   address. Branch and New Thread replace Save in the same action rail. Its timing
-   label stays in place, now showing the saved note's duration and creation time
-   instead of the draft's writing duration and start time; no extra row appears.
-   A distinct second `⏎` — even one pressed while it was still saving — closes the
-   surface, and the note holds exactly one entry either way.
+   address. Branch and New Thread replace Save in the same action rail. The
+   clock and stopwatch stay in place and read the note's beginning and duration,
+   preserving the last painted second. A fresh Enter branches from the saved
+   thought; modified Enter starts a new Thread. Pending saves and held-key repeats
+   queue neither action. Escape hides without another write.
 4. The entry lands in the daily note for the day the thought **began**, which may be
    yesterday's file. A branch lands in its parent's note, one dimension deeper, with
    the parent's `B`.
@@ -56,13 +56,14 @@ way this save cannot explain.
 
 ## Flow: branch from a Thread
 
-1. After saving, press `Branch`. The saved thought is the parent; composing prose
-   never changes it. Use the rendered reference to read other thoughts, or Open
-   to reach one in its note.
+1. After saving or while browsing, press `↵ · Branch`. The displayed thought is
+   validated as the parent; its compact excerpt remains above the focused draft.
+   This draft has a fresh provisional clock and zero duration, never its parent's.
 2. Type and press `⏎`. The child lands in the parent's file, one dimension deeper.
 
-An empty branch can be hidden without writing anything. `New Thread`, offered
-after a save, starts a fresh root at depth 1 in the same destination.
+An empty branch can be hidden without writing anything. New Thread starts a fresh
+red root in the displayed thought's destination. Browsing with an unfinished
+hidden draft offers Resume draft instead, preserving its words, selection and parent.
 
 ## Flow: travel to a destination
 
@@ -237,33 +238,27 @@ whole blast radius, and the list stays open on what is left.
 
 ## Flow: the navigator
 
-1. `⌘⇧P`, or a tap on the toolbar's list icon. No note is revealed and none is
-   created: the card reads the vault as it is.
-2. The reference is one chronology for the selected day across every Realm, with an
-   `All Realms` filter; `Realms` lists each Realm with `Travel` and `Write here`;
-   `Invitations` lists the openings that can still be entered, the one that just closed,
-   and the captures the notes really recorded.
-3. `j`/`k` or `↑`/`↓` move the selection; `⏎` opens a row at its own note and
-   thought; `⇧⏎` or `n` branches under it into a draft; `t` starts a new Thread; `c`
-   continues the selected thought's Thread in the composer without travelling;
-   `Delete` twice removes the selection's whole
-   subtree; `⌘[` and `⌘]` walk the visit history; `Esc` closes.
-4. `t` and `c` close the card *before* the composer opens, so focus never jumps back
-   to the note behind it.
+1. `⌘⇧P`, or the toolbar's list command, opens the Loom's reference without
+   creating a note or draft. The header names the reading's destination and position.
+2. One thought appears with its address and rendered prose. The same clock and
+   stopwatch as the composer show its recorded beginning and writing duration.
+   Unknown values remain unknown; there is no Invitations tab.
+3. Previous, Next and Search appear once in the bottom toolbar, with their shortcut
+   prefixes. Up/down and slash apply only while navigation owns focus. Text fields
+   and prose selection retain native arrows, including left/right.
+4. Enter branches from the displayed thought; modified Enter starts a new Thread
+   in its destination. Search Enter accepts the loaded match first; a fresh press
+   then branches. A hidden unfinished draft is resumed instead of replaced.
+5. More offers Open in note. Escape cancels search or returns from the chooser;
+   otherwise it hides the surface. Less-common modified arrows are documented in
+   Keyboard shortcuts rather than repeated on the main surface.
 
-Writes: the branch (a note edit), the deletion with its branch repair, and the pause
-opening the card causes. A jump, a filter, a `Go` and a `c` write nothing at all.
-Undo: one step each.
+Writes: navigation and beginning a draft write nothing. Saving that draft creates
+one entry through the ordinary writer. Leaving an active note can still pause its
+own stopwatch through the note's existing session rule.
 
-Opening pauses the stopwatch, which may write a `= ` duration — that is the only
-write, and it is the pause you would get by leaving the note anyway. `⌘,` and every
-other Obsidian chord still reach the app while the card is open: it never takes an
-Obsidian key scope.
-
-Empty: `No Threads for this day`, with a `Weave a Thread` row. A row reading *Entry
-unavailable* is a recorded beginning that no longer matches its entry — deletion, a
-reused number, or a hand edit — and it is never a jump target. An unreadable note is
-named with its path rather than quietly omitted.
+Unavailable or changed thoughts are not branch targets. Reading reports missing
+records rather than guessing, and never turns missing timing into zero.
 
 ## Flow: close the day
 
@@ -290,20 +285,15 @@ rail at the top-right corner and opens the current date.
 
 ## Flow: phone capture
 
-1. The toolbar's `+` runs *Weave a Thread*, which is the composer, not a note: the
-   keyboard opens on the draft and the screen behind it stays where it was.
-2. Type: after every keystroke the clock row is pinned to the bottom of the writing
-   band above the soft keyboard, with the caret line directly above it.
-3. Scroll up without typing: the view stays where you put it, and the scroll itself
-   pauses the clock. Tap back into the last prose line and type again: the clock
-   resumes from that second and the stopwatch comes back to the bottom.
-4. `⏎` settles the entry and opens nothing. A phone has no newline gesture: its
-   prose is one paragraph.
-5. The toolbar's *Descend into a child entry* opens a child under the caret's
-   entry, settling it first when it is open.
-6. `⌘⇧P`, or the toolbar's list icon, opens the navigator as a full-height sheet:
-   rows are at least 44 px, the footer names the taps, and no keyboard covers the
-   selection because the sheet has no input.
+1. The toolbar's `+` runs Weave a Thread. Its empty draft shows the same provisional
+   beginning clock and zero stopwatch as desktop.
+2. First input freezes the beginning and starts the stopwatch. The same timing and
+   action rails stay above the usable keyboard boundary; long prose scrolls within
+   the retained editor.
+3. Soft Return saves; the visible New line control inserts a newline. Saved reading
+   offers Branch and New Thread with the same dimension colours as desktop.
+4. Browsing uses that same surface, timing and bottom controls. Pointer targets
+   are 44 px; keyboard navigation applies only when its toolbar owns focus.
 
-Writes: the same as desktop. Nothing about the pinning writes anything — it only
-scrolls.
+Writes: the same as desktop. Keyboard resize and layout do not write note bytes.
+

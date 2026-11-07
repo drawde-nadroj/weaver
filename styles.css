@@ -697,11 +697,11 @@ body.is-mobile .weaver-composer {
 }
 
 /* Draft provenance and keyboard focus are independent; neither changes geometry. */
-.weaver-composer:not([data-phase="closed"]):not([data-phase="resting"]) .weaver-composer-card {
+.weaver-composer:not([data-phase="closed"]):not([data-phase="resting"]):not([data-browsing="true"]) .weaver-composer-card {
   border-style: dashed;
 }
 
-.weaver-composer-card:has(.weaver-composer-writing:focus-within) {
+.weaver-composer-card:has(.weaver-composer-writing:focus-within, .weaver-composer-reference-prose:focus-within) {
   outline: 2px solid var(--weaver-dcolor, var(--interactive-accent));
   outline-offset: 3px;
 }
@@ -789,7 +789,7 @@ body.weaver-phone .weaver-composer-card {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.weaver-composer[data-phase="closed"] .weaver-composer-reference {
+.weaver-composer[data-browsing="true"] .weaver-composer-reference {
   padding-bottom: 0;
   border-bottom: none;
 }
@@ -820,6 +820,10 @@ body.weaver-phone .weaver-composer-card {
   font-variant-numeric: tabular-nums;
 }
 
+.weaver-composer-header > .weaver-composer-reference-position {
+  margin-left: auto;
+}
+
 .weaver-composer-reference-address,
 .weaver-composer-identity {
   min-height: 1.4em;
@@ -829,17 +833,6 @@ body.weaver-phone .weaver-composer-card {
   font-variant-numeric: tabular-nums;
 }
 
-.weaver-composer-reference-tabs {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.weaver-composer .weaver-composer-reference-tabs > button[aria-selected="true"] {
-  color: var(--text-normal);
-  border-bottom-color: var(--weaver-dcolor);
-  border-radius: 4px 4px 0 0;
-}
 
 .weaver-composer-keyhint {
   font-family: var(--font-interface);
@@ -858,7 +851,7 @@ body.weaver-phone .weaver-composer-card {
   color: var(--text-error);
 }
 
-.weaver-composer-identity-label + .weaver-composer-identity-address:not(:empty) {
+.weaver-composer-identity-label:not(:empty) + .weaver-composer-identity-address:not(:empty) {
   margin-left: 6px;
 }
 
@@ -1031,7 +1024,8 @@ body.weaver-phone .weaver-composer-card {
 }
 
 /* The card supplies the saved reading's focus ring as well as the editor's. */
-.weaver-composer-writing .weaver-markdown-reading:focus {
+.weaver-composer-writing .weaver-markdown-reading:focus,
+.weaver-composer-reference-prose .weaver-markdown-reading:focus {
   outline: none;
 }
 
@@ -1213,14 +1207,34 @@ body.weaver-phone .weaver-composer-card {
 }
 
 .weaver-composer-state {
-  flex: 1 1 100px;
-  min-width: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  box-sizing: border-box;
-  /* Reserve two compact metadata lines so save feedback cannot move the clock. */
-  min-height: max(var(--weaver-control-height), calc(2.8 * var(--font-ui-smaller, 12px)));
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+  min-height: 20px;
+}
+
+.weaver-composer-state > .weaver-composer-status {
+  margin-left: auto;
+}
+
+.weaver-composer-state > .weaver-composer-keyhint {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.weaver-composer-state > .weaver-composer-status:not([hidden]) + .weaver-composer-keyhint {
+  margin-left: 0;
+}
+
+.weaver-composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
 }
 
 .weaver-composer-actions {
@@ -1232,12 +1246,46 @@ body.weaver-phone .weaver-composer-card {
   margin-left: auto;
 }
 
-.weaver-composer-elapsed {
+.weaver-composer-timing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller, 12px);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
+}
+
+.weaver-composer-timing-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
+}
+
+.weaver-composer-timing-icon,
+.weaver-composer-timing-icon > svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.weaver-composer-timing-digits,
+.weaver-composer-timing-unknown {
+  min-width: 8ch;
+}
+
+.weaver-composer-timing .weaver-duration-num {
+  color: var(--text-normal);
+}
+
+.weaver-composer-timing .weaver-duration-ink {
+  color: var(--weaver-dcolor);
+}
+
+.weaver-composer-timing-state:empty {
+  display: none;
 }
 
 .weaver-composer-shortcuts {
@@ -1292,10 +1340,10 @@ body.weaver-phone .weaver-composer-card {
 
 .weaver-composer-footer {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   flex-shrink: 0;
-  flex-wrap: wrap;
   padding-top: 6px;
   border-top: 1px solid color-mix(in oklab, var(--background-modifier-border) 65%, transparent);
   min-height: var(--weaver-control-height);

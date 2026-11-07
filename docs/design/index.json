@@ -2,9 +2,9 @@
   "generatedBy": "scripts/design-index.mjs",
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
-    "modules": 62,
-    "exports": 493,
-    "classes": 116,
+    "modules": 63,
+    "exports": 496,
+    "classes": 117,
     "testFiles": 53
   },
   "modules": [
@@ -1142,9 +1142,10 @@
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
             "src/reading/entry-processor.ts",
+            "src/ui/loom-timing.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 21,
+          "refCount": 24,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -1353,7 +1354,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 16,
+          "refCount": 17,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -1424,6 +1425,7 @@
           ],
           "refCount": 22,
           "testedBy": [
+            "tests/capture-model-controller.test.ts",
             "tests/capture.test.ts",
             "tests/context-workspaces.test.ts",
             "tests/contexts.test.ts",
@@ -1544,9 +1546,10 @@
             "src/core/reference.ts",
             "src/entries/capture-model-controller.ts",
             "src/entries/capture.ts",
-            "src/entries/engine.ts"
+            "src/entries/engine.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 8,
+          "refCount": 11,
           "testedBy": [
             "tests/contexts.test.ts"
           ]
@@ -1580,6 +1583,7 @@
           "refs": [],
           "refCount": 0,
           "testedBy": [
+            "tests/capture-model-controller.test.ts",
             "tests/capture.test.ts",
             "tests/context-workspaces.test.ts",
             "tests/contexts.test.ts",
@@ -2036,9 +2040,10 @@
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
             "src/reading/entry-processor.ts",
+            "src/ui/loom-timing.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 19,
+          "refCount": 22,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -3346,7 +3351,7 @@
             "src/ui/loom.ts",
             "src/ui/markdown-pane.ts"
           ],
-          "refCount": 82,
+          "refCount": 76,
           "testedBy": [
             "tests/capture-store.test.ts",
             "tests/context-workspaces.test.ts",
@@ -4921,9 +4926,10 @@
           "bytes": 224,
           "refs": [
             "src/editor/stopwatch-widget.ts",
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/loom-timing.ts"
           ],
-          "refCount": 4,
+          "refCount": 6,
           "testedBy": []
         },
         {
@@ -5726,7 +5732,7 @@
     {
       "file": "src/entries/capture-model-controller.ts",
       "layer": "entries",
-      "lines": 951,
+      "lines": 965,
       "doc": "The model-backed capture controller: the lower half as one tagged state, driven\nby `reduceCapture`, persisted through the versioned store, and written through\nthe one write protocol.\n\nThis replaces a phase string beside nine independent fields. Every transition is\na reducer call; the controller only installs the resulting model, persists it at\nthe durability it asks for, and carries out the one effect it names. A receipt\nis persisted before the note is touched, an unknown outcome is reconciled by a\nCheck rather than guessed, and completion stages its durable handoffs before the\nreceipt is removed.\n\nPure of DOM: the writer, store, editor and clock are injected.",
       "obsidian": false,
       "imports": [
@@ -5786,22 +5792,22 @@
           "line": 137,
           "signature": "export interface CaptureView",
           "doc": "The lower surface's view of the model, for the still-legacy renderer.",
-          "hash": "6884c171ed",
-          "bytes": 435,
+          "hash": "3bfcc5c519",
+          "bytes": 463,
           "refs": [
             "src/ui/loom.ts"
           ],
-          "refCount": 15,
+          "refCount": 16,
           "testedBy": []
         },
         {
           "name": "CaptureModelController",
           "kind": "class",
-          "line": 155,
+          "line": 157,
           "signature": "export class CaptureModelController implements LoomCaptureOwner",
           "doc": "The controller: one model, one store revision, one effect at a time.",
-          "hash": "69ea01e85e",
-          "bytes": 24654,
+          "hash": "8ffc16e558",
+          "bytes": 24923,
           "refs": [
             "src/main.ts"
           ],
@@ -5924,7 +5930,7 @@
     {
       "file": "src/entries/capture.ts",
       "layer": "entries",
-      "lines": 1124,
+      "lines": 1131,
       "doc": "The one floating draft, and everything that may happen to it.\n\nA composer is not a second editor: it owns no note, holds the bytes of exactly\none unsaved thought, and hands that thought to `EntryEngine.capture` at the\nmoment the writer settles it. Everything here is about what happens *before*\nand *around* that write — freezing a beginning, counting only the time spent\nwriting, guarding against a second submission, and telling the truth about\nwhether the note received the text.\n\nFour rules shape it:\n\n - **One draft.** There is no parking, no slot list and no draft manager. A\n   second gesture never replaces the words: it either resumes the draft that is\n   already here, or proposes a move of that same draft and waits.\n - **A proposal, not an edit.** Choosing a Realm or another parent is a request.\n   While one is displayed the draft keeps its text, its beginning and its\n   paused clock; only confirmation revalidates and applies it, and cancelling\n   costs nothing because nothing was changed to cancel.\n - **A revision guard.** Every entry point that can change what \"this thread\"\n   means bumps a generation, and an asynchronous answer that belongs to an\n   older generation is dropped. That is why a late save cannot reopen a\n   composer the writer has already dismissed, and why a stale branch target\n   cannot be written under a newer thread.\n - **No invented state.** The draft is written to nothing until `settle`, and\n   after `settle` the note is the only authority: the receipt is compared\n   against the file's real bytes rather than trusted from local bookkeeping.\n\nThe host supplies the world — the clock, the destinations, the one writer, the\nworkspace visit — so this module touches no note, no vault and no DOM, and a\ntest can drive every transition with a fake host.",
       "obsidian": false,
       "imports": [
@@ -6002,8 +6008,8 @@
           "line": 144,
           "signature": "export class CaptureController",
           "doc": "The draft, its timing, its destination and its one submission.\n\nEvery method is a transition on this object alone; the host is asked only for\nthe note's text, the one write, and the workspace visit. A method that cannot\nproceed leaves the draft exactly as it was and says why through {@link error}.",
-          "hash": "57238ba2d5",
-          "bytes": 22885,
+          "hash": "3790f9efae",
+          "bytes": 23109,
           "refs": [
             "src/core/loom.ts"
           ],
@@ -6959,6 +6965,7 @@
           ],
           "refCount": 6,
           "testedBy": [
+            "tests/loom.test.ts",
             "tests/reference-controller.test.ts"
           ]
         },
@@ -8406,9 +8413,10 @@
           "bytes": 556,
           "refs": [
             "src/editor/stopwatch-widget.ts",
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/loom-timing.ts"
           ],
-          "refCount": 8,
+          "refCount": 10,
           "testedBy": []
         }
       ],
@@ -8496,17 +8504,81 @@
       "dataAttrs": []
     },
     {
+      "file": "src/ui/loom-timing.ts",
+      "layer": "ui",
+      "lines": 151,
+      "doc": "The loom's timing group: one beginning clock and one writing duration, in the\nshared digit grammar — icon, white digits, dimension-coloured colons.\n\nAn unknown value draws a single `—` over digit runs that stay in the DOM, so a\nknown value returns without rebuilding nodes. `update` paints one explicit\nreading and reports whether the drawn duration changed; no timer, no clock.",
+      "obsidian": true,
+      "imports": [
+        "src/core/duration",
+        "src/editor/duration-ticker",
+        "src/ui/dcn",
+        "obsidian"
+      ],
+      "exports": [
+        {
+          "name": "LoomTimingMode",
+          "kind": "type",
+          "line": 17,
+          "signature": "export type LoomTimingMode = \"preview\" | \"running\" | \"paused\" | \"recorded\" | \"pending\"",
+          "doc": "What a timing group is showing.",
+          "hash": "662f93ff9f",
+          "bytes": 87,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
+          "name": "LoomTimingReading",
+          "kind": "interface",
+          "line": 20,
+          "signature": "export interface LoomTimingReading",
+          "doc": "One explicit reading; the caller samples every field and supplies no clock.",
+          "hash": "fa402623a7",
+          "bytes": 123,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "LoomTiming",
+          "kind": "class",
+          "line": 63,
+          "signature": "export class LoomTiming",
+          "doc": "One timing group inside `parent`: beginning first, writing duration second.\nBuilt once by the constructor; mounted wherever the timing belongs.",
+          "hash": "45156e4f98",
+          "bytes": 3189,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 5,
+          "testedBy": []
+        }
+      ],
+      "classes": [
+        "weaver-composer-timing",
+        "weaver-composer-timing-digits",
+        "weaver-composer-timing-icon",
+        "weaver-composer-timing-state",
+        "weaver-composer-timing-unknown",
+        "weaver-composer-timing-value"
+      ],
+      "dataAttrs": []
+    },
+    {
       "file": "src/ui/loom.ts",
       "layer": "ui",
-      "lines": 2139,
+      "lines": 2116,
       "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header, one identity line, a\npersistent rich-Markdown writing pane, and one footer rail that always holds\nthe same two things: what the surface is saying on the left, and the actions\nit is offering on the right. The destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
       "obsidian": true,
       "imports": [
         "src/core/capture",
+        "src/core/clock",
         "src/core/color",
         "src/core/contexts",
         "src/core/day",
-        "src/core/duration",
         "src/core/entries",
         "src/core/frame",
         "src/core/reference",
@@ -8514,8 +8586,8 @@
         "src/entries/clock",
         "src/entries/reference",
         "src/ui/dcn",
+        "src/ui/loom-timing",
         "src/ui/markdown-pane",
-        "src/ui/platform",
         "obsidian"
       ],
       "exports": [
@@ -8525,8 +8597,8 @@
           "line": 38,
           "signature": "export interface CaptureSurface",
           "doc": "The lower surface the Loom reads and commands; either controller satisfies it.",
-          "hash": "c413ad90ee",
-          "bytes": 596,
+          "hash": "4ec3b34bd1",
+          "bytes": 614,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -8563,8 +8635,8 @@
           "line": 170,
           "signature": "export class Loom",
           "doc": "The one compact Loom surface.",
-          "hash": "89c1d175f7",
-          "bytes": 72215,
+          "hash": "8f3ebae119",
+          "bytes": 72151,
           "refs": [
             "src/core/capture-state.ts",
             "src/core/frame.ts",
@@ -8591,7 +8663,6 @@
         "weaver-composer-card",
         "weaver-composer-check",
         "weaver-composer-chooser",
-        "weaver-composer-chooser-empty",
         "weaver-composer-chooser-here",
         "weaver-composer-chooser-row",
         "weaver-composer-chooser-title",
@@ -8599,9 +8670,9 @@
         "weaver-composer-chooser-write",
         "weaver-composer-context",
         "weaver-composer-context-label",
+        "weaver-composer-controls",
         "weaver-composer-dest",
         "weaver-composer-editor",
-        "weaver-composer-elapsed",
         "weaver-composer-footer",
         "weaver-composer-header",
         "weaver-composer-identity",
@@ -8618,18 +8689,14 @@
         "weaver-composer-ref-toggle",
         "weaver-composer-reference",
         "weaver-composer-reference-address",
-        "weaver-composer-reference-invitations",
         "weaver-composer-reference-nav",
         "weaver-composer-reference-next",
         "weaver-composer-reference-notice",
-        "weaver-composer-reference-open",
         "weaver-composer-reference-position",
         "weaver-composer-reference-prev",
         "weaver-composer-reference-prose",
         "weaver-composer-reference-search",
         "weaver-composer-reference-search-toggle",
-        "weaver-composer-reference-tab",
-        "weaver-composer-reference-tabs",
         "weaver-composer-reference-tools",
         "weaver-composer-resume",
         "weaver-composer-resume-dismiss",
@@ -8772,10 +8839,9 @@
           "hash": "c15f1d1740",
           "bytes": 233,
           "refs": [
-            "src/main.ts",
-            "src/ui/loom.ts"
+            "src/main.ts"
           ],
-          "refCount": 5,
+          "refCount": 3,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -9111,9 +9177,9 @@
       "weaver-composer-chooser-travel",
       "weaver-composer-chooser-write",
       "weaver-composer-context",
+      "weaver-composer-controls",
       "weaver-composer-dest",
       "weaver-composer-editor",
-      "weaver-composer-elapsed",
       "weaver-composer-footer",
       "weaver-composer-header",
       "weaver-composer-identity",
@@ -9134,7 +9200,6 @@
       "weaver-composer-reference-position",
       "weaver-composer-reference-prose",
       "weaver-composer-reference-search",
-      "weaver-composer-reference-tabs",
       "weaver-composer-reference-tools",
       "weaver-composer-resume",
       "weaver-composer-resume-dismiss",
@@ -9149,6 +9214,12 @@
       "weaver-composer-shortcuts-title",
       "weaver-composer-state",
       "weaver-composer-status",
+      "weaver-composer-timing",
+      "weaver-composer-timing-digits",
+      "weaver-composer-timing-icon",
+      "weaver-composer-timing-state",
+      "weaver-composer-timing-unknown",
+      "weaver-composer-timing-value",
       "weaver-composer-use",
       "weaver-composer-viewing",
       "weaver-composer-writing",
@@ -9210,15 +9281,11 @@
     ],
     "unstyled": [
       "weaver-alignments",
-      "weaver-composer-chooser-empty",
       "weaver-composer-context-label",
       "weaver-composer-newline",
-      "weaver-composer-reference-invitations",
       "weaver-composer-reference-next",
-      "weaver-composer-reference-open",
       "weaver-composer-reference-prev",
       "weaver-composer-reference-search-toggle",
-      "weaver-composer-reference-tab",
       "weaver-duration-clock",
       "weaver-markdown-content",
       "weaver-markdown-editor-host",

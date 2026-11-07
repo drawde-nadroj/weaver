@@ -270,15 +270,18 @@ existing evidence is refused rather than overwritten.
 prose pane and action rail keep the same order through drafting, saving, reading
 and branching. The identity uses the frame's digit grammar: normal-text digits,
 dimension-coloured punctuation. A draft names its kind and dimension, never an
-invented address. One quiet timing label stays at the bottom-left: elapsed writing
-duration and start time while drafting, recorded duration and creation time after
-saving. An empty draft shows no numbers but keeps the same footer height. Missing
-recorded timing stays unknown; there is no extra time row or live wall clock.
-The saved duration is the last painted second, retained across pauses—not a
-fresh time sample or a discarded draft clock.
+invented address. `src/ui/loom-timing.ts` draws the same beginning clock and writing
+stopwatch for browsing, drafting and saved reading. Icons distinguish the values;
+both use full clock strings, normal-text digits and dimension-coloured colons.
+An empty draft previews the shared wall clock beside zero duration, marked Now;
+the first committed input freezes the beginning and starts the stopwatch. A
+paused draft says Paused and holds its displayed second. Saved or browsed timing
+comes from the note; missing values remain unknown, never invented zero.
+When a reference and draft are visible together, each has its own timing group.
 
-- Header: a compact, left-aligned destination control (`Main ▾`, or `Branch · Main ▾`),
-  `Reference` and `More`. The destination control opens the chooser;
+- Header: a compact, left-aligned destination control (`🧵 Main ▾`), Reference and
+  More. The writing control opens the chooser; browsing shares the emoji and name
+  with a sequence position. There is no repeated branch label in the header;
   when viewing differs from writing, one quiet line names the viewing Realm.
 - Editing: one persistent rich Markdown editor grows with its content rather
   than reserving an empty field. Formatting appears during composition; reading
@@ -304,10 +307,11 @@ fresh time sample or a discarded draft clock.
   thought; modified Enter starts a new Thread. Escape puts the reading away without
   another write; there is no Hide button. Pending saves and held-key repeats never
   queue a continuation: branching requires a fresh press after saving completes.
-  The metadata rail reserves two compact lines so feedback does not move timing.
+  Timing, status and Escape sit below the action controls in a quiet bottom rail.
   Branch uses the next dimension's colour; New Thread always uses first-dimension
   red. Both share Save's tinted fill, border and text treatment. Branch restores
   focus to the new draft after its parent has been validated.
+  A saved address starts at the prose's left edge; an empty state label adds no indent.
   Changes to the note's clock row refresh the saved timing; if the thought no
   longer matches the record, the old time and duration are not presented as current.
 - Branching: one compact parent excerpt is shown above the prose, expandable on
@@ -318,17 +322,23 @@ fresh time sample or a discarded draft clock.
   `Resume` restores the draft and caret *before* focusing. The strip measures itself,
   never a height retained from the expanded card.
 - Reference: rendered Markdown with its own dimension colour and frame-style
-  address. Previous, Next, Search and Open in note are visible controls. Navigation
-  shortcuts apply when its navigation toolbar owns focus, not while selecting
-  prose or typing in a field. Search retains its query and restores the prior
-  place on cancellation. The Reference control works on desktop and mobile.
-- More contains Copy text, Discard draft and Keyboard shortcuts, not duplicate
-  navigation. Copy uses the saved prose or reference-only snapshot when reading;
-  Discard is only for an editable unsaved draft. The menu supports arrows,
-  Home/End and Escape. Discard confirmation defaults to Keep writing; cancellation
-  and a completed destination proposal return focus to the retained editor.
-- The chooser and Invitations have a visible Back action. Their presentation
-  preserves the mounted editor, selection, undo history and scroll position.
+  address. Its sequence position is in the header. Previous, Next and Search
+  appear once, in the bottom toolbar, with shortcut prefixes; there is no duplicate
+  instruction paragraph or Invitations tab. Unmodified up/down arrows and slash
+  apply only while navigation owns focus, never while selecting prose or typing.
+  Left/right retain native text behaviour; modified navigation shortcuts are listed
+  in More. Enter branches from the displayed thought; modified Enter starts a
+  red first-dimension Thread in that thought's destination. Search Enter accepts
+  the loaded match before a fresh Enter can branch. A retained draft takes
+  precedence: Resume draft restores its text, selection and original parent.
+- More contains Open in note, Copy text, Discard draft and Keyboard shortcuts,
+  not duplicate navigation. Open in note is offered for an available reference.
+  Copy follows the displayed reading or draft; Discard is only for an editable
+  unsaved draft. The menu supports arrows, Home/End and Escape. Destructive
+  confirmation defaults to Keep writing and restores editor focus on cancellation.
+- The chooser has a visible Back action and preserves the mounted editor,
+  selection, undo history and scroll position. The timing rail's Escape hint names
+  the current exit: cancel search, go back, or hide without discarding.
 
 Its box follows the content up to the usable visual viewport. `loomAnchor` in
 `src/core/frame.ts` returns that viewport's bottom edge and the extent above it;

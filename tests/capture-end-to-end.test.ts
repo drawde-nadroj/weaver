@@ -36,6 +36,11 @@ function noteOf(instance: WeaverPlugin, path: string): string {
   return fileContent(file as TFile | null);
 }
 
+function timingValue(kind: "beginning" | "duration"): string | null {
+  const digits = bodyQuery(`.weaver-composer-state [data-kind="${kind}"] .weaver-composer-timing-digits`);
+  return digits?.hasAttribute("hidden") ? "—" : digits?.textContent ?? null;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(AT_2359);
@@ -142,8 +147,9 @@ describe("composer clock handoff", () => {
     instance.openLoom();
     instance.controller.setText("a timed thought");
     await vi.advanceTimersByTimeAsync(7400);
-    const painted = bodyQuery(".weaver-composer-elapsed")?.textContent;
-    expect(painted).toBe("00:00:07 · 23:59");
+    const painted = timingValue("duration");
+    expect(painted).toBe("00:00:07");
+    expect(timingValue("beginning")).toBe("23:59:59");
 
     // No clock callback painted the time spent stalled before Enter.
     vi.setSystemTime(new Date(AT_2359.getTime() + 19_900));
@@ -155,7 +161,8 @@ describe("composer clock handoff", () => {
     expect(entry?.duration?.ms).toBe(7000);
     expect(entry?.day).toBe("2026-11-05");
     expect(entry?.time).toBe("23:59:59");
-    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe(painted);
+    expect(timingValue("duration")).toBe(painted);
+    expect(timingValue("beginning")).toBe(entry?.time);
     instance.onunload();
   });
 
@@ -165,7 +172,8 @@ describe("composer clock handoff", () => {
     instance.controller.setText("a clock shared with its note");
     bodyQuery(".weaver-composer-save")?.click();
     for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
-    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("00:00:00 · 23:59");
+    expect(timingValue("duration")).toBe("00:00:00");
+    expect(timingValue("beginning")).toBe("23:59:59");
 
     const file = instance.app.vault.getAbstractFileByPath(mainPath("2026-11-05"));
     if (file === null || !("extension" in file)) throw new Error("expected the saved note");
@@ -175,7 +183,8 @@ describe("composer clock handoff", () => {
     instance.app.vault.trigger("modify", file);
     for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
 
-    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("00:02:14 · 23:59");
+    expect(timingValue("duration")).toBe("00:02:14");
+    expect(timingValue("beginning")).toBe("23:59:59");
 
     // A changed moment no longer identifies the saved thought: do not keep
     // presenting the old stamp as if it still came from this note.
@@ -184,7 +193,8 @@ describe("composer clock handoff", () => {
     );
     instance.app.vault.trigger("modify", file);
     for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
-    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("— · —");
+    expect(timingValue("duration")).toBe("—");
+    expect(timingValue("beginning")).toBe("—");
     instance.onunload();
   });
 });

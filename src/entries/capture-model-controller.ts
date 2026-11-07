@@ -145,6 +145,8 @@ export interface CaptureView {
   selection: { from: number; to: number };
   beginning: CaptureInstant | null;
   durationMs: number;
+  /** True while an editable draft's clock runs; false once its duration is frozen. */
+  clockRunning: boolean;
   invitations: CaptureInvitation[];
   pendingTarget: DraftTarget | null;
   error: string | null;
@@ -195,6 +197,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: { from: 0, to: 0 },
           beginning: null,
           durationMs: 0,
+          clockRunning: false,
           invitations: [],
           pendingTarget: null
         };
@@ -212,6 +215,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: draft.selection,
           beginning: draft.beginning,
           durationMs: shownOf(draft.clock, now),
+          clockRunning: draft.clock.resumedAt !== null,
           invitations: [...draft.invitations],
           pendingTarget: state.kind === "target-confirmation" ? state.proposed : null
         };
@@ -228,6 +232,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: state.revision.selection,
           beginning: null,
           durationMs: 0,
+          clockRunning: false,
           invitations: [],
           pendingTarget: null
         };
@@ -243,6 +248,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: { from: 0, to: 0 },
           beginning: null,
           durationMs: 0,
+          clockRunning: false,
           invitations: [],
           pendingTarget: null
         };
@@ -260,6 +266,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: draft?.selection ?? revision?.selection ?? { from: 0, to: 0 },
           beginning: draft?.beginning ?? null,
           durationMs: draft?.durationMs ?? 0,
+          clockRunning: false,
           invitations: draft !== null ? [...draft.invitations] : [],
           pendingTarget: null
         };
@@ -283,6 +290,7 @@ export class CaptureModelController implements LoomCaptureOwner {
           selection: draft?.selection ?? revision?.selection ?? { from: 0, to: 0 },
           beginning: draft?.beginning ?? null,
           durationMs: draft?.durationMs ?? 0,
+          clockRunning: false,
           invitations: draft !== null ? [...draft.invitations] : [],
           pendingTarget: null
         };
@@ -736,12 +744,18 @@ export class CaptureModelController implements LoomCaptureOwner {
     if (state.kind === "draft" || state.kind === "revision") this.dispatch({ kind: "discard" });
   }
 
-  /** Starts a fresh root in the current destination. */
-  async newThread(): Promise<boolean> {
+  /**
+   * Starts a fresh root, in `contextId` when given and in the current
+   * destination otherwise.
+   *
+   * A destination is only a request: a draft with words in it is refused by the
+   * reducer rather than cleared, so naming a Realm never discards prose.
+   */
+  async newThread(contextId?: string): Promise<boolean> {
     const state = this.modelValue.state;
-    const contextId =
+    const fallback =
       state.kind === "draft" && state.draft.target.kind === "root" ? state.draft.target.contextId : MAIN_CONTEXT_ID;
-    this.dispatch({ kind: "new-root", contextId });
+    this.dispatch({ kind: "new-root", contextId: this.destination(contextId ?? fallback) });
     return true;
   }
 

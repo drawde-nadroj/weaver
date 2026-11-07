@@ -467,8 +467,8 @@ while closed, never writes prose, and reads the recognised notes through
 `shouldPinStopwatch`, true only when all four of phone, live session, caret on
 the last prose line, and a clock row exist.
 
-The upper area has three panels: the reference (`ReferenceController`), the
-Tapestry chooser, and the invitation list.
+The upper area has the reference (`ReferenceController`) and Tapestry chooser;
+invitations remain idle offers, not a browsing panel.
 `src/core/portal-history.ts#portalHistoryRows` returns recorded facts only — a list
 of upcoming openings is the live controller's, never reconstructed from a note —
 and `src/core/portal-history.ts#linkedPortalEntry` checks sequence, day and moment
@@ -486,23 +486,26 @@ result cannot replace a newer reading. Internal links use the public workspace
 router with that source path and Obsidian's modifier-key disposition. Editing
 decorates Markdown source; it does not claim native Live Preview parity.
 
-`src/ui/loom.ts#Loom` keeps header, identity, prose and action rail in the same
-order across draft and saved states. The rail has status and one bottom-left
-timing label: writing duration and frozen start time while drafting, then the
-entry's recorded duration and creation time after saving. Saved timing is read
-through `src/entries/thought-index.ts#ThoughtIndex`, never from the cleared draft
-clock; `src/ui/loom.ts#refreshTiming` re-reads it when the note changes, and late
-reads cannot replace a newer draft's timing. A changed or unreadable thought
-shows unknown timing instead of retaining an old stamp. Changed shared-clock ticks commit their
-painted second to the capture model; incidental renders never advance an existing
-draft's clock or overwrite a committed stop. A pause or save retains the last
-displayed second. The empty draft retains the footer's height without numbers;
-no separate timestamp row is added. Each reading owns its
-dimension colour, and `src/ui/dcn.ts#appendDigitRuns` gives its real address the
-same normal-text digits and coloured punctuation as a note frame. Reference
-navigation belongs to its focusable toolbar; editing or selecting prose never
-walks the thought sequence. `src/main.ts#openReference` explicitly shows a
-reading-only surface without beginning a draft.
+`src/ui/loom.ts#Loom` keeps header, identity, prose, action and timing rails in the
+same order across browsing, drafting and saved states. `src/ui/loom-timing.ts#LoomTiming`
+owns the shared icon-and-digit grammar: clock for beginning, stopwatch for writing
+duration, normal-text digits and dimension-coloured colons. An empty draft previews
+the shared wall clock and zero duration, marked Now. First input freezes its
+beginning; `src/entries/capture-model-controller.ts#CaptureView` exposes whether
+its clock is running so a paused draft is explicit without guessing from digits.
+Changed shared-clock ticks commit their painted duration; incidental renders never
+advance it. A pause or save retains that exact second.
+Saved timing is read through `src/entries/thought-index.ts#ThoughtIndex`, never
+from the cleared draft clock. `src/ui/loom.ts#refreshTiming` re-reads changed notes,
+including the visible reference; late reads cannot replace a newer draft's timing.
+Missing or changed records show unknown timing rather than inventing zero.
+The reference's loaded snapshot supplies its clocks directly; a reference beside
+a draft keeps its timing attached to its own prose. Browsing alone uses the common
+fixed rail, never duplicates those values. `src/ui/dcn.ts#appendDigitRuns` gives
+the real address the same digit grammar as a note frame.
+Navigation controls appear once, below the content; up/down and slash belong to
+the focusable toolbar, while text keeps native arrows. `src/main.ts#openReference`
+shows a reading without beginning a draft.
 `src/main.ts#openLoom` retrieves the existing draft or saved reading on an unnamed
 open, restores the writing pane and its selection, and focuses it without starting
 another Thread. `src/ui/loom.ts#rememberFocus` retains the last outside focus
@@ -510,10 +513,15 @@ target across repeated retrievals so Escape can return there.
 The draft's dashed frame and the prose-focus outline are independent signals;
 the drawn CodeMirror caret has an explicit normal-text-colour stroke. A saved
 reading has a solid frame and persistent Saved status. Enter saves a draft or
-branches from a saved thought; modified Enter saves a draft or starts a new Thread.
-Pending saves and held-key repeats cannot queue a continuation. Escape hides the
-surface; there is no Hide button. Action labels prefix shortcuts before their names
-with a middle dot. Two compact metadata lines keep timing stationary as status changes.
+branches from a saved or browsed thought; modified Enter saves a draft or starts
+a new Thread in the displayed thought's destination. Search Enter only accepts
+the match. A retained draft is resumed, never replaced or silently re-parented.
+Pending saves and held-key repeats cannot queue a continuation. Escape cancels
+search, returns from the chooser, or hides without discarding. There is no Hide
+button or duplicate shortcut paragraph; action labels prefix shortcuts with a dot.
+The quiet bottom rail places clock, stopwatch, status and Escape beneath the action
+buttons. Destination headers share a thread emoji and the Realm's name. An empty
+saved-state label contributes no margin, keeping the address aligned with its prose.
 The entry actions share Save's tinted fill and border. Branch previews the saved
 thought's next dimension through `src/core/color.ts#dimensionColorVars`; New Thread
 always uses the red first dimension, independent of the current reading.
@@ -627,7 +635,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-62 files, 493 exported symbols, 53 test files.
+63 files, 496 exported symbols, 53 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -663,9 +671,9 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/frame-effects.ts` | editor | 86 | 4 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 278 | 4 | no |
 | `src/editor/view-registry.ts` | editor | 68 | 6 | yes |
-| `src/entries/capture-model-controller.ts` | entries | 951 | 5 | no |
+| `src/entries/capture-model-controller.ts` | entries | 965 | 5 | no |
 | `src/entries/capture-store.ts` | entries | 482 | 6 | no |
-| `src/entries/capture.ts` | entries | 1124 | 5 | no |
+| `src/entries/capture.ts` | entries | 1131 | 5 | no |
 | `src/entries/clock.ts` | entries | 131 | 3 | no |
 | `src/entries/context-workspaces.ts` | entries | 554 | 4 | yes |
 | `src/entries/day-note.ts` | entries | 170 | 5 | yes |
@@ -690,7 +698,8 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom.ts` | ui | 2139 | 4 | yes |
+| `src/ui/loom-timing.ts` | ui | 151 | 3 | yes |
+| `src/ui/loom.ts` | ui | 2116 | 4 | yes |
 | `src/ui/markdown-pane.ts` | ui | 879 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -759,7 +768,6 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-card` | styled | `ui/loom.ts` |
 | `weaver-composer-check` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-empty` | hook | `ui/loom.ts` |
 | `weaver-composer-chooser-here` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-row` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-title` | styled | `ui/loom.ts` |
@@ -767,9 +775,9 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-chooser-write` | styled | `ui/loom.ts` |
 | `weaver-composer-context` | styled | `ui/loom.ts` |
 | `weaver-composer-context-label` | hook | `ui/loom.ts` |
+| `weaver-composer-controls` | styled | `ui/loom.ts` |
 | `weaver-composer-dest` | styled | `ui/loom.ts` |
 | `weaver-composer-editor` | styled | `ui/loom.ts` |
-| `weaver-composer-elapsed` | styled | `ui/loom.ts` |
 | `weaver-composer-footer` | styled | `ui/loom.ts` |
 | `weaver-composer-header` | styled | `ui/loom.ts` |
 | `weaver-composer-identity` | styled | `ui/loom.ts` |
@@ -786,18 +794,14 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-ref-toggle` | styled | `ui/loom.ts` |
 | `weaver-composer-reference` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-address` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-invitations` | hook | `ui/loom.ts` |
 | `weaver-composer-reference-nav` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-next` | hook | `ui/loom.ts` |
 | `weaver-composer-reference-notice` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-open` | hook | `ui/loom.ts` |
 | `weaver-composer-reference-position` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-prev` | hook | `ui/loom.ts` |
 | `weaver-composer-reference-prose` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-search` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-search-toggle` | hook | `ui/loom.ts` |
-| `weaver-composer-reference-tab` | hook | `ui/loom.ts` |
-| `weaver-composer-reference-tabs` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-tools` | styled | `ui/loom.ts` |
 | `weaver-composer-resume` | styled | `ui/loom.ts` |
 | `weaver-composer-resume-dismiss` | styled | `ui/loom.ts` |
@@ -812,6 +816,12 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-shortcuts-title` | styled | `ui/loom.ts` |
 | `weaver-composer-state` | styled | `ui/loom.ts` |
 | `weaver-composer-status` | styled | `ui/loom.ts` |
+| `weaver-composer-timing` | styled | `ui/loom-timing.ts` |
+| `weaver-composer-timing-digits` | styled | `ui/loom-timing.ts` |
+| `weaver-composer-timing-icon` | styled | `ui/loom-timing.ts` |
+| `weaver-composer-timing-state` | styled | `ui/loom-timing.ts` |
+| `weaver-composer-timing-unknown` | styled | `ui/loom-timing.ts` |
+| `weaver-composer-timing-value` | styled | `ui/loom-timing.ts` |
 | `weaver-composer-use` | styled | `ui/loom.ts` |
 | `weaver-composer-viewing` | styled | `ui/loom.ts` |
 | `weaver-composer-writing` | styled | `ui/loom.ts` |
@@ -917,9 +927,10 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | `src/ui/css.ts` | 0 | 4 |
 | `src/ui/dcn.ts` | 0 | 6 |
 | `src/ui/invitation.ts` | 0 | 5 |
+| `src/ui/loom-timing.ts` | 0 | 3 |
 | `src/ui/markdown-pane.ts` | 0 | 3 |
 
-Modules with no symbol named by any test: 10.
+Modules with no symbol named by any test: 11.
 
 ### Symbols
 
@@ -1018,7 +1029,7 @@ Pads a clock component to two digits.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `pad2` | function | 2 | `export function pad2(value: number): string` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/day.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`ui/invitation.ts` | `tests/clock.test.ts` |
-| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/capture.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/capture.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/close.ts`
 
@@ -1054,7 +1065,7 @@ The destinations Weaver may weave into, and the way back from a path.
 | --- | --- | --- | --- | --- | --- |
 | `MAIN_CONTEXT_ID` | const | 28 | `export const MAIN_CONTEXT_ID = "main"` | `entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
 | `MAIN_CONTEXT_NAME` | const | 31 | `export const MAIN_CONTEXT_NAME = "Main"` | — | — |
-| `WeavingContext` | interface | 34 | `export interface WeavingContext` | `core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom.ts` | `tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/loom.test.ts`<br>`tests/thought-index.test.ts` |
+| `WeavingContext` | interface | 34 | `export interface WeavingContext` | `core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom.ts` | `tests/capture-model-controller.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/loom.test.ts`<br>`tests/thought-index.test.ts` |
 | `ContextDay` | interface | 46 | `export interface ContextDay` | — | — |
 | `ContextError` | interface | 55 | `export interface ContextError` | `entries/day-note.ts`<br>`settings-tab.ts` | — |
 | `ContextRow` | interface | 62 | `export interface ContextRow` | — | — |
@@ -1063,9 +1074,9 @@ The destinations Weaver may weave into, and the way back from a path.
 | `DayToken` | type | 89 | `export type DayToken = "YYYY" \| "MM" \| "DD"` | — | — |
 | `parseDayTemplate` | function | 139 | `export function parseDayTemplate( folder: string, format: string ):` | — | `tests/contexts.test.ts` |
 | `templateNamesADay` | function | 173 | `export function templateNamesADay(template: DayTemplate): boolean` | — | — |
-| `contextDayForPath` | function | 238 | `export function contextDayForPath( path: string, contexts: readonly WeavingContext[] ): ContextDay \| null` | `core/reference.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/contexts.test.ts` |
+| `contextDayForPath` | function | 238 | `export function contextDayForPath( path: string, contexts: readonly WeavingContext[] ): ContextDay \| null` | `core/reference.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`ui/loom.ts` | `tests/contexts.test.ts` |
 | `contextDayPath` | function | 267 | `export function contextDayPath(context: WeavingContext, day: string): string` | `entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`ui/loom.ts` | `tests/contexts.test.ts` |
-| `mainContext` | function | 272 | `export function mainContext(options: DayNoteOptions): WeavingContext` | — | `tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/loom.test.ts` |
+| `mainContext` | function | 272 | `export function mainContext(options: DayNoteOptions): WeavingContext` | — | `tests/capture-model-controller.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/loom.test.ts` |
 | `effectiveContexts` | function | 277 | `export function effectiveContexts( options: DayNoteOptions, additional: readonly WeavingContext[] ): WeavingContext[]` | `entries/day-note.ts` | `tests/contexts.test.ts` |
 | `contextById` | function | 291 | `export function contextById( contexts: readonly WeavingContext[], id: string ): WeavingContext \| null` | `entries/day-note.ts` | — |
 | `freshContextId` | function | 299 | `export function freshContextId(): string` | `settings-tab.ts` | — |
@@ -1118,7 +1129,7 @@ The clock row of an entry, and the clocks it is written with.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DurationSigil` | type | 30 | `export type DurationSigil = "+" \| "-" \| "="` | `core/entries.ts`<br>`core/insert.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/engine.ts` | — |
-| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/capture.ts`<br>`core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/capture.ts`<br>`core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 | `formatDurationLine` | function | 41 | `export function formatDurationLine(sigil: DurationSigil, ms: number): string` | `core/insert.ts` | — |
 | `ClockRow` | interface | 56 | `export interface ClockRow` | `reading/entry-processor.ts` | — |
 | `parseClockRow` | function | 98 | `export function parseClockRow(text: string): ClockRow \| null` | `core/entries.ts`<br>`core/insert.ts`<br>`reading/entry-processor.ts` | `tests/duration.test.ts` |
@@ -1379,7 +1390,7 @@ The digit writer shared by every drawn clock.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `writeClockText` | function | 12 | `export function writeClockText(digits: readonly HTMLElement[], clock: string): void` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
+| `writeClockText` | function | 12 | `export function writeClockText(digits: readonly HTMLElement[], clock: string): void` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts` | — |
 | `writeDigits` | function | 20 | `export function writeDigits(digits: readonly HTMLElement[], ms: number): void` | `editor/stopwatch-widget.ts` | — |
 
 #### `src/editor/editor-path.ts`
@@ -1489,7 +1500,7 @@ The model-backed capture controller: the lower half as one tagged state, driven
 | `CaptureModelHost` | interface | 62 | `export interface CaptureModelHost` | `main.ts` | `tests/capture-model-controller.test.ts` |
 | `captureRequestOf` | function | 112 | `export function captureRequestOf(intent: Extract<WriteIntent,` | — | — |
 | `CaptureView` | interface | 137 | `export interface CaptureView` | `ui/loom.ts` | — |
-| `CaptureModelController` | class | 155 | `export class CaptureModelController implements LoomCaptureOwner` | `main.ts` | `tests/capture-model-controller.test.ts` |
+| `CaptureModelController` | class | 157 | `export class CaptureModelController implements LoomCaptureOwner` | `main.ts` | `tests/capture-model-controller.test.ts` |
 
 #### `src/entries/capture-store.ts`
 
@@ -1632,7 +1643,7 @@ The upper half's one owner: the current query, the frozen sequence it produced,
 | `ReferenceModel` | interface | 108 | `export interface ReferenceModel` | `entries/loom.ts`<br>`ui/loom.ts` | `tests/loom-controller.test.ts` |
 | `ReviewChange` | interface | 120 | `export interface ReviewChange` | — | — |
 | `ReferenceAction` | type | 126 | `export type ReferenceAction = \|` | `entries/loom.ts` | `tests/loom-controller.test.ts` |
-| `ReferenceController` | class | 161 | `export class ReferenceController` | `core/loom.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/reference-controller.test.ts` |
+| `ReferenceController` | class | 161 | `export class ReferenceController` | `core/loom.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/loom.test.ts`<br>`tests/reference-controller.test.ts` |
 | `sequenceErrors` | function | 542 | `export function sequenceErrors(sequence: ReferenceSequence \| null): readonly ReferenceReadError[]` | — | — |
 
 #### `src/entries/session.ts`
@@ -1806,7 +1817,7 @@ The digit-and-ink grammar: `B.D.N`, the clock row and the date label all split
 | `Slice` | interface | 21 | `export interface Slice` | — | — |
 | `addressSlices` | function | 31 | `export function addressSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
 | `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/loom.ts` | — |
-| `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
+| `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts` | — |
 
 #### `src/ui/invitation.ts`
 
@@ -1819,6 +1830,16 @@ How an invitation is named, in the words a writer reads.
 | `countdownLabel` | function | 28 | `export function countdownLabel(occurrence: PortalOccurrence, now: number): string` | — | — |
 | `arrivalLabel` | function | 35 | `export function arrivalLabel(occurrence: PortalOccurrence, contextName?: string): string` | — | — |
 | `invitationName` | function | 41 | `export function invitationName(occurrence: PortalOccurrence): string` | — | — |
+
+#### `src/ui/loom-timing.ts`
+
+The loom's timing group: one beginning clock and one writing duration, in the
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `LoomTimingMode` | type | 17 | `export type LoomTimingMode = "preview" \| "running" \| "paused" \| "recorded" \| "pending"` | `ui/loom.ts` | — |
+| `LoomTimingReading` | interface | 20 | `export interface LoomTimingReading` | — | — |
+| `LoomTiming` | class | 63 | `export class LoomTiming` | `ui/loom.ts` | — |
 
 #### `src/ui/loom.ts`
 
@@ -1848,7 +1869,7 @@ Which platform this is, as one answer.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
-| `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts`<br>`ui/loom.ts` | `tests/platform-classes.test.ts` |
+| `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts` | `tests/platform-classes.test.ts` |
 | `isTablet` | function | 28 | `export function isTablet(): boolean` | `entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
 | `canHover` | function | 35 | `export function canHover(): boolean` | — | — |
 

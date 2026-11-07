@@ -6,6 +6,7 @@ import { CaptureController, type CaptureHost, type CaptureRecord, type CaptureSt
 import { EntryClock } from "../src/entries/clock";
 import { EntrySession } from "../src/entries/session";
 import { ThoughtIndex } from "../src/entries/thought-index";
+import { ReferenceController } from "../src/entries/reference";
 import { Loom, type LoomInvitation } from "../src/ui/loom";
 import { bodyQuery, createApp, resetHarness } from "../test-support/harness";
 import { fireWindowEvent, type ShimElement } from "../test-support/dom";
@@ -46,6 +47,7 @@ interface Run {
   composer: Loom;
   controller: CaptureController;
   clock: EntryClock;
+  reference: ReferenceController;
   requests: CaptureRequest[];
   writes: string[];
   travels: string[];
@@ -70,7 +72,7 @@ async function flush(): Promise<void> {
 }
 
 
-function harness(source = NOTE_SOURCE): Run {
+function harness(source = NOTE_SOURCE, path = NOTE_PATH): Run {
   let now = new Date(2026, 10, 5, 9, 0, 0).getTime();
   const requests: CaptureRequest[] = [];
   const writes: string[] = [];
@@ -90,7 +92,7 @@ function harness(source = NOTE_SOURCE): Run {
       requests.push(request);
       return Promise.resolve(reply);
     },
-    read: (path) => Promise.resolve(path === NOTE_PATH ? source : null),
+    read: (requested) => Promise.resolve(requested === path ? source : null),
     confirmPersisted: () => Promise.resolve(false),
     editInNote: () => Promise.resolve(true),
     freezeNative: () => {},
@@ -107,6 +109,7 @@ function harness(source = NOTE_SOURCE): Run {
     composer: null as unknown as Loom,
     controller,
     clock,
+    reference: null as unknown as ReferenceController,
     requests,
     writes,
     travels,
@@ -137,14 +140,21 @@ function harness(source = NOTE_SOURCE): Run {
   };
 
   const thoughtIndex = new ThoughtIndex({
-    paths: () => [NOTE_PATH],
+    paths: () => [path],
     read: host.read,
     generation: () => 0,
     contexts: () => CONTEXTS
   });
+  const reference = new ReferenceController({
+    index: thoughtIndex,
+    load: (target) => thoughtIndex.loadThought(target),
+    onChange: () => run.composer?.render()
+  });
+  run.reference = reference;
   const composer = new Loom({
     app: createApp(),
     controller,
+    reference,
     clock,
     contexts: () => CONTEXTS,
     loadThought: (target) => thoughtIndex.loadThought(target),
@@ -188,29 +198,59 @@ function type(run: Run, text: string): void {
   input.dispatch("input");
 }
 
+function timing(kind: "beginning" | "duration", parent = ".weaver-composer-state"): string | null {
+  const digits = bodyQuery(`${parent} [data-kind="${kind}"] .weaver-composer-timing-digits`);
+  return digits?.hasAttribute("hidden") ? "—" : digits?.textContent ?? null;
+}
+
+async function browse(run: Run): Promise<void> {
+  await run.reference.open({
+    scope: { kind: "history", tapestryId: null }, order: "time", search: { kind: "none" }
+  }, "last");
+  run.composer.showPanel("reference");
+}
+
 beforeEach(() => {
   resetHarness();
 });
 
 
 describe("composer timing", () => {
+  it("previews the wall clock, freezes the beginning on input and marks a pause", () => {
+    const run = harness();
+    expect(timing("beginning")).toBe("09:00:00");
+    expect(timing("duration")).toBe("00:00:00");
+    run.advance(1200);
+    expect(timing("beginning")).toBe("09:00:01");
+    type(run, "a beginning");
+    run.advance(5400);
+    expect(timing("beginning")).toBe("09:00:01");
+    expect(timing("duration")).toBe("00:00:05");
+    run.controller.pause();
+    expect(bodyQuery(".weaver-composer-state .weaver-composer-timing")?.getAttribute("data-mode")).toBe("paused");
+    run.advance(10_000);
+    expect(timing("duration")).toBe("00:00:05");
+    expect(run.requests).toEqual([]);
+  });
   it("reads the saved duration from the note instead of the cleared draft clock", async () => {
     const run = harness(NOTE_SOURCE.replace("00:00:00", "00:02:14"));
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("");
+    expect(timing("beginning")).toBe("09:00:00");
+    expect(timing("duration")).toBe("00:00:00");
     type(run, "typed");
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:00:00 · 09:00");
+    expect(timing("duration")).toBe("00:00:00");
     run.answer(saved());
     run.input().dispatch("keydown", { key: "Enter" });
     await flush();
     expect(run.controller.state.phase).toBe("resting");
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:02:14 · 09:00");
+    expect(timing("duration")).toBe("00:02:14");
+    expect(timing("beginning")).toBe("09:00:00");
   });
 
   it("retains the painted duration across a pause before saving", async () => {
     const run = harness();
     type(run, "typed");
     run.advance(2400);
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:00:02 · 09:00");
+    expect(timing("duration")).toBe("00:00:02");
     run.controller.pause();
     run.advance(5000);
     run.input().dispatch("keydown", { key: "Enter" });
@@ -224,7 +264,8 @@ describe("composer timing", () => {
     run.answer(saved(2));
     run.input().dispatch("keydown", { key: "Enter" });
     await flush();
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("— · —");
+    expect(timing("beginning")).toBe("—");
+    expect(timing("duration")).toBe("—");
   });
 });
 
@@ -516,3 +557,103 @@ describe("the saved state", () => {
   });
 });
 
+
+describe("browsing and composing one Loom", () => {
+  const twoThoughts = `${NOTE_SOURCE}\n{ 2.1.2 }\nsecond thought\n+ 00:01:14 2026-11-05 10:15:36\n`;
+
+  it("reads both recorded clocks and branches from the displayed thought on Enter", async () => {
+    const run = harness(twoThoughts);
+    run.controller.discardDraft();
+    await browse(run);
+    expect(timing("beginning")).toBe("10:15:36");
+    expect(timing("duration")).toBe("00:01:14");
+    run.root().dispatch("keydown", {
+      key: "Enter", target: run.button(".weaver-composer-reference-tools")
+    });
+    await flush();
+    expect(run.controller.state.phase).toBe("editing");
+    expect(run.controller.state.parent?.n).toBe(2);
+    expect(run.controller.state.beginning).toBeNull();
+    expect(timing("duration")).toBe("00:00:00");
+    expect(run.requests).toEqual([]);
+  });
+
+  it("accepts a search result before a fresh Enter can branch", async () => {
+    const run = harness(twoThoughts);
+    run.controller.discardDraft();
+    await browse(run);
+    run.button(".weaver-composer-reference-search-toggle")?.click();
+    await run.reference.setSearchText("typed");
+    const field = run.button(".weaver-composer-reference-search");
+    field?.dispatch("keydown", { key: "Enter" });
+    expect(run.reference.model.search.kind).toBe("accepted");
+    expect(run.controller.state.phase).toBe("closed");
+    expect(run.reference.model.selection?.n).toBe(1);
+    run.root().dispatch("keydown", {
+      key: "Enter", target: run.button(".weaver-composer-reference-tools")
+    });
+    await flush();
+    expect(run.controller.state.parent?.n).toBe(1);
+    expect(run.requests).toEqual([]);
+  });
+
+  it("resumes a hidden draft without replacing its words, selection or parent", async () => {
+    const run = harness(twoThoughts);
+    type(run, "a draft to keep");
+    run.controller.setSelection({ from: 2, to: 7 });
+    run.input().dispatch("keydown", { key: "Escape" });
+    await browse(run);
+    run.root().dispatch("keydown", {
+      key: "Escape", target: run.button(".weaver-composer-reference-tools")
+    });
+    expect(run.card().hasAttribute("hidden")).toBe(true);
+    expect(run.controller.state.text).toBe("a draft to keep");
+    await browse(run);
+    run.root().dispatch("keydown", {
+      key: "Enter", target: run.button(".weaver-composer-reference-tools")
+    });
+    await flush();
+    expect(run.controller.state.text).toBe("a draft to keep");
+    expect(run.controller.state.selection).toEqual({ from: 2, to: 7 });
+    expect(run.controller.state.parent).toBeNull();
+    expect(run.controller.state.collapsed).toBe(false);
+    expect(run.input().selectionStart).toBe(2);
+    expect(run.input().selectionEnd).toBe(7);
+    expect(run.requests).toEqual([]);
+  });
+
+  it("keeps reading clocks separate from the draft and arrows out of prose selection", async () => {
+    const run = harness(twoThoughts);
+    type(run, "the active draft");
+    await browse(run);
+    run.advance(2400);
+    expect(timing("duration")).toBe("00:00:02");
+    expect(timing("beginning")).toBe("09:00:00");
+    expect(timing("duration", ".weaver-composer-reference")).toBe("00:01:14");
+    expect(timing("beginning", ".weaver-composer-reference")).toBe("10:15:36");
+    const prose = run.button(".weaver-composer-reference-prose .cm-content");
+    run.root().dispatch("keydown", { key: "ArrowUp", target: prose });
+    run.root().dispatch("keydown", { key: "ArrowLeft", target: run.button(".weaver-composer-reference-tools") });
+    expect(run.reference.model.selection?.n).toBe(2);
+    run.root().dispatch("keydown", { key: "ArrowUp", target: run.button(".weaver-composer-reference-tools") });
+    await flush();
+    expect(run.reference.model.selection?.n).toBe(1);
+    expect(run.controller.state.text).toBe("the active draft");
+    expect(run.controller.state.parent).toBeNull();
+  });
+
+  it("starts a new Thread in the browsed thought's destination", async () => {
+    const run = harness(NOTE_SOURCE, "Spanish/Daily/2026.11.05.md");
+    run.controller.discardDraft();
+    await browse(run);
+    fireWindowEvent("keydown", {
+      key: "Enter", metaKey: true, target: run.button(".weaver-composer-reference-tools")
+    });
+    await flush();
+    expect(run.controller.state.phase).toBe("editing");
+    expect(run.controller.state.contextId).toBe("ctx-spanish");
+    expect(run.controller.state.parent).toBeNull();
+    expect(run.controller.state.text).toBe("");
+    expect(run.requests).toEqual([]);
+  });
+});

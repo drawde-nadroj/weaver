@@ -60,8 +60,8 @@ pixel. The manual checks they need are at the end of this file.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
    asked; reference context is optional and starts collapsed.
 6. **Browse** with `⌘⇧P`: the Loom's reference opens on your thoughts without
-   starting a draft. Invitations live beside the reading; the writing destination
-   stays in the header's chooser.
+   starting a draft. The writing destination stays in the header's chooser;
+   invitations remain idle offers, not a tab inside browsing.
 7. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
 Writing inside a note is unchanged, and it is where an entry is still begun in
@@ -173,26 +173,29 @@ draft. While writing, the header's Reference control opens the same reading besi
 or above the draft. The note stays visible and editable behind this non-modal surface.
 
 The reference shows one thought at a time with its own dimension colour,
-digit-and-ink address, formatted Markdown and position in the sequence. Previous,
-Next, Search and Open in note are visible; the following navigation keys apply
-when the reference toolbar has focus, not when selecting prose in its editor.
+digit-and-ink address, formatted Markdown and sequence position. A clock icon
+identifies its recorded beginning; a stopwatch identifies its writing duration.
+Previous, Next and Search appear once in the bottom toolbar, with shortcut
+prefixes. Ordinary navigation keys apply only when that toolbar has focus, not
+while selecting prose or typing.
 
 | Key | Effect |
 | --- | --- |
 | `↑` / `↓` | previous / next thought in the sequence |
 | `/` | start a scoped search |
-| `⏎` | accept a search match, or edit the selected original |
-| `Esc` | cancel the search, then collapse the reference, then hide the Loom |
+| `⏎` | accept a search match; otherwise branch from the displayed thought |
+| `⌘⏎` / `Ctrl⏎` | start a new Thread in the displayed thought's destination |
+| `Esc` | cancel search or go back from the chooser; otherwise hide the Loom |
 | `⌘⌥←` / `⌘⌥→` | previous / next Tapestry |
 | `⌘⌥↑` / `⌘⌥↓` | show the reference / return to writing |
 
 The destination control opens the chooser without travelling; Write here changes
 the draft's destination only after any required confirmation. Open workspace is
-separate. Invitations is accessible from the reference area. Both panels have
-Back and preserve the draft and its editing history. More contains Copy text,
-Discard draft and Keyboard shortcuts—not another navigation menu. Copy follows
-the draft, saved prose or reference-only reading. Discard confirmation defaults
-to Keep writing, and returning from it restores editor focus.
+separate. The chooser has Back and preserves the draft and its editing history.
+More contains Open in note, Copy text, Discard draft and Keyboard shortcuts.
+Copy follows the draft, saved prose or reference-only reading. Discard
+confirmation defaults to Keep writing. A hidden unfinished draft offers Resume
+draft instead of creating or retargeting another one.
 
 ## Record formats
 
@@ -462,9 +465,10 @@ These need a live Obsidian and are not covered by `npm test`:
   remains visible, and timing does not shift. Click away and retrieve the saved
   reading: no new Thread or write occurs. Escape hides it and restores outside focus.
 - Composer structure: a short empty draft is compact. Identity, prose and action
-  rail keep their positions through saving and reading. One muted bottom-left label
-  shows duration and start time while writing, then recorded duration and creation
-  time after saving. An empty draft keeps the footer height without numbers.
+  rail keep their positions through saving and reading. The same clock and
+  stopwatch show beginning and writing duration in full seconds. Before input,
+  the clock is a live preview and the stopwatch is zero; after input the beginning
+  freezes, a pause is explicit, and saving preserves the displayed duration.
   Address digits are normal text, punctuation dimension-coloured.
   Copy text on a saved thought copies its Markdown, not an empty draft.
 - Composer, phone: open the keyboard, select text, rotate, then dismiss it. The
@@ -473,9 +477,10 @@ These need a live Obsidian and are not covered by `npm test`:
 - Rich Markdown: compose emphasis, a heading, a list and code; keep typing after
   moving the caret, then undo and redo. Save and read the result. References render
   tables and internal links rather than raw Markdown, in their own dimension colour.
-- Reference controls: arrows navigate only from the navigation toolbar. They must
-  not change the selected thought while selecting prose or editing the draft.
-  Search, cancel and return: query, prior reading place and draft selection survive.
+- Reference controls: up/down arrows navigate only from the bottom navigation
+  toolbar, never while selecting prose or editing a draft. Left/right remain native.
+  Search Enter accepts the result; a fresh Enter branches. A retained hidden draft
+  resumes with its selection and parent intact. Each visible pane owns its timing.
 - Composer, Reading view: save a thought while its destination note is in Reading
   view, then switch to Live Preview: the thought exists once in both. An absent
   unconfirmed save offers Retry save only after Check save has verified absence.

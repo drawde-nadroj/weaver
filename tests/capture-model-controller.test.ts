@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { captureInstantAt, type CaptureReceipt, type CaptureRequest, type ThoughtRef } from "../src/core/capture";
+import { mainContext, type WeavingContext } from "../src/core/contexts";
 import type { CaptureEnvelopeV2 } from "../src/entries/capture-store";
 import {
   CaptureModelController,
@@ -66,8 +67,11 @@ class Host implements CaptureModelHost {
   now(): number {
     return this.current;
   }
-  contexts() {
-    return [];
+  contexts(): readonly WeavingContext[] {
+    return [
+      mainContext({ folder: "Chronomancer", format: "YYYY.MM.DD" }),
+      { id: "ctx-spanish", name: "Spanish", folder: "Spanish/Daily", format: "YYYY.MM.DD" }
+    ];
   }
   private receipt(request: CaptureRequest): CaptureReceipt {
     return {
@@ -230,16 +234,19 @@ describe("the clock a save records", () => {
     const { controller, host } = harness();
     typed(controller);
     controller.commitDuration(4000);
+    expect(controller.state.clockRunning).toBe(true);
     controller.pause();
     host.current = NOW + 60000;
 
     // Paused: the shown second is frozen, and a wall-clock sample never moves it.
     expect(controller.state.durationMs).toBe(4000);
+    expect(controller.state.clockRunning).toBe(false);
     controller.commitDuration(9000);
     expect(controller.state.durationMs).toBe(4000);
 
     // Resuming starts from the stop, not from the minute that passed.
     controller.setText("typed more");
+    expect(controller.state.clockRunning).toBe(true);
     host.current = NOW + 62000;
     controller.commitDuration(6000);
     expect(controller.state.durationMs).toBe(6000);
@@ -328,6 +335,18 @@ describe("opening while a draft exists", () => {
   });
 });
 
+describe("starting a thread", () => {
+  it("starts a new root in the explicitly named destination", async () => {
+    const { controller } = harness();
+    controller.start();
+
+    await controller.newThread("ctx-spanish");
+
+    expect(controller.state.phase).toBe("editing");
+    expect(controller.state.contextId).toBe("ctx-spanish");
+  });
+});
+
 describe("correction state", () => {
   it("borrows the composer and restores the protected draft on cancel", () => {
     const { controller } = harness();
@@ -370,6 +389,7 @@ describe("recovery", () => {
       expect(controller.model.state.draft.text).toBe("resumed");
       expect(controller.model.state.draft.clock.shownMs).toBe(3000);
     }
+    expect(controller.state.clockRunning).toBe(false);
   });
 
   it("blocks durability when the store cannot be read", () => {

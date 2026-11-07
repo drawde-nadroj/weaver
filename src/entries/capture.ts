@@ -185,6 +185,8 @@ export class CaptureController {
     selection: { from: number; to: number };
     beginning: CaptureInstant | null;
     durationMs: number;
+    /** True while an editable draft's clock runs; false once its duration is frozen. */
+    clockRunning: boolean;
     invitations: CaptureInvitation[];
     pendingTarget: DraftTarget | null;
     error: string | null;
@@ -201,6 +203,7 @@ export class CaptureController {
       selection: this.selection,
       beginning: this.beginning,
       durationMs: shownOf(this.clock, this.host.now()),
+      clockRunning: this.phase === "editing" && this.clock.resumedAt !== null,
       invitations: this.invitations,
       pendingTarget: this.pendingTarget,
       error: this.error,
@@ -701,17 +704,21 @@ export class CaptureController {
   }
 
   /**
-   * Starts a fresh root in the current destination, ending the open Thread view.
+   * Starts a fresh root, in `contextId` when given and in the current
+   * destination otherwise, ending the open Thread view.
    *
    * With words in the draft this is a proposal, not a clear: `T` never silently
    * discards what was typed.
    */
-  async newThread(): Promise<boolean> {
+  async newThread(contextId?: string): Promise<boolean> {
     if (this.phase === "submitting" || this.phase === "uncertain") return false;
 
-    const contextId = this.root === null ? this.contextId : this.contextOf(this.root.path);
+    const destination =
+      contextId !== undefined
+        ? this.destination(contextId)
+        : this.root === null ? this.contextId : this.contextOf(this.root.path);
     if (this.phase === "editing" && this.text.trim() !== "") {
-      return this.requestTarget({ kind: "root", contextId });
+      return this.requestTarget({ kind: "root", contextId: destination });
     }
 
     this.generation += 1;
@@ -719,7 +726,7 @@ export class CaptureController {
     this.beginning = null;
     this.clock = idleClock();
     this.applyTarget({
-      contextId: this.destination(contextId),
+      contextId: this.destination(destination),
       parent: null,
       root: null,
       selected: null

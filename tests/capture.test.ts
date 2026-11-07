@@ -21,7 +21,10 @@ import {
   type CaptureHost
 } from "../src/entries/capture";
 
-const CONTEXTS: WeavingContext[] = [mainContext({ folder: "Chronomancer", format: "YYYY.MM.DD" })];
+const CONTEXTS: WeavingContext[] = [
+  mainContext({ folder: "Chronomancer", format: "YYYY.MM.DD" }),
+  { id: "ctx-spanish", name: "Spanish", folder: "Spanish/Daily", format: "YYYY.MM.DD" }
+];
 
 const NOTE = "Chronomancer/2026.11.05.md";
 
@@ -360,15 +363,18 @@ describe("the draft's beginning and timing", () => {
     controller.setText("a");
     test.advance(4000);
     controller.commitDuration(4000);
+    expect(controller.state.clockRunning).toBe(true);
     controller.pause();
     test.advance(60_000);
     // Nothing accrues while it is paused, and the resume starts from the stop.
     expect(controller.state.durationMs).toBe(4000);
+    expect(controller.state.clockRunning).toBe(false);
 
     controller.setText("ab");
     test.advance(2000);
     controller.commitDuration(6000);
     expect(controller.state.durationMs).toBe(6000);
+    expect(controller.state.clockRunning).toBe(true);
   });
 });
 
@@ -540,6 +546,16 @@ describe("branching and new threads", () => {
     expect(test.controller.state.contextId).toBe("main");
   });
 
+  it("starts a fresh root in an explicitly named destination", async () => {
+    const test = harness();
+    await test.controller.branch(fixtureRef(0));
+
+    await test.controller.newThread("ctx-spanish");
+    expect(test.controller.state.contextId).toBe("ctx-spanish");
+    expect(test.controller.state.parent).toBeNull();
+    expect(test.controller.state.text).toBe("");
+  });
+
   it("proposes rather than clearing a new Thread over written words", async () => {
     const test = harness();
     await test.controller.branch(fixtureRef(0));
@@ -651,6 +667,7 @@ describe("recovery", () => {
     expect(test.controller.state.text).toBe("half a thought");
     expect(test.controller.state.durationMs).toBe(12_000);
     expect(test.controller.state.beginning?.time).toBe("09:00:00");
+    expect(test.controller.state.clockRunning).toBe(false);
     expect(test.requests).toHaveLength(0);
 
     // Nothing accrues while it waits, and only real input resumes it.
@@ -658,6 +675,7 @@ describe("recovery", () => {
     expect(test.controller.state.durationMs).toBe(12_000);
     test.controller.setText("half a thought, continued");
     expect(test.controller.state.durationMs).toBe(12_000);
+    expect(test.controller.state.clockRunning).toBe(true);
   });
 
   it("opens an interrupted submission as unconfirmed", () => {

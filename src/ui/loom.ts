@@ -21,9 +21,9 @@ import { type App } from "obsidian";
 
 import type { CaptureInstant, ThoughtRef } from "../core/capture";
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { contextDayPath, type WeavingContext } from "../core/contexts";
+import { contextDayForPath, contextDayPath, type WeavingContext } from "../core/contexts";
 import { dayKey } from "../core/day";
-import { formatClock as formatElapsed } from "../core/duration";
+import { formatClock } from "../core/clock";
 import { formatAddress } from "../core/entries";
 import { loomAnchor, revealScrollDelta, type LoomAnchor, type LoomViewport } from "../core/frame";
 import type { ThoughtSnapshotResult } from "../core/reference";
@@ -32,7 +32,7 @@ import type { EntryClock } from "../entries/clock";
 import type { ReferenceController, ReferenceModel } from "../entries/reference";
 import { appendDigitRuns } from "./dcn";
 import { MarkdownPane, type PaneSelection } from "./markdown-pane";
-import { isMobile } from "./platform";
+import { LoomTiming, type LoomTimingMode } from "./loom-timing";
 
 /** The lower surface the Loom reads and commands; either controller satisfies it. */
 export interface CaptureSurface {
@@ -48,7 +48,7 @@ export interface CaptureSurface {
   expand(): void;
   dismiss(): void;
   discardDraft(): void;
-  newThread(): Promise<boolean>;
+  newThread(contextId?: string): Promise<boolean>;
   confirmTarget(): void;
   cancelTarget(): void;
   editInNote(target: ThoughtRef): Promise<boolean>;
@@ -89,7 +89,7 @@ export interface LoomInvitation {
 }
 
 /** A contextual panel that temporarily replaces the composition area. */
-type View = "write" | "chooser" | "invitations";
+type View = "write" | "chooser";
 
 /** One transient message, shown in the rail until it is replaced or expires. */
 interface Feedback {
@@ -181,20 +181,15 @@ export class Loom {
   private readonly body: HTMLElement;
   private readonly contextEl: HTMLElement;
   private readonly referenceEl: HTMLElement;
-  private readonly referenceTabs: HTMLElement;
-  private readonly referenceReadTab: HTMLButtonElement;
-  private readonly referenceInviteTab: HTMLButtonElement;
   private readonly referenceTools: HTMLElement;
   private readonly refPrev: HTMLButtonElement;
   private readonly refNext: HTMLButtonElement;
   private readonly refPosition: HTMLElement;
-  private readonly refOpen: HTMLButtonElement;
   private readonly refSearchButton: HTMLButtonElement;
   private readonly referenceSearchField: HTMLInputElement;
   private readonly referenceAddress: HTMLElement;
   private readonly referenceNotice: HTMLElement;
   private readonly referenceProse: HTMLElement;
-  private readonly referenceHint: HTMLElement;
   private readonly chooserEl: HTMLElement;
   private readonly writingEl: HTMLElement;
   private readonly identityEl: HTMLElement;
@@ -202,7 +197,9 @@ export class Loom {
   private readonly footer: HTMLElement;
   private readonly stateEl: HTMLElement;
   private readonly statusEl: HTMLElement;
-  private readonly elapsedEl: HTMLElement;
+  private readonly timing: LoomTiming;
+  private readonly referenceTiming: LoomTiming;
+  private readonly escapeHint: HTMLElement;
   private readonly actionsEl: HTMLElement;
   private readonly saveButton: HTMLButtonElement;
   private readonly newlineButton: HTMLButtonElement;
@@ -255,6 +252,7 @@ export class Loom {
   private timedBeginning: CaptureInstant | null = null;
 
   private feedback: Feedback | null = null;
+  private paintedDuration = 0;
   private feedbackTimer: number | null = null;
 
   private readonly onKeyDown = (event: KeyboardEvent): void => this.handleKey(event);
@@ -277,6 +275,7 @@ export class Loom {
     if (this.menuOpen || this.shortcutsOpen) return;
     const node = event.target;
     if (!isNode(node) || !this.root.contains(node)) return;
+    if (within(this.referenceSearchField, node)) return;
     event.preventDefault();
     event.stopPropagation();
     this.activateEnter(event);
@@ -368,27 +367,6 @@ export class Loom {
     this.referenceEl.setAttribute("hidden", "");
     this.referenceEl.tabIndex = -1;
 
-    this.referenceTabs = doc.createElement("div");
-    this.referenceTabs.className = "weaver-composer-reference-tabs";
-    this.referenceTabs.setAttribute("role", "tablist");
-    this.referenceTabs.setAttribute("aria-label", "Reading");
-
-    this.referenceReadTab = doc.createElement("button");
-    this.referenceReadTab.type = "button";
-    this.referenceReadTab.className = "weaver-composer-reference-tab";
-    this.referenceReadTab.textContent = "Thought";
-    this.referenceReadTab.setAttribute("role", "tab");
-    this.referenceReadTab.setAttribute("aria-selected", "true");
-
-    this.referenceInviteTab = doc.createElement("button");
-    this.referenceInviteTab.type = "button";
-    this.referenceInviteTab.className = "weaver-composer-reference-tab weaver-composer-reference-invitations";
-    this.referenceInviteTab.textContent = "Invitations";
-    this.referenceInviteTab.setAttribute("role", "tab");
-    this.referenceInviteTab.setAttribute("aria-selected", "false");
-
-    this.referenceTabs.appendChild(this.referenceReadTab);
-    this.referenceTabs.appendChild(this.referenceInviteTab);
 
     this.referenceTools = doc.createElement("div");
     this.referenceTools.className = "weaver-composer-reference-tools";
@@ -402,32 +380,26 @@ export class Loom {
     this.refPrev = doc.createElement("button");
     this.refPrev.type = "button";
     this.refPrev.className = "weaver-composer-reference-prev";
-    this.refPrev.textContent = "Previous";
+    this.refPrev.textContent = "↑ · Previous";
     this.refPrev.setAttribute("aria-label", "Previous thought");
     this.refPrev.title = "Previous thought (↑)";
 
     this.refNext = doc.createElement("button");
     this.refNext.type = "button";
     this.refNext.className = "weaver-composer-reference-next";
-    this.refNext.textContent = "Next";
+    this.refNext.textContent = "↓ · Next";
     this.refNext.setAttribute("aria-label", "Next thought");
     this.refNext.title = "Next thought (↓)";
 
     this.refPosition = doc.createElement("span");
     this.refPosition.className = "weaver-composer-reference-position";
     this.refPosition.setAttribute("aria-live", "polite");
-
-    this.refOpen = doc.createElement("button");
-    this.refOpen.type = "button";
-    this.refOpen.className = "weaver-composer-reference-open";
-    this.refOpen.textContent = "Open";
-    this.refOpen.setAttribute("aria-label", "Open the selected thought in its note");
-    this.refOpen.title = "Open in its note (⏎)";
+    this.header.insertBefore(this.refPosition, this.moreButton);
 
     this.refSearchButton = doc.createElement("button");
     this.refSearchButton.type = "button";
     this.refSearchButton.className = "weaver-composer-reference-search-toggle";
-    this.refSearchButton.textContent = "Search";
+    this.refSearchButton.textContent = "/ · Search";
     this.refSearchButton.setAttribute("aria-label", "Search thoughts");
     this.refSearchButton.title = "Search (/)";
 
@@ -439,11 +411,8 @@ export class Loom {
 
     referenceNav.appendChild(this.refPrev);
     referenceNav.appendChild(this.refNext);
-    referenceNav.appendChild(this.refPosition);
     this.referenceTools.appendChild(referenceNav);
-    this.referenceTools.appendChild(this.refOpen);
     this.referenceTools.appendChild(this.refSearchButton);
-    this.referenceTools.appendChild(this.referenceSearchField);
 
     this.referenceAddress = doc.createElement("div");
     this.referenceAddress.className = "weaver-composer-reference-address";
@@ -457,17 +426,12 @@ export class Loom {
     this.referenceProse = doc.createElement("div");
     this.referenceProse.className = "weaver-composer-reference-prose";
     this.referenceProse.setAttribute("hidden", "");
+    this.referenceEl.appendChild(this.referenceSearchField);
 
-    this.referenceHint = doc.createElement("div");
-    this.referenceHint.className = "weaver-composer-keyhint";
-    this.referenceHint.textContent = "With navigation focused: ↑↓ browse · / search · ⏎ open";
-
-    this.referenceEl.appendChild(this.referenceTabs);
-    this.referenceEl.appendChild(this.referenceTools);
     this.referenceEl.appendChild(this.referenceAddress);
     this.referenceEl.appendChild(this.referenceNotice);
     this.referenceEl.appendChild(this.referenceProse);
-    this.referenceEl.appendChild(this.referenceHint);
+    this.referenceTiming = new LoomTiming(this.referenceEl);
 
     this.chooserEl = doc.createElement("div");
     this.chooserEl.className = "weaver-composer-chooser";
@@ -505,13 +469,13 @@ export class Loom {
     this.statusEl.className = "weaver-composer-status";
     this.statusEl.setAttribute("role", "status");
 
-    this.elapsedEl = doc.createElement("span");
-    this.elapsedEl.className = "weaver-composer-elapsed";
-    this.elapsedEl.setAttribute("role", "timer");
-    this.elapsedEl.setAttribute("aria-live", "off");
 
+    this.timing = new LoomTiming(this.stateEl);
     this.stateEl.appendChild(this.statusEl);
-    this.stateEl.appendChild(this.elapsedEl);
+    this.escapeHint = doc.createElement("span");
+    this.escapeHint.className = "weaver-composer-keyhint";
+    this.escapeHint.textContent = "Esc · Hide";
+    this.stateEl.appendChild(this.escapeHint);
 
     this.actionsEl = doc.createElement("div");
     this.actionsEl.className = "weaver-composer-actions";
@@ -520,7 +484,7 @@ export class Loom {
     this.saveButton.type = "button";
     this.saveButton.className = "weaver-composer-save";
 
-    this.newlineButton = this.button(doc, "New line", "weaver-composer-newline");
+    this.newlineButton = this.button(doc, "⇧↵ · New line", "weaver-composer-newline");
     this.newlineButton.setAttribute("aria-label", "Start a new line");
 
     this.useButton = this.button(doc, "Use", "weaver-composer-save weaver-composer-use");
@@ -547,8 +511,12 @@ export class Loom {
     this.actionsEl.appendChild(this.branchButton);
     this.actionsEl.appendChild(this.freshButton);
 
+    const controls = doc.createElement("div");
+    controls.className = "weaver-composer-controls";
+    controls.appendChild(this.referenceTools);
+    controls.appendChild(this.actionsEl);
+    this.footer.appendChild(controls);
     this.footer.appendChild(this.stateEl);
-    this.footer.appendChild(this.actionsEl);
 
     this.card.appendChild(this.header);
     this.card.appendChild(this.body);
@@ -687,6 +655,11 @@ export class Loom {
 
   /** Re-reads recorded timing when its note changes, rejecting any older read. */
   refreshTiming(paths: readonly string[]): void {
+    const reference = this.host.reference;
+    const selected = reference?.model.selection ?? null;
+    if (this.referenceExpanded && selected !== null && paths.includes(selected.path)) {
+      void reference?.refresh();
+    }
     if (this.savedTiming === null || !paths.includes(this.savedTiming.thought.path)) return;
     this.savedTiming = null;
     this.paintElapsed();
@@ -719,7 +692,7 @@ export class Loom {
   }
 
   /** Opens a contextual panel in place of the content area. */
-  showPanel(panel: "reference" | "tapestries" | "invitations"): void {
+  showPanel(panel: "reference" | "tapestries"): void {
     if (panel === "reference") {
       this.referenceExpanded = true;
       this.view = "write";
@@ -728,11 +701,7 @@ export class Loom {
       this.focusReferenceTools();
       return;
     }
-    if (panel === "tapestries") {
-      this.beginPanel("chooser");
-      return;
-    }
-    this.beginPanel("invitations");
+    this.beginPanel("chooser");
   }
 
   /**
@@ -806,7 +775,7 @@ export class Loom {
     const invitation = state.phase === "closed" ? this.host.invitations?.()[0] ?? null : null;
     // A reference loaded without a draft is shown only because a caller asked
     // for it explicitly (showPanel); a loaded reference alone never opens here.
-    const referenceOnly = state.phase === "closed" && this.referenceExpanded;
+    const referenceOnly = this.browsingOnly(state);
 
     if (state.phase === "closed" && !referenceOnly && invitation === null) {
       this.hideElement();
@@ -818,6 +787,7 @@ export class Loom {
     this.root.setAttribute("data-collapsed", String(state.collapsed));
     this.root.setAttribute("data-view", this.view);
     this.root.setAttribute("data-reference", this.referenceExpanded ? "expanded" : "collapsed");
+    this.root.setAttribute("data-browsing", String(referenceOnly));
 
     if (referenceOnly) {
       this.renderReferenceOnly(state);
@@ -841,18 +811,17 @@ export class Loom {
     this.layout();
   }
 
-  /**
-   * The compact reading-only surface: header, reference navigation and an
-   * explicit way to begin writing. No draft exists, so no identity, editor or
-   * destination is implied — only an offer.
-   */
+  /** Browsing and composing share the header and fixed timing/action rails. */
   private renderReferenceOnly(state: CaptureView): void {
     this.card.removeAttribute("hidden");
     this.resume.setAttribute("hidden", "");
     this.paintDimension(state);
     this.setVisible(this.destButton, false);
     this.setVisible(this.refButton, false);
-    this.viewingEl.textContent = "Reference";
+    const target = this.host.reference?.model.selection ?? null;
+    const contextId = target === null ? null : contextDayForPath(target.path, this.host.contexts())?.contextId;
+    const name = this.host.contexts().find((context) => context.id === contextId)?.name ?? "Reading";
+    this.viewingEl.textContent = `🧵 ${name}`;
     this.setVisible(this.viewingEl, true);
     this.refButton.setAttribute("aria-expanded", String(this.referenceExpanded));
     this.setVisible(this.menu, this.menuOpen);
@@ -864,21 +833,22 @@ export class Loom {
     this.setVisible(this.footer, true);
     this.statusEl.textContent = "";
     this.setVisible(this.statusEl, false);
-    this.elapsedEl.textContent = "";
-    this.setVisible(this.elapsedEl, false);
+    this.paintElapsed();
     this.renderActions(state);
 
     if (this.view !== "write") {
       // Auxiliary panels return to the same reading, with the same New Thread offer.
       this.setVisible(this.referenceEl, false);
+      this.setVisible(this.referenceTools, false);
+      this.setVisible(this.refPosition, false);
       this.setVisible(this.chooserEl, true);
       this.searching = false;
       if (this.view === "chooser") this.renderChooser();
-      else this.renderInvitations();
       return;
     }
     this.setVisible(this.chooserEl, false);
     this.renderReference();
+    this.escapeHint.textContent = this.host.reference?.model.search.kind === "editing" ? "Esc · Cancel search" : "Esc · Hide";
   }
 
   private renderCard(state: CaptureView): void {
@@ -916,6 +886,8 @@ export class Loom {
     this.syncComposerPane(state);
     this.renderStatus(state);
     this.renderActions(state);
+    this.escapeHint.textContent = this.view === "chooser" ? "Esc · Back"
+      : this.host.reference?.model.search.kind === "editing" ? "Esc · Cancel search" : "Esc · Hide";
     this.paintElapsed();
     this.setVisible(this.footer, true);
 
@@ -923,9 +895,10 @@ export class Loom {
       this.setVisible(this.chooserEl, true);
       this.setVisible(this.proseEl, false);
       this.setVisible(this.referenceEl, false);
+      this.setVisible(this.referenceTools, false);
+      this.setVisible(this.refPosition, false);
       this.searching = false;
       if (this.view === "chooser") this.renderChooser();
-      else this.renderInvitations();
       return;
     }
 
@@ -936,7 +909,7 @@ export class Loom {
 
   private destinationLabel(state: CaptureView): string {
     const name = this.host.contexts().find((context) => context.id === state.contextId)?.name ?? state.contextId;
-    return state.parent === null ? name : `Branch · ${name}`;
+    return `🧵 ${name}`;
   }
 
   private renderContext(state: CaptureView): void {
@@ -1133,20 +1106,32 @@ export class Loom {
   /** Every Enter route shares one state decision; repeats and pending saves do nothing. */
   private activateEnter(event: KeyboardEvent): void {
     if (event.repeat) return;
-    const phase = this.host.controller.state.phase;
-    if (phase === "resting") {
+    const state = this.host.controller.state;
+    const fromReference = this.referenceExpanded &&
+      (within(this.referenceTools, event.target) || (this.refPane !== null && within(this.refPane.dom, event.target)));
+    if (this.browsingOnly(state) && state.phase === "editing") {
+      this.branchButton.click();
+    } else if (this.browsingOnly(state) || state.phase === "resting") {
       if (event.metaKey || event.ctrlKey) this.freshButton.click();
       else this.branchButton.click();
-    } else if (phase === "editing") {
+    } else if (state.phase === "editing" && fromReference) {
+      this.focusInput();
+    } else if (state.phase === "editing") {
       void this.save();
     }
   }
 
-  /** The reading pane owns its text; Escape only puts the reading away. */
+  /** Reading Enter continues the thought; arrows remain native to selected prose. */
   private onReferencePaneKey(event: KeyboardEvent): boolean {
-    if (event.key !== "Escape" || event.isComposing) return false;
+    if (event.isComposing) return false;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.hide();
+      return true;
+    }
+    if (event.key !== "Enter" || event.shiftKey || event.altKey) return false;
     event.preventDefault();
-    this.collapseReference();
+    this.activateEnter(event);
     return true;
   }
 
@@ -1176,8 +1161,7 @@ export class Loom {
   }
 
   private renderActions(state: CaptureView): void {
-    if (state.phase === "closed") {
-      // Reading without a draft offers exactly one beginning.
+    if (this.browsingOnly(state)) {
       for (const button of [
         this.useButton,
         this.keepTargetButton,
@@ -1187,11 +1171,17 @@ export class Loom {
         this.checkButton,
         this.saveButton,
         this.newlineButton,
-        this.branchButton
       ]) {
         this.setVisible(button, false);
       }
-      this.setVisible(this.freshButton, true);
+      const resume = state.phase === "editing";
+      const target = this.host.reference?.model.body;
+      const thought = target?.kind === "ready" ? target.snapshot.thought : null;
+      this.branchButton.textContent = resume ? "↵ · Resume draft" : "↵ · Branch";
+      this.branchButton.setAttribute("style", dimensionColorVars(resume ? (state.parent?.d ?? 0) + 1 : (thought?.d ?? 1) + 1));
+      this.branchButton.disabled = !resume && (thought === null || this.host.reference?.editable !== true);
+      this.setVisible(this.branchButton, true);
+      this.setVisible(this.freshButton, !resume);
       return;
     }
 
@@ -1200,6 +1190,7 @@ export class Loom {
     const blocked = pending || discard || state.phase === "retryable" || state.phase === "uncertain";
     const resting = state.phase === "resting";
     const saved = state.selected ?? state.root;
+    this.branchButton.textContent = "↵ · Branch";
     this.branchButton.setAttribute("style", dimensionColorVars((saved?.d ?? 1) + 1));
 
     this.setVisible(this.useButton, pending);
@@ -1209,9 +1200,7 @@ export class Loom {
     this.setVisible(this.retryButton, !pending && !discard && state.phase === "retryable");
     this.setVisible(this.checkButton, !pending && !discard && state.phase === "uncertain");
     this.setVisible(this.saveButton, !blocked && !resting);
-    // Soft Return is Save on mobile, so the rail carries the newline gesture the
-    // hardware keyboard keeps on Shift+Return.
-    this.setVisible(this.newlineButton, state.phase === "editing" && !blocked && isMobile());
+    this.setVisible(this.newlineButton, state.phase === "editing" && !blocked);
     this.newlineButton.disabled = this.composing;
     this.setVisible(this.branchButton, resting);
     this.setVisible(this.freshButton, resting);
@@ -1222,17 +1211,40 @@ export class Loom {
     this.branchButton.disabled = saved === null;
   }
 
+  /** An explicit browsing request never consumes or replaces a retained draft. */
+  private browsingOnly(state: CaptureView): boolean {
+    return this.referenceExpanded && (state.phase === "closed" || state.phase === "resting" || state.collapsed);
+  }
+
   /** One stable timing slot: the draft's clock, then the saved note's recorded clock. */
   private paintElapsed(tick = false): void {
     if (this.destroyed) return;
     const state = this.host.controller.state;
-    const beginning = state.phase === "editing" ? state.beginning : null;
-    if (!tick && beginning !== null && this.timedBeginning === beginning) return;
-    this.timedBeginning = beginning;
+    if (this.browsingOnly(state)) {
+      this.savedTiming = null;
+      const body = this.host.reference?.model.body;
+      const snapshot = body?.kind === "ready" ? body.snapshot : null;
+      this.timing.update({
+        time: snapshot?.time ?? null,
+        durationMs: snapshot?.durationMs ?? null,
+        mode: body?.kind === "loading" ? "pending" : "recorded"
+      });
+      return;
+    }
+    const beginning = state.beginning;
     const saved = state.phase === "resting" ? state.selected ?? state.root : null;
-    let duration: number | null = state.durationMs;
-    let time = state.beginning?.time ?? null;
-    let title = "Writing duration · start time";
+    let duration: number | null = state.phase === "editing" && state.clockRunning && !tick &&
+      beginning !== null && this.timedBeginning === beginning ? this.paintedDuration : state.durationMs;
+    this.timedBeginning = beginning;
+    let time = beginning?.time ?? null;
+    let mode: LoomTimingMode = state.phase === "editing"
+      ? beginning === null ? "preview" : state.clockRunning ? "running" : "paused"
+      : "recorded";
+    if (mode === "preview") {
+      time = formatClock(new Date(this.host.clock.snapshot().now));
+      duration = 0;
+    }
+    this.timing.dom.removeAttribute("title");
     if (saved !== null) {
       if (this.savedTiming?.thought !== saved) {
         const lookup: { thought: ThoughtRef; result: ThoughtSnapshotResult | null } = { thought: saved, result: null };
@@ -1257,22 +1269,17 @@ export class Loom {
       const result = this.savedTiming.result;
       duration = result?.kind === "ready" ? result.snapshot.durationMs : null;
       time = result?.kind === "ready" ? result.snapshot.time : result === null ? saved.time : null;
-      title = result === null ? "Reading recorded duration…"
-        : result.kind === "unavailable" ? result.reason
-        : "Recorded duration · creation time";
+      mode = result === null ? "pending" : "recorded";
+      if (result?.kind === "unavailable") this.timing.dom.setAttribute("title", result.reason);
     } else {
       this.savedTiming = null;
     }
-    const show = saved !== null || time !== null;
-    const text = show ? `${duration === null ? "—" : formatElapsed(duration)} · ${time?.slice(0, 5) ?? "—"}` : "";
-    const changed = this.elapsedEl.textContent !== text;
-    if (changed) this.elapsedEl.textContent = text;
-    this.elapsedEl.setAttribute("title", title);
-    this.elapsedEl.setAttribute("aria-label", title);
-    this.setVisible(this.elapsedEl, show);
-    // Commit changed clock ticks after painting. Incidental renders must not
-    // overwrite a second already committed by a clock or a pending stop.
-    if (tick && changed && show && state.phase === "editing") this.host.controller.commitDuration(state.durationMs);
+    const changed = this.timing.update({ time, durationMs: duration, mode });
+    this.paintedDuration = duration ?? 0;
+    // The visible second is committed only on a tick, never by an incidental render.
+    if (tick && changed && state.phase === "editing" && state.clockRunning && beginning !== null) {
+      this.host.controller.commitDuration(this.paintedDuration);
+    }
   }
 
   private renderChooser(): void {
@@ -1330,60 +1337,12 @@ export class Loom {
     }
   }
 
-  private renderInvitations(): void {
-    const doc = this.doc();
-    this.chooserEl.textContent = "";
-    const title = doc.createElement("div");
-    title.className = "weaver-composer-chooser-title";
-    title.textContent = "Invitations";
-    const back = doc.createElement("button");
-    back.type = "button";
-    back.className = "weaver-composer-quiet-close";
-    back.textContent = "Back";
-    back.addEventListener("click", () => this.returnToWrite());
-    title.appendChild(back);
-    this.chooserEl.appendChild(title);
-
-    const offers = this.host.invitations?.() ?? [];
-    if (offers.length === 0) {
-      const empty = doc.createElement("div");
-      empty.className = "weaver-composer-chooser-row weaver-composer-chooser-empty";
-      empty.textContent = "No invitations right now.";
-      this.chooserEl.appendChild(empty);
-      return;
-    }
-    for (const offer of offers) {
-      const row = doc.createElement("div");
-      row.className = "weaver-composer-chooser-row";
-      const name = doc.createElement("span");
-      name.textContent = `${offer.name} · ${offer.opening}`;
-      row.appendChild(name);
-      const open = doc.createElement("button");
-      open.type = "button";
-      open.className = "weaver-composer-chooser-write";
-      open.textContent = "Open";
-      open.addEventListener("click", () => {
-        this.host.takeInvitation?.(offer.id);
-        this.returnToWrite(false);
-      });
-      row.appendChild(open);
-      const hide = doc.createElement("button");
-      hide.type = "button";
-      hide.className = "weaver-composer-chooser-travel";
-      hide.textContent = "Hide";
-      hide.addEventListener("click", () => {
-        this.host.dismissInvitation?.(offer.id);
-        this.render();
-      });
-      row.appendChild(hide);
-      this.chooserEl.appendChild(row);
-    }
-  }
-
   private renderReference(): void {
     const controller = this.host.reference;
     const active = this.referenceExpanded;
     this.setVisible(this.referenceEl, active);
+    this.setVisible(this.referenceTools, active && this.view === "write");
+    this.setVisible(this.refPosition, active);
     if (!active) {
       this.searching = false;
       return;
@@ -1412,7 +1371,6 @@ export class Loom {
     const empty = model !== null && model.readiness.kind === "ready" && model.readiness.sequence.members.length === 0;
     this.refPrev.disabled = controller === undefined || !ready || empty;
     this.refNext.disabled = controller === undefined || !ready || empty;
-    this.refOpen.disabled = controller === undefined || selection === null;
     this.refSearchButton.disabled = controller === undefined || !ready;
 
     this.refPosition.textContent = this.positionOf(model);
@@ -1464,7 +1422,13 @@ export class Loom {
       this.referenceKey = "";
     }
 
-    this.setVisible(this.referenceHint, controller !== undefined && selection !== null);
+    const snapshot = body?.kind === "ready" ? body.snapshot : null;
+    this.referenceTiming.update({
+      time: snapshot?.time ?? null,
+      durationMs: snapshot?.durationMs ?? null,
+      mode: body?.kind === "loading" ? "pending" : "recorded"
+    });
+    this.setVisible(this.referenceTiming.dom, !this.browsingOnly(this.host.controller.state));
   }
 
   private syncReferencePane(text: string, path: string): void {
@@ -1534,7 +1498,7 @@ export class Loom {
   /** Copy always names the visible draft, saved prose, or reference-only reading. */
   private copyableProse(): string {
     const state = this.host.controller.state;
-    if (state.phase === "closed") {
+    if (this.browsingOnly(state)) {
       const body = this.referenceExpanded && this.view === "write" ? this.host.reference?.model.body : null;
       return body?.kind === "ready" ? body.snapshot.text : "";
     }
@@ -1566,7 +1530,13 @@ export class Loom {
       },
       this.copyableProse().trim() === ""
     );
-    if (state.phase === "editing") {
+    if (this.referenceExpanded) {
+      const selected = this.host.reference?.model.selection ?? null;
+      item("Open in note", () => {
+        if (selected !== null) void this.host.controller.editInNote(selected);
+      }, selected === null || this.host.reference?.editable !== true);
+    }
+    if (state.phase === "editing" && !this.browsingOnly(state)) {
       item("Discard draft…", () => {
         this.armDiscard();
       });
@@ -1670,12 +1640,13 @@ export class Loom {
     this.shortcuts.appendChild(title);
 
     const rows: [string, string][] = [
-      ["↵", "Save a draft; branch after saving"],
-      ["⇧↵", "Start a new line"],
-      ["⌘↵", "Save a draft; new Thread after saving"],
-      ["↑ ↓", "Previous or next thought (reading toolbar)"],
-      ["/", "Search the reading"],
-      ["↵", "Open the selected thought (reading toolbar)"],
+      ["↵", "Save a draft; branch while reading; accept a search result"],
+      ["⇧↵", "Start a new line while writing"],
+      ["⌘↵", "Save a draft; new Thread while reading"],
+      ["↑ / ↓", "Previous / next thought, with navigation focused"],
+      ["/", "Search, with navigation focused"],
+      ["⌘⌥← / ⌘⌥→", "Previous / next Tapestry"],
+      ["⌘⌥↑ / ⌘⌥↓", "Show reading / return to writing"],
       ["Esc", "Close the menu, panel or surface"]
     ];
     const list = doc.createElement("div");
@@ -1761,18 +1732,36 @@ export class Loom {
     });
     this.branchButton.addEventListener("click", () => {
       const state = this.host.controller.state;
-      const saved = state.selected ?? state.root;
+      if (this.browsingOnly(state) && state.phase === "editing") {
+        this.referenceExpanded = false;
+        this.host.controller.expand();
+        this.render();
+        this.focusInput();
+        return;
+      }
+      const body = this.host.reference?.model.body;
+      const saved = this.browsingOnly(state)
+        ? body?.kind === "ready" ? body.snapshot.thought : null
+        : state.selected ?? state.root;
       if (saved === null) return;
       this.view = "write";
       void this.host.controller.branch(saved).then((opened) => {
         if (!opened) return;
+        this.referenceExpanded = false;
         this.render();
         this.focusInput();
       });
     });
     this.freshButton.addEventListener("click", () => {
+      const state = this.host.controller.state;
+      if (state.phase !== "closed" && state.phase !== "resting") return;
+      const target = this.browsingOnly(state) ? this.host.reference?.model.selection ?? null : state.selected ?? state.root;
+      const contextId = target === null ? this.host.viewing() || state.contextId
+        : contextDayForPath(target.path, this.host.contexts())?.contextId ?? state.contextId;
       this.view = "write";
-      void this.host.controller.newThread().then(() => {
+      void this.host.controller.newThread(contextId).then((opened) => {
+        if (!opened) return;
+        this.referenceExpanded = false;
         this.render();
         this.focusInput();
       });
@@ -1785,10 +1774,6 @@ export class Loom {
     });
     this.refNext.addEventListener("click", () => {
       void this.host.reference?.move("next");
-    });
-    this.refOpen.addEventListener("click", () => {
-      const selected = this.host.reference?.model.selection ?? null;
-      if (selected !== null) void this.host.controller.editInNote(selected);
     });
     this.refSearchButton.addEventListener("click", () => {
       const controller = this.host.reference;
@@ -1805,8 +1790,6 @@ export class Loom {
       this.searching = false;
       this.render();
     });
-    this.referenceReadTab.addEventListener("click", () => this.focusReferenceTools());
-    this.referenceInviteTab.addEventListener("click", () => this.beginPanel("invitations"));
   }
 
   private wireHeader(): void {
@@ -1833,6 +1816,7 @@ export class Loom {
     // An empty draft is refused by the controller with a notice, so the chord
     // still answers instead of doing nothing.
     await this.host.controller.settle();
+    if (this.host.controller.state.phase === "resting") this.referenceExpanded = false;
     this.pane?.blur();
     this.view = "write";
     this.render();
@@ -1849,11 +1833,11 @@ export class Loom {
     this.shortcutsOpen = false;
     this.discardArmed = false;
     this.view = "write";
+    this.referenceExpanded = false;
     const state = this.host.controller.state;
     if (state.phase === "closed") {
       // Reading-only has no draft to dismiss: putting the reading away is the
       // whole of hiding, and the next render must not bring it back.
-      this.referenceExpanded = false;
       this.pane?.blur();
       this.render();
     } else {
@@ -1924,11 +1908,6 @@ export class Loom {
         this.returnToWrite();
         return;
       }
-      if (this.referenceExpanded) {
-        event.preventDefault();
-        this.collapseReference();
-        return;
-      }
       if (!isField(event.target)) {
         event.preventDefault();
         this.handleEscape();
@@ -1959,17 +1938,15 @@ export class Loom {
           this.render();
           return;
         }
-        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if ((event.key === "ArrowUp" || event.key === "ArrowDown") &&
+          !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
           event.preventDefault();
           void controller.move(event.key === "ArrowUp" ? "previous" : "next");
           return;
         }
         if (event.key === "Enter" && !isControl(target)) {
-          const selected = controller.model.selection;
-          if (selected !== null) {
-            event.preventDefault();
-            void this.host.controller.editInNote(selected);
-          }
+          event.preventDefault();
+          this.activateEnter(event);
           return;
         }
       }
@@ -2031,7 +2008,7 @@ export class Loom {
    * wear the colour the entry has in the note.
    */
   private dimensionOf(state: CaptureView): number {
-    if (state.phase === "closed" && this.referenceExpanded) {
+    if (this.browsingOnly(state)) {
       return this.host.reference?.model.selection?.d ?? 1;
     }
     if (state.parent !== null) return Math.max(1, state.parent.d + 1);
@@ -2055,7 +2032,7 @@ export class Loom {
     // would leave a phone stack on a wide screen (or two cramped columns).
     const split = this.referenceExpanded &&
       this.host.reference !== undefined &&
-      this.host.controller.state.phase !== "closed" &&
+      !this.browsingOnly(this.host.controller.state) &&
       this.view === "write" &&
       box.width >= 720;
     const layout = split ? "split" : "stacked";
