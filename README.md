@@ -472,11 +472,13 @@ These need a live Obsidian and are not covered by `npm test`:
   remains visible, and timing does not shift. Click away and retrieve the saved
   reading: no new Thread or write occurs. Escape hides it and restores outside focus.
 - Composer structure: a short empty draft is compact. Identity, prose and action
-  rail keep their positions through saving and reading. The same clock and
-  stopwatch show beginning and writing duration in full seconds. Before input,
-  the clock is a live preview and the stopwatch is zero; after input the beginning
-  freezes, a pause is explicit, and saving preserves the displayed duration.
-  Address digits are normal text, punctuation dimension-coloured.
+  rail keep their positions through saving and reading. The clock and the
+  stopwatch show the current time and writing duration in full seconds. The clock
+  keeps counting while you write, including through a pause, so it never stops the
+  moment the stopwatch starts; the first input still freezes the beginning the
+  note records, and the rail shows that beginning once the thought is saved. A
+  pause is explicit and holds the displayed duration. Address digits are normal
+  text, punctuation dimension-coloured.
   Copy text on a saved thought copies its Markdown, not an empty draft.
 - Composer, phone: open the keyboard, select text, rotate, then dismiss it. The
   same draft and selection remain; Thread stays above the keyboard and any visible
@@ -576,17 +578,18 @@ the card open.
   second indent; a nested entry's frame starts one indent step further right; the
   address hangs half a line over the top rail and the clock half a line over the
   bottom one, both centred on their rails, with the same `16 px + 0.45em` side
-  clearance as Live Preview. No leftover address break adds a blank prose row.
-- Frames, phone: the box reaches the pane's edge, and the duration and the moment
-  read on one line at the bottom two corners; the entry-day link sits at the
-  top-right without covering the address.
-- Frames, entry dates: open an older day note. Same-day and historical undated
-  entries carry no date link; create a child there now and its different creation
-  day is visible immediately, without hover or caret focus. Links use the note's
-  dotted or dashed filename style and work with mouse and keyboard. Check an
-  inline-prose entry too: its date stays above the text without covering it.
-  Reading view agrees, Source mode carries no generated link, and reopening
-  later changes neither recorded date nor visibility.
+  clearance as Live Preview. A recorded-day label sits at the top-right without
+  covering the address: a link when Weaver can resolve the date, static text in
+  an ordinary note. No leftover address break adds a blank prose row.
+- Frames, entry dates: in a dated note, entries whose recorded day matches the
+  note's day carry no label; a child created on another day is visible immediately,
+  without hover or caret focus. In an ordinary note, today's entries carry no
+  label and every other recorded day remains visible as static text unless a
+  destination can be resolved. Links use the note's dotted or dashed filename
+  style and work with mouse and keyboard. Check an inline-prose entry too: its
+  date stays above the text without covering it. Reading view agrees, Source mode
+  carries no generated label, and Weaver refreshes open Live Preview and Reading
+  views at the next local-day boundary without changing the note.
 - Whisper, warm: with *Whisper settled entries* on and oMLX answering, write about
   forty dictated words, pause two seconds, press `⏎`. The `~` rows appear above the
   prose in the same undo as `+` — one `⌘Z` removes both — neutral where the prose is

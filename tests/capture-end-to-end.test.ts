@@ -149,7 +149,7 @@ describe("composer clock handoff", () => {
     await vi.advanceTimersByTimeAsync(7400);
     const painted = timingValue("duration");
     expect(painted).toBe("00:00:07");
-    expect(timingValue("beginning")).toBe("23:59:59");
+    expect(timingValue("beginning")).toBe("00:00:06");
 
     // No clock callback painted the time spent stalled before Enter.
     vi.setSystemTime(new Date(AT_2359.getTime() + 19_900));

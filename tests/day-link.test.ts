@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayLinkElement } from "../src/ui/day-link";
+import { entryDayElement } from "../src/ui/day-link";
 
 type Dispatchable = {
   className: string;
@@ -15,7 +15,7 @@ function element(
   sourcePath = "Chronomancer/2026.11.02.md",
   calls: [string, string][] = []
 ): Dispatchable {
-  return dayLinkElement(target, sourcePath, (opened, from) => {
+  return entryDayElement({ day: target.replace(/\./g, "-"), target }, sourcePath, (opened, from) => {
     calls.push([opened, from]);
   }) as unknown as Dispatchable;
 }
@@ -28,6 +28,19 @@ describe("the day link", () => {
     expect(link.textContent).toBe("[[2026.11.02]]");
     expect(link.getAttribute("role")).toBe("link");
     expect(link.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("renders an unlinked recorded day as a non-interactive corner label", () => {
+    const label = entryDayElement(
+      { day: "2026-11-02", target: null },
+      "Projects/Idea.md",
+      () => {}
+    ) as unknown as Dispatchable;
+
+    expect(label.className).toBe("weaver-entry-daylabel weaver-frame-label");
+    expect(label.textContent).toBe("2026-11-02");
+    expect(label.getAttribute("role")).toBeNull();
+    expect(label.getAttribute("tabindex")).toBeNull();
   });
 
   it("opens the target from its source note on click", () => {

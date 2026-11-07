@@ -12,16 +12,18 @@
  * The address's own characters are kept, split into digit runs so the digits stay
  * white and the punctuation takes the dimension's colour. Anything typed after
  * the address stays in the DOM untouched, links and emphasis included. A persistent
- * top-right link labels a recorded creation day only when it differs from the
- * day-note filename. Awaiting and historical undated entries carry no date link.
- * The label never reads the wall clock, and the clock row's two halves stay
- * time-only: digit and punctuation runs, exactly as in the editor.
+ * top-right label shows a useful recorded day: another date in a dated note, or
+ * any non-current date in an ordinary note. A resolvable date is a link; an
+ * ordinary note keeps static text. Awaiting and historical undated entries carry
+ * no date label. The clock row's two halves stay time-only: digit and punctuation
+ * runs, exactly as in the editor.
  */
 
 import { MarkdownRenderChild, type MarkdownPostProcessor } from "obsidian";
 
 import { dimensionColorVars } from "../core/color";
-import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
+import { dayKey } from "../core/day";
+import { entryDayLabel, type WeavingContext } from "../core/contexts";
 import { formatClock, parseClockRow, type ClockRow } from "../core/duration";
 import { parseEntries, parseAddressPrefix } from "../core/entries";
 import { parseWhisperLine } from "../core/whisper";
@@ -29,7 +31,7 @@ import { formatClock as wallClock } from "../core/clock";
 import type { EntryClock } from "../entries/clock";
 import { writeClockText } from "../editor/duration-ticker";
 import { appendClockRuns, appendDigitRuns } from "../ui/dcn";
-import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
+import { entryDayElement, type OpenDayLink } from "../ui/day-link";
 
 /** Containers whose paragraphs must never be rewritten. */
 const SKIP_SELECTOR = "blockquote, .callout, .markdown-embed, li, table, pre, code";
@@ -132,7 +134,8 @@ class AwaitingClock extends MarkdownRenderChild {
 export function createEntryProcessor(
   contexts: () => readonly WeavingContext[],
   openDayLink?: OpenDayLink,
-  clock?: EntryClock
+  clock?: EntryClock,
+  currentDay: () => string = () => dayKey(new Date())
 ): MarkdownPostProcessor {
   return (element: HTMLElement, context): void => {
     const sourcePath = context.sourcePath ?? "";
@@ -333,13 +336,11 @@ export function createEntryProcessor(
         }
       }
 
-      // The entry-day label is a child of the frame, not of the shrink-wrapped
-      // head, so the head stays exactly the address's own characters. It is
-      // inserted only for a different recorded day, and kept directly after the
-      // head so the clock row remains the frame's last child.
-      const dayLinkTarget = entryDayLinkTarget(entryDay, sourcePath, contexts());
-      if (dayLinkTarget !== null) {
-        frame.insertBefore(dayLinkElement(dayLinkTarget, sourcePath, open), head.nextSibling);
+      // The recorded date is visible when it is useful context. A resolvable
+      // target stays interactive; an ordinary note still keeps a static label.
+      const dayLabel = entryDayLabel(entryDay, sourcePath, contexts(), currentDay());
+      if (dayLabel !== null) {
+        frame.insertBefore(entryDayElement(dayLabel, sourcePath, open), head.nextSibling);
       }
     }
   };

@@ -1,6 +1,12 @@
 /**
- * The loom's timing group: one beginning clock and one writing duration, in the
- * shared digit grammar — icon, white digits, dimension-coloured colons.
+ * The loom's timing group: a clock half and a writing duration, in the shared
+ * digit grammar — icon, white digits, dimension-coloured colons.
+ *
+ * The clock half is a face, not a string: `now` carries the shared sample's
+ * instant, so every tick reads the present and the digits keep counting beside
+ * the stopwatch; `moment` carries a recorded `HH:MM:SS`, so a saved thought
+ * holds the beginning exactly as the note wrote it. A caller that froze a
+ * formatted string instead would stop the clock the moment the stopwatch began.
  *
  * An unknown value draws a single `—` over digit runs that stay in the DOM, so a
  * known value returns without rebuilding nodes. `update` paints one explicit
@@ -9,6 +15,7 @@
 
 import { setIcon } from "obsidian";
 
+import { formatClock as formatTimeOfDay } from "../core/clock";
 import { formatClock } from "../core/duration";
 import { writeClockText } from "../editor/duration-ticker";
 import { appendClockRuns } from "./dcn";
@@ -18,27 +25,48 @@ export type LoomTimingMode = "preview" | "running" | "paused" | "recorded" | "pe
 
 /** One explicit reading; the caller samples every field and supplies no clock. */
 export interface LoomTimingReading {
-  /** Canonical `HH:MM:SS` beginning, or null when it is not known. */
-  time: string | null;
+  /** Where the clock half reads from, and therefore whether a tick may move it. */
+  clock: ClockFace;
   /** Milliseconds elapsed, or null when the duration is not known. */
   durationMs: number | null;
   /** Which surface is speaking: preview, live, paused, recorded, or loading. */
   mode: LoomTimingMode;
 }
 
+/**
+ * Where the clock half reads from.
+ *
+ * `now` holds the shared clock's instant — a sample, never a formatted copy, so
+ * the digits are the present at the moment of the reading. `moment` holds a time
+ * that is already recorded, and a `null` there means the reading is unknown.
+ */
+export type ClockFace =
+  | { readonly kind: "now"; readonly at: number }
+  | { readonly kind: "moment"; readonly time: string | null };
+
 /** The single character an unknown value draws, standing in for all six digits. */
 const UNKNOWN_CLOCK = "—";
 
-/** Labels and status word per mode; the one place wording lives. */
-const LABELS: Record<
-  LoomTimingMode,
-  { begin: string; beginTitle: string; duration: string; durationTitle: string; state: string }
-> = {
-  preview: { begin: "Current time preview", beginTitle: "Current time preview — no input recorded yet", duration: "Writing duration", durationTitle: "Writing duration — nothing written yet", state: "" },
-  running: { begin: "Beginning time", beginTitle: "The moment writing began", duration: "Writing duration", durationTitle: "Writing duration so far", state: "" },
-  paused: { begin: "Beginning time", beginTitle: "The moment writing began", duration: "Writing duration", durationTitle: "Writing duration, paused", state: "Paused" },
-  recorded: { begin: "Beginning time", beginTitle: "Beginning time recorded in the note", duration: "Recorded writing duration", durationTitle: "Writing duration recorded in the note", state: "" },
-  pending: { begin: "Beginning time", beginTitle: "Reading the recorded beginning time…", duration: "Writing duration", durationTitle: "Reading the recorded writing duration…", state: "" }
+/** The clock half's words: the shared present, or a moment already recorded. */
+const CLOCK_LABELS: Record<ClockFace["kind"], { begin: string; beginTitle: string }> = {
+  now: { begin: "Current time", beginTitle: "The current time" },
+  moment: { begin: "Beginning time", beginTitle: "The moment writing began" }
+};
+
+/** Modes that read a record rather than the present, with their own clock words. */
+const RECORD_LABELS: Partial<Record<LoomTimingMode, { begin: string; beginTitle: string }>> = {
+  preview: { begin: "Current time preview", beginTitle: "Current time preview — no input recorded yet" },
+  recorded: { begin: "Beginning time", beginTitle: "Beginning time recorded in the note" },
+  pending: { begin: "Beginning time", beginTitle: "Reading the recorded beginning time…" }
+};
+
+/** The duration's words and the status word per mode. */
+const LABELS: Record<LoomTimingMode, { duration: string; durationTitle: string; state: string }> = {
+  preview: { duration: "Writing duration", durationTitle: "Writing duration — nothing written yet", state: "" },
+  running: { duration: "Writing duration", durationTitle: "Writing duration so far", state: "" },
+  paused: { duration: "Writing duration", durationTitle: "Writing duration, paused", state: "Paused" },
+  recorded: { duration: "Recorded writing duration", durationTitle: "Writing duration recorded in the note", state: "" },
+  pending: { duration: "Writing duration", durationTitle: "Reading the recorded writing duration…", state: "" }
 };
 
 /** One labelled clock: its digit runs, and the dash that stands in for them. */
@@ -57,7 +85,7 @@ function toggle(el: HTMLElement, visible: boolean): void {
 }
 
 /**
- * One timing group inside `parent`: beginning first, writing duration second.
+ * One timing group inside `parent`: the clock first, the writing duration second.
  * Built once by the constructor; mounted wherever the timing belongs.
  */
 export class LoomTiming {
@@ -86,30 +114,34 @@ export class LoomTiming {
     this.dom.appendChild(this.state);
 
     parent.appendChild(this.dom);
-    this.update({ time: null, durationMs: 0, mode: "preview" });
+    this.update({ clock: { kind: "moment", time: null }, durationMs: 0, mode: "preview" });
   }
 
   /** Paints one reading; true only when the drawn duration changed. */
   update(reading: LoomTimingReading): boolean {
     const labels = LABELS[reading.mode];
+    const begin = RECORD_LABELS[reading.mode] ?? CLOCK_LABELS[reading.clock.kind];
+    const time = reading.clock.kind === "now"
+      ? formatTimeOfDay(new Date(reading.clock.at))
+      : reading.clock.time;
     const duration = reading.durationMs === null ? null : formatClock(reading.durationMs);
 
-    this.writeClock(this.beginValue, reading.time);
+    this.writeClock(this.beginValue, time);
     this.writeClock(this.durationValue, duration);
 
     const durationText = duration ?? UNKNOWN_CLOCK;
     const changed = durationText !== this.lastDuration;
     this.lastDuration = durationText;
-    const timeText = reading.time ?? UNKNOWN_CLOCK;
-    this.beginValue.el.setAttribute("aria-label", labels.begin);
-    this.beginValue.el.setAttribute("title", labels.beginTitle);
+    const timeText = time ?? UNKNOWN_CLOCK;
+    this.beginValue.el.setAttribute("aria-label", begin.begin);
+    this.beginValue.el.setAttribute("title", begin.beginTitle);
     this.durationValue.el.setAttribute("aria-label", labels.duration);
     this.durationValue.el.setAttribute("title", labels.durationTitle);
 
     this.state.textContent = labels.state;
     this.dom.setAttribute("data-mode", reading.mode);
     const paused = labels.state === "Paused" ? ", paused" : "";
-    this.dom.setAttribute("aria-label", `${labels.begin} ${timeText}, ${labels.duration} ${durationText}${paused}`);
+    this.dom.setAttribute("aria-label", `${begin.begin} ${timeText}, ${labels.duration} ${durationText}${paused}`);
     return changed;
   }
 

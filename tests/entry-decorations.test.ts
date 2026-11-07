@@ -3,6 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { editorLivePreviewField } from "obsidian";
 import type { Decoration } from "@codemirror/view";
 
+import { dayKey } from "../src/core/day";
 import { entryDecorationSet } from "../src/editor/entry-decorations";
 import { entryIndexField } from "../src/editor/entry-field";
 import { DurationWidget } from "../src/editor/stopwatch-widget";
@@ -41,7 +42,7 @@ function collect(
   // One shared clock, sampled at a fixed instant: the decoration reads the last
   // painted snapshot, so a test never advances a real stopwatch to see digits.
   const clock = new EntryClock(session, () => at);
-  const set = entryDecorationSet(state, session, path, clock, [], openDayLink);
+  const set = entryDecorationSet(state, session, path, clock, [], openDayLink, dayKey(new Date(at)));
   const found: Found[] = [];
 
   for (let iterator = set.iter(); iterator.value !== null; iterator.next()) {
@@ -406,25 +407,30 @@ describe("the entry decorations", () => {
     }
   });
 
-  it("shows no day link on a non-day note or in source mode", () => {
-    expect(
-      dayLinkWidget(collect(stateAt(), new EntrySession(), "Chronomancer/notes.md"))
-    ).toBeUndefined();
-
-    const source = stateAt(DOC.indexOf("prose"), DOC, false);
-    expect(dayLinkWidget(collect(source))).toBeUndefined();
-  });
-
-  it("keeps the non-day-note gate even when a row records its day", () => {
+  it("shows a past recorded day as a static label in an ordinary note", () => {
     const doc = ["{ 1.2.1 }", "prose here", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
-    const found = collect(
+    const label = dayLinkWidget(collect(
       stateAt(doc.indexOf("prose"), doc),
       new EntrySession(),
       "Chronomancer/notes.md"
-    );
+    ));
 
-    // A note that is not a day has no day note to open, recorded row or not.
-    expect(dayLinkWidget(found)).toBeUndefined();
+    const dom = label?.spec.widget?.toDOM?.();
+    expect(dom?.className).toBe("weaver-entry-daylabel weaver-frame-label");
+    expect(dom?.textContent).toBe("2026-11-05");
+  });
+
+  it("omits an ordinary note's entry date when it is today", () => {
+    const doc = ["{ 1.2.1 }", "prose here", "+ 00:01:00 2026-11-05 10:00:00"].join("\n");
+    const today = new Date(2026, 10, 5, 12, 0, 0).getTime();
+
+    expect(dayLinkWidget(collect(
+      stateAt(doc.indexOf("prose"), doc),
+      new EntrySession(),
+      "Chronomancer/notes.md",
+      undefined,
+      today
+    ))).toBeUndefined();
   });
 
   it("keeps a different-day link on a legacy inline-prose entry", () => {

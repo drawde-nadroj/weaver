@@ -23,7 +23,6 @@ import type { CaptureInstant, ThoughtRef } from "../core/capture";
 import { dimensionColor, dimensionColorVars } from "../core/color";
 import { contextDayForPath, contextDayPath, type WeavingContext } from "../core/contexts";
 import { dayKey } from "../core/day";
-import { formatClock } from "../core/clock";
 import { formatAddress } from "../core/entries";
 import { loomAnchor, loomKeyboardViewport, revealScrollDelta, type LoomAnchor, type LoomViewport } from "../core/frame";
 import type { ThoughtSnapshotResult } from "../core/reference";
@@ -32,7 +31,7 @@ import type { EntryClock } from "../entries/clock";
 import type { ReferenceController, ReferenceModel } from "../entries/reference";
 import { appendDigitRuns } from "./dcn";
 import { MarkdownPane, type PaneSelection } from "./markdown-pane";
-import { LoomTiming, type LoomTimingMode } from "./loom-timing";
+import { LoomTiming, type ClockFace, type LoomTimingMode } from "./loom-timing";
 
 /** The lower surface the Loom reads and commands; either controller satisfies it. */
 export interface CaptureSurface {
@@ -1257,25 +1256,27 @@ export class Loom {
       const body = this.host.reference?.model.body;
       const snapshot = body?.kind === "ready" ? body.snapshot : null;
       this.timing.update({
-        time: snapshot?.time ?? null,
+        clock: { kind: "moment", time: snapshot?.time ?? null },
         durationMs: snapshot?.durationMs ?? null,
         mode: body?.kind === "loading" ? "pending" : "recorded"
       });
       return;
     }
+    const editing = state.phase === "editing";
     const beginning = state.beginning;
     const saved = state.phase === "resting" ? state.selected ?? state.root : null;
-    let duration: number | null = state.phase === "editing" && state.clockRunning && !tick &&
+    let duration: number | null = editing && state.clockRunning && !tick &&
       beginning !== null && this.timedBeginning === beginning ? this.paintedDuration : state.durationMs;
     this.timedBeginning = beginning;
-    let time = beginning?.time ?? null;
-    let mode: LoomTimingMode = state.phase === "editing"
+    // The draft's clock reads the shared sample while it is being written, so it
+    // keeps counting beside the stopwatch. The beginning the first input froze is
+    // the note's fact, and it is what the rail reads back once the thought is saved.
+    let clock: ClockFace = editing
+      ? { kind: "now", at: this.host.clock.snapshot().now }
+      : { kind: "moment", time: beginning?.time ?? null };
+    let mode: LoomTimingMode = editing
       ? beginning === null ? "preview" : state.clockRunning ? "running" : "paused"
       : "recorded";
-    if (mode === "preview") {
-      time = formatClock(new Date(this.host.clock.snapshot().now));
-      duration = 0;
-    }
     this.timing.dom.removeAttribute("title");
     if (saved !== null) {
       if (this.savedTiming?.thought !== saved) {
@@ -1300,13 +1301,16 @@ export class Loom {
       }
       const result = this.savedTiming.result;
       duration = result?.kind === "ready" ? result.snapshot.durationMs : null;
-      time = result?.kind === "ready" ? result.snapshot.time : result === null ? saved.time : null;
+      clock = {
+        kind: "moment",
+        time: result?.kind === "ready" ? result.snapshot.time : result === null ? saved.time : null
+      };
       mode = result === null ? "pending" : "recorded";
       if (result?.kind === "unavailable") this.timing.dom.setAttribute("title", result.reason);
     } else {
       this.savedTiming = null;
     }
-    const changed = this.timing.update({ time, durationMs: duration, mode });
+    const changed = this.timing.update({ clock, durationMs: duration, mode });
     this.paintedDuration = duration ?? 0;
     // The visible second is committed only on a tick, never by an incidental render.
     if (tick && changed && state.phase === "editing" && state.clockRunning && beginning !== null) {
@@ -1456,7 +1460,7 @@ export class Loom {
 
     const snapshot = body?.kind === "ready" ? body.snapshot : null;
     this.referenceTiming.update({
-      time: snapshot?.time ?? null,
+      clock: { kind: "moment", time: snapshot?.time ?? null },
       durationMs: snapshot?.durationMs ?? null,
       mode: body?.kind === "loading" ? "pending" : "recorded"
     });

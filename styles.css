@@ -444,15 +444,18 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
   box-shadow: 0 0 0 8px var(--background-primary);
 }
 
-/* The entry-day link is the top-right corner's label on a day note.
- * It is out of the text flow — the address row's own line never moves for it — and
- * its `weaver-frame-label` background cuts the top rail like the other corners.
- * The live preview positions it inside the address line, so that line is the
- * containing block; the reading view positions it inside the static frame. */
-.weaver-entry-daylink {
+/* The entry-day label is the top-right corner's context marker. It is out of the
+ * text flow — the address row's own line never moves for it — and its
+ * `weaver-frame-label` background cuts the top rail like the other corners. A
+ * resolvable day is interactive; an ordinary note's older day is static. */
+.weaver-entry-daylink,
+.weaver-entry-daylabel {
   color: color-mix(in oklab, var(--weaver-dcolor, var(--text-normal)) 75%, transparent);
-  cursor: pointer;
   white-space: nowrap;
+}
+
+.weaver-entry-daylink {
+  cursor: pointer;
 }
 
 .weaver-entry-daylink:focus-visible {
@@ -465,7 +468,7 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
   position: relative;
 }
 
-.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head .weaver-entry-daylink {
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-head :is(.weaver-entry-daylink, .weaver-entry-daylabel) {
   position: absolute;
   right: 0;
   top: 50%;
@@ -478,25 +481,25 @@ body[data-weaver-motion="fast"] .weaver-frame.is-portal-live::after {
  * centre. Legacy inline titles keep their own raised position. */
 .markdown-source-view.mod-cm6
   .cm-line.weaver-entry-head.weaver-thread-start:not(.weaver-entry-inline)
-  .weaver-entry-daylink {
+  :is(.weaver-entry-daylink, .weaver-entry-daylabel) {
   top: calc(50% - var(--weaver-thread-space) * 0.5);
 }
 
 .markdown-source-view.mod-cm6
   .cm-line.weaver-entry-head.weaver-branch-start:not(.weaver-entry-inline)
-  .weaver-entry-daylink {
+  :is(.weaver-entry-daylink, .weaver-entry-daylabel) {
   top: calc(50% - var(--weaver-branch-space) * 0.5);
 }
 
 /* Legacy inline prose sits below its top rail, rather than under the date. */
-.markdown-source-view.mod-cm6 .cm-line.weaver-entry-inline .weaver-entry-daylink {
+.markdown-source-view.mod-cm6 .cm-line.weaver-entry-inline :is(.weaver-entry-daylink, .weaver-entry-daylabel) {
   top: -12px;
   transform: translateY(-50%);
   /* Cut the raised rail sideways, without erasing the preceding clock row. */
   box-shadow: 8px 0 0 var(--background-primary), -8px 0 0 var(--background-primary);
 }
 
-.markdown-rendered .weaver-frame.is-static .weaver-entry-daylink {
+.markdown-rendered .weaver-frame.is-static :is(.weaver-entry-daylink, .weaver-entry-daylabel) {
   position: absolute;
   right: calc(0.45em + 16px);
   top: 0;

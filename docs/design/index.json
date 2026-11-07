@@ -3,8 +3,8 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 63,
-    "exports": 497,
-    "classes": 99,
+    "exports": 499,
+    "classes": 100,
     "testFiles": 53
   },
   "modules": [
@@ -1142,10 +1142,9 @@
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
             "src/reading/entry-processor.ts",
-            "src/ui/loom-timing.ts",
-            "src/ui/loom.ts"
+            "src/ui/loom-timing.ts"
           ],
-          "refCount": 24,
+          "refCount": 23,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -1366,7 +1365,7 @@
     {
       "file": "src/core/contexts.ts",
       "layer": "core",
-      "lines": 480,
+      "lines": 503,
       "doc": "The destinations Weaver may weave into, and the way back from a path.\n\n`main` is the day note the vault already treats as today's — the core Daily\nNotes plugin's folder and format when it can be read, and the two fallback\nsettings when it cannot. It is reserved: it has no row of its own, its\ndefinition keeps resolving through those existing rules, and every other\ncontext is an explicit user-authored one that Daily Notes never overrides.\n\nThe filename language is the one the day plane already expands — `YYYY`, `MM`\nand `DD`, each appearing once, every other character a literal. Keeping the\nlanguage that small is what makes its inverse exist: `contextDayForPath`\nmatches a whole vault path back to the context and day it names, so a link can\ncross between destinations and the daily view can read every configured note\nwithout a second index of what happened. A format outside that language is\nrefused here, with the reason, rather than half-read later.\n\nThe folder is a literal relative path, exactly as the day plane has always\ntreated it, and may be nested. Tokens live in the filename only.\n\nPure: no DOM, no `obsidian`, no filesystem.",
       "obsidian": false,
       "imports": [
@@ -1685,13 +1684,28 @@
           ]
         },
         {
-          "name": "entryDayLinkTarget",
+          "name": "EntryDayLabel",
+          "kind": "interface",
+          "line": 450,
+          "signature": "export interface EntryDayLabel",
+          "doc": "One visible entry-day label, with a navigation target only when one can be resolved.",
+          "hash": "f32f873519",
+          "bytes": 80,
+          "refs": [
+            "src/editor/entry-decorations.ts",
+            "src/ui/day-link.ts"
+          ],
+          "refCount": 4,
+          "testedBy": []
+        },
+        {
+          "name": "entryDayLabel",
           "kind": "function",
-          "line": 459,
-          "signature": "export function entryDayLinkTarget( day: string | null, sourcePath: string, contexts: readonly WeavingContext[] ): string | null",
-          "doc": "The creation-day link for an entry whose recorded day differs from its note's.\n\nThe target is a full vault path in the containing context's own format, so the\nlink crosses from one destination to another correctly; a note that is not a\nconfigured destination keeps the basename-relative link it has always had. The\nrecorded day may be earlier or later than the note's — a branch written after\nmidnight belongs to yesterday's file — and a same-day or undated entry carries\nno link at all.",
-          "hash": "ffd14ce835",
-          "bytes": 775,
+          "line": 490,
+          "signature": "export function entryDayLabel( day: string | null, sourcePath: string, contexts: readonly WeavingContext[], currentDay: string ): EntryDayLabel | null",
+          "doc": "The entry's recorded day when it is useful context for the note being read.\n\nA recognized day note is its own reference day, so entries recorded on that\ndate need no repeated top-right label. An ordinary note has no filename day,\nso the viewer's current local day is the reference: today's entries stay\nuncluttered, while every other recorded day remains visible. Display and\nnavigation are deliberately separate — a date can be useful without a safe\nday-note target to open.",
+          "hash": "32f1d9354e",
+          "bytes": 389,
           "refs": [
             "src/editor/entry-decorations.ts",
             "src/reading/entry-processor.ts"
@@ -1818,14 +1832,17 @@
             "src/core/capture.ts",
             "src/core/insert.ts",
             "src/core/portals.ts",
+            "src/editor/entry-decorations.ts",
             "src/entries/context-workspaces.ts",
             "src/entries/engine.ts",
             "src/main.ts",
+            "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 14,
+          "refCount": 18,
           "testedBy": [
             "tests/day-note.test.ts",
+            "tests/entry-decorations.test.ts",
             "tests/entry-plans.test.ts"
           ]
         },
@@ -1873,7 +1890,7 @@
             "src/core/reference.ts",
             "src/entries/engine.ts"
           ],
-          "refCount": 8,
+          "refCount": 7,
           "testedBy": [
             "tests/day-note.test.ts"
           ]
@@ -2040,10 +2057,9 @@
             "src/editor/stopwatch-widget.ts",
             "src/main.ts",
             "src/reading/entry-processor.ts",
-            "src/ui/loom-timing.ts",
-            "src/ui/loom.ts"
+            "src/ui/loom-timing.ts"
           ],
-          "refCount": 22,
+          "refCount": 21,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -3302,9 +3318,10 @@
             "src/main.ts",
             "src/model/whisper-model.ts",
             "src/reading/close-processor.ts",
+            "src/ui/loom-timing.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 271,
+          "refCount": 272,
           "testedBy": [
             "tests/alignments.test.ts",
             "tests/capture-model-controller.test.ts",
@@ -3366,7 +3383,7 @@
             "src/settings.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 75,
+          "refCount": 76,
           "testedBy": [
             "tests/capture-store.test.ts",
             "tests/context-workspaces.test.ts",
@@ -4999,12 +5016,13 @@
     {
       "file": "src/editor/entry-decorations.ts",
       "layer": "editor",
-      "lines": 311,
-      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The address keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe address row also carries a persistent creation-day link when the recorded\nday differs from the day-note filename. Same-day and historical undated\nentries need no label. The date is not repeated in the clock widget.",
+      "lines": 319,
+      "doc": "The entry, drawn.\n\nColour and indent ride on two custom properties set per line\n(`--weaver-dcolor`, `--weaver-d`), so nothing is generated per level: depth 7\ncosts exactly what depth 1 costs. The address keeps its text — only its runs are\nmarked up, so the line stays editable and the digits stay white while the\npunctuation carries the dimension's colour.\n\nThe clock row is replaced by a block widget unless the selection touches it;\nthen it goes back to raw text. Block widgets may not come from a plugin,\nwhich is why everything here is a `StateField`.\n\nEach of those two rows is also a rail's label and carries two extra pieces of\nmarkup: a `weaver-frame-label` mark over the row's own characters, whose\nbackground cuts the rail behind it, and a `data-weaver-n` stamp, which is how\nthe frame layer finds the row without asking for a DOM position.\n\nThe address row also carries a persistent recorded-day label when the date is\nuseful context: another date in a dated note, or any non-current date in an\nordinary note. A resolvable label links to its day note; an ordinary note keeps\na static date. Undated entries need no label, and the date is not repeated in\nthe clock widget.",
       "obsidian": true,
       "imports": [
         "src/core/color",
         "src/core/contexts",
+        "src/core/day",
         "src/core/entries",
         "src/entries/clock",
         "src/entries/session",
@@ -5020,11 +5038,11 @@
         {
           "name": "entryDecorationSet",
           "kind": "function",
-          "line": 125,
-          "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, contexts: readonly WeavingContext[], openDayLink?: OpenDayLink ):...",
+          "line": 132,
+          "signature": "export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, contexts: readonly WeavingContext[], openDayLink?: OpenDayLink, c...",
           "doc": "The decoration set for one state. Exported so a test can read it without a\nlive `EditorView`, which needs a real browser to measure.",
-          "hash": "05af653126",
-          "bytes": 5665,
+          "hash": "f22aaeb210",
+          "bytes": 5702,
           "refs": [],
           "refCount": 0,
           "testedBy": [
@@ -5034,7 +5052,7 @@
         {
           "name": "entryDecorationsExtension",
           "kind": "function",
-          "line": 280,
+          "line": 288,
           "signature": "export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, getContexts: () => readonly WeavingContext[], openD...",
           "doc": "Publishes the entry decorations as one state field.",
           "hash": "a525225de9",
@@ -5087,7 +5105,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 10,
+          "refCount": 11,
           "testedBy": [
             "tests/entry-field.test.ts"
           ]
@@ -5106,7 +5124,7 @@
             "src/entries/writer.ts",
             "src/main.ts"
           ],
-          "refCount": 16,
+          "refCount": 17,
           "testedBy": []
         },
         {
@@ -5657,6 +5675,7 @@
           "refCount": 0,
           "testedBy": [
             "tests/entry-keys.test.ts",
+            "tests/plugin.test.ts",
             "tests/start-entry.test.ts",
             "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts",
@@ -5675,6 +5694,7 @@
           "refCount": 0,
           "testedBy": [
             "tests/entry-keys.test.ts",
+            "tests/plugin.test.ts",
             "tests/start-entry.test.ts",
             "tests/stopped-clock-render.test.ts",
             "tests/whisper-act.test.ts",
@@ -5708,7 +5728,7 @@
             "src/entries/engine.ts",
             "src/main.ts"
           ],
-          "refCount": 12,
+          "refCount": 13,
           "testedBy": []
         },
         {
@@ -7314,7 +7334,7 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 1134,
+      "lines": 1179,
       "doc": "Weaver: a day note is a linear list of entries, and a thought may be written\nfrom anywhere.\n\nAn entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS YYYY-MM-DD\nHH:MM:SS`. Writing happens in two places that share one writer: inside a note,\nwhere the entry is the note's own text, and in the floating composer, which\nholds one unsaved thought until it is settled. The navigator is the only list\nand the only navigation.\n\nThis module is wiring, and only wiring: settings, the one writer, the one clock,\nthe composer, the invitation dock, the workspace service, commands, and the two\nlisteners that keep derived facts (day counters, portal association) true.",
       "obsidian": true,
       "imports": [
@@ -7368,8 +7388,8 @@
           "line": 91,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the two derived facts.",
-          "hash": "fbfc4f741d",
-          "bytes": 30339,
+          "hash": "6668ca3135",
+          "bytes": 31608,
           "refs": [
             "src/entries/engine.ts",
             "src/settings-tab.ts"
@@ -7982,13 +8002,14 @@
     {
       "file": "src/reading/entry-processor.ts",
       "layer": "reading",
-      "lines": 347,
-      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe address paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the address row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe address's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe address stays in the DOM untouched, links and emphasis included. A persistent\ntop-right link labels a recorded creation day only when it differs from the\nday-note filename. Awaiting and historical undated entries carry no date link.\nThe label never reads the wall clock, and the clock row's two halves stay\ntime-only: digit and punctuation runs, exactly as in the editor.",
+      "lines": 348,
+      "doc": "Reading view: the same entry the editor draws, in the same frame.\n\nThe address paragraph becomes the frame's first child and the clock paragraph\nits last; the prose between them is the frame's interior. The wrapper is a real\nelement because a box needs one to enclose — and because the file's own text is\nwhat labels it: the address row is the top rail's label, and the clock row is the\nbottom edge, its duration at the left corner and its moment at the right. The\nrails run through the middle of those rows and are cut behind them by the\nlabels' own backgrounds, so the box reads as running into its own text.\n\nThe address's own characters are kept, split into digit runs so the digits stay\nwhite and the punctuation takes the dimension's colour. Anything typed after\nthe address stays in the DOM untouched, links and emphasis included. A persistent\ntop-right label shows a useful recorded day: another date in a dated note, or\nany non-current date in an ordinary note. A resolvable date is a link; an\nordinary note keeps static text. Awaiting and historical undated entries carry\nno date label. The clock row's two halves stay time-only: digit and punctuation\nruns, exactly as in the editor.",
       "obsidian": true,
       "imports": [
         "src/core/clock",
         "src/core/color",
         "src/core/contexts",
+        "src/core/day",
         "src/core/duration",
         "src/core/entries",
         "src/core/whisper",
@@ -8002,11 +8023,11 @@
         {
           "name": "createEntryProcessor",
           "kind": "function",
-          "line": 132,
-          "signature": "export function createEntryProcessor( contexts: () => readonly WeavingContext[], openDayLink?: OpenDayLink, clock?: EntryClock ): MarkdownPostProcessor",
+          "line": 134,
+          "signature": "export function createEntryProcessor( contexts: () => readonly WeavingContext[], openDayLink?: OpenDayLink, clock?: EntryClock, currentDay: () => string = () => dayKey(new Date(...",
           "doc": "Builds the post processor that frames entries in Reading view. Section source\npreserves signed-list extraction; an optional shared clock paints awaiting\nmoments with section-owned subscription cleanup, without writing note bytes.",
-          "hash": "39d5cddb58",
-          "bytes": 10217,
+          "hash": "72718be3b1",
+          "bytes": 10124,
           "refs": [
             "src/main.ts"
           ],
@@ -8297,15 +8318,17 @@
     {
       "file": "src/ui/day-link.ts",
       "layer": "ui",
-      "lines": 51,
-      "doc": "The entry-day link at the top right of a frame: `[[YYYY.MM.DD]]`.\n\nThe entry's clock row records its day when one was written; a historical\nundated row inherits the day-note filename, and the label is written in that\nfilename's own dotted or dashed style. This generated label names that\nrecorded day, never the date of viewing. The `weaver-frame-label` background\ncuts the top rail behind it. Both surfaces build the same element here, so\nLive Preview and Reading view agree.\n\nThe element is a span with `role=\"link\"`, not an anchor: the surfaces own the\nnavigation — `openLinkText` — and an anchor would let Obsidian's own handler\nfire a second navigation on top of it.",
+      "lines": 62,
+      "doc": "The entry-day label at the top right of a frame.\n\nAn entry in a dated note hides its redundant same-day label; an entry in an\nordinary note hides only a recorded day equal to the current local day. Every\nother recorded day stays visible. When Weaver can resolve that day to a note,\nthe label is a `[[YYYY.MM.DD]]`-style link; otherwise it is static text. Both\nforms cut the top rail through `weaver-frame-label`, and both surfaces build\nthem here so Live Preview and Reading view agree.\n\nAn interactive label is a span with `role=\"link\"`, not an anchor: the surfaces\nown navigation through `openLinkText`, so the host never performs a second\nnavigation on top of it.",
       "obsidian": false,
-      "imports": [],
+      "imports": [
+        "src/core/contexts"
+      ],
       "exports": [
         {
           "name": "OpenDayLink",
           "kind": "type",
-          "line": 17,
+          "line": 19,
           "signature": "export type OpenDayLink = (target: string, sourcePath: string) => void",
           "doc": "Open a day note by its basename, relative to the note on screen.",
           "hash": "651bcb0f06",
@@ -8318,13 +8341,13 @@
           "testedBy": []
         },
         {
-          "name": "dayLinkElement",
+          "name": "entryDayElement",
           "kind": "function",
-          "line": 26,
-          "signature": "export function dayLinkElement( target: string, sourcePath: string, open: OpenDayLink ): HTMLElement",
-          "doc": "The link element for `target` (`2026.11.02`), opened from `sourcePath`.\n\nA click or Enter/Space activates it; the event is stopped so the editor does\nnot also move the caret into the widget. `open` is called with the target and\nthe note it was clicked from, exactly as `workspace.openLinkText` wants them.",
-          "hash": "1c54450a26",
-          "bytes": 735,
+          "line": 28,
+          "signature": "export function entryDayElement( label: EntryDayLabel, sourcePath: string, open: OpenDayLink ): HTMLElement",
+          "doc": "The top-right entry-day element.\n\nA resolved target is keyboard-accessible and opens through the owning surface.\nAn ordinary note can still show an older recorded day without inventing a\ndestination: that form is the same frame label, but intentionally static.",
+          "hash": "e0ecdd2761",
+          "bytes": 1039,
           "refs": [
             "src/editor/entry-decorations.ts",
             "src/reading/entry-processor.ts"
@@ -8336,6 +8359,7 @@
         }
       ],
       "classes": [
+        "weaver-entry-daylabel",
         "weaver-entry-daylink",
         "weaver-frame-label"
       ],
@@ -8521,10 +8545,11 @@
     {
       "file": "src/ui/loom-timing.ts",
       "layer": "ui",
-      "lines": 151,
-      "doc": "The loom's timing group: one beginning clock and one writing duration, in the\nshared digit grammar — icon, white digits, dimension-coloured colons.\n\nAn unknown value draws a single `—` over digit runs that stay in the DOM, so a\nknown value returns without rebuilding nodes. `update` paints one explicit\nreading and reports whether the drawn duration changed; no timer, no clock.",
+      "lines": 183,
+      "doc": "The loom's timing group: a clock half and a writing duration, in the shared\ndigit grammar — icon, white digits, dimension-coloured colons.\n\nThe clock half is a face, not a string: `now` carries the shared sample's\ninstant, so every tick reads the present and the digits keep counting beside\nthe stopwatch; `moment` carries a recorded `HH:MM:SS`, so a saved thought\nholds the beginning exactly as the note wrote it. A caller that froze a\nformatted string instead would stop the clock the moment the stopwatch began.\n\nAn unknown value draws a single `—` over digit runs that stay in the DOM, so a\nknown value returns without rebuilding nodes. `update` paints one explicit\nreading and reports whether the drawn duration changed; no timer, no clock.",
       "obsidian": true,
       "imports": [
+        "src/core/clock",
         "src/core/duration",
         "src/editor/duration-ticker",
         "src/ui/dcn",
@@ -8534,7 +8559,7 @@
         {
           "name": "LoomTimingMode",
           "kind": "type",
-          "line": 17,
+          "line": 24,
           "signature": "export type LoomTimingMode = \"preview\" | \"running\" | \"paused\" | \"recorded\" | \"pending\"",
           "doc": "What a timing group is showing.",
           "hash": "662f93ff9f",
@@ -8548,23 +8573,37 @@
         {
           "name": "LoomTimingReading",
           "kind": "interface",
-          "line": 20,
+          "line": 27,
           "signature": "export interface LoomTimingReading",
           "doc": "One explicit reading; the caller samples every field and supplies no clock.",
-          "hash": "fa402623a7",
-          "bytes": 123,
+          "hash": "fd71924263",
+          "bytes": 120,
           "refs": [],
           "refCount": 0,
           "testedBy": []
         },
         {
+          "name": "ClockFace",
+          "kind": "type",
+          "line": 43,
+          "signature": "export type ClockFace = |",
+          "doc": "Where the clock half reads from.\n\n`now` holds the shared clock's instant — a sample, never a formatted copy, so\nthe digits are the present at the moment of the reading. `moment` holds a time\nthat is already recorded, and a `null` there means the reading is unknown.",
+          "hash": "3d556b41ee",
+          "bytes": 73,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 2,
+          "testedBy": []
+        },
+        {
           "name": "LoomTiming",
           "kind": "class",
-          "line": 63,
+          "line": 91,
           "signature": "export class LoomTiming",
-          "doc": "One timing group inside `parent`: beginning first, writing duration second.\nBuilt once by the constructor; mounted wherever the timing belongs.",
-          "hash": "45156e4f98",
-          "bytes": 3189,
+          "doc": "One timing group inside `parent`: the clock first, the writing duration second.\nBuilt once by the constructor; mounted wherever the timing belongs.",
+          "hash": "355641e940",
+          "bytes": 3406,
           "refs": [
             "src/ui/loom.ts"
           ],
@@ -8585,12 +8624,11 @@
     {
       "file": "src/ui/loom.ts",
       "layer": "ui",
-      "lines": 2164,
+      "lines": 2168,
       "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header and persistent Markdown\nwriting pane. Desktop retains an identity line and footer actions; mobile\nplaces circular actions beside the content-sized prose, with duration below.\nThe destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
       "obsidian": true,
       "imports": [
         "src/core/capture",
-        "src/core/clock",
         "src/core/color",
         "src/core/contexts",
         "src/core/day",
@@ -8609,7 +8647,7 @@
         {
           "name": "CaptureSurface",
           "kind": "interface",
-          "line": 38,
+          "line": 37,
           "signature": "export interface CaptureSurface",
           "doc": "The lower surface the Loom reads and commands; either controller satisfies it.",
           "hash": "4ec3b34bd1",
@@ -8621,7 +8659,7 @@
         {
           "name": "LoomHost",
           "kind": "interface",
-          "line": 59,
+          "line": 58,
           "signature": "export interface LoomHost",
           "doc": "What the Loom needs from the plugin.",
           "hash": "68f7467b64",
@@ -8633,7 +8671,7 @@
         {
           "name": "LoomInvitation",
           "kind": "interface",
-          "line": 84,
+          "line": 83,
           "signature": "export interface LoomInvitation",
           "doc": "An opening offered by the scheduler: upcoming, or in its available minute.",
           "hash": "6ff4410ba1",
@@ -8647,11 +8685,11 @@
         {
           "name": "Loom",
           "kind": "class",
-          "line": 170,
+          "line": 169,
           "signature": "export class Loom",
           "doc": "The one compact Loom surface.",
-          "hash": "450cdbebfd",
-          "bytes": 74969,
+          "hash": "020f200721",
+          "bytes": 75325,
           "refs": [
             "src/core/capture-state.ts",
             "src/core/frame.ts",
@@ -8949,6 +8987,7 @@
         "src/main.ts",
         "src/reading/entry-processor.ts",
         "src/settings-tab.ts",
+        "src/ui/day-link.ts",
         "src/ui/loom.ts",
         "src/ui/markdown-pane.ts"
       ]
@@ -9229,6 +9268,7 @@
       "weaver-duration-num",
       "weaver-duration-raw",
       "weaver-duration-sigil",
+      "weaver-entry-daylabel",
       "weaver-entry-daylink",
       "weaver-entry-head",
       "weaver-entry-inline",

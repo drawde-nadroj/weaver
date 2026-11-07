@@ -5,7 +5,7 @@ import {
   contextDayPath,
   contextDraftError,
   effectiveContexts,
-  entryDayLinkTarget,
+  entryDayLabel,
   mainContext,
   parseDayTemplate,
   readContexts,
@@ -150,25 +150,40 @@ describe("contextDayForPath", () => {
   });
 });
 
-describe("entryDayLinkTarget", () => {
-  it("omits same-day and undated entries", () => {
-    expect(entryDayLinkTarget("2026-11-05", "Spanish/Daily/2026.11.05.md", CONTEXTS)).toBeNull();
-    expect(entryDayLinkTarget(null, "Spanish/Daily/2026.11.05.md", CONTEXTS)).toBeNull();
+describe("entryDayLabel", () => {
+  it("omits an undated entry and an entry on its containing day's date", () => {
+    expect(entryDayLabel(null, "Spanish/Daily/2026.11.05.md", CONTEXTS, "2026-11-07")).toBeNull();
+    expect(entryDayLabel("2026-11-05", "Spanish/Daily/2026.11.05.md", CONTEXTS, "2026-11-07")).toBeNull();
   });
 
-  it("names the recorded day as a full path in that destination", () => {
-    expect(entryDayLinkTarget("2026-11-01", "Spanish/Daily/2026.11.05.md", CONTEXTS)).toBe(
-      "Spanish/Daily/2026.11.01"
-    );
-    expect(entryDayLinkTarget("2026-11-09", "Research/Daily/2026-11-05.md", CONTEXTS)).toBe(
-      "Research/Daily/2026-11-09"
-    );
+  it("names a different recorded day with that destination's navigation target", () => {
+    expect(entryDayLabel("2026-11-01", "Spanish/Daily/2026.11.05.md", CONTEXTS, "2026-11-07")).toEqual({
+      day: "2026-11-01",
+      target: "Spanish/Daily/2026.11.01"
+    });
+    expect(entryDayLabel("2026-11-09", "Research/Daily/2026-11-05.md", CONTEXTS, "2026-11-07")).toEqual({
+      day: "2026-11-09",
+      target: "Research/Daily/2026-11-09"
+    });
   });
 
-  it("keeps the historical basename link for a note no destination recognises", () => {
-    expect(entryDayLinkTarget("2026-11-01", "Old/2026.11.05.md", [])).toBe("2026.11.01");
-    expect(entryDayLinkTarget("2026-11-01", "Old/2026-11-05.md", [])).toBe("2026-11-01");
-    expect(entryDayLinkTarget("2026-11-01", "Meeting notes.md", [])).toBeNull();
+  it("uses the actual current day for an ordinary note and keeps an unlinked past date visible", () => {
+    expect(entryDayLabel("2026-11-07", "Meeting notes.md", CONTEXTS, "2026-11-07")).toBeNull();
+    expect(entryDayLabel("2026-11-05", "Meeting notes.md", CONTEXTS, "2026-11-07")).toEqual({
+      day: "2026-11-05",
+      target: null
+    });
+  });
+
+  it("keeps the historical basename target when it can be inferred", () => {
+    expect(entryDayLabel("2026-11-01", "Old/2026.11.05.md", [], "2026-11-07")).toEqual({
+      day: "2026-11-01",
+      target: "2026.11.01"
+    });
+    expect(entryDayLabel("2026-11-01", "Old/2026-11-05.md", [], "2026-11-07")).toEqual({
+      day: "2026-11-01",
+      target: "2026-11-01"
+    });
   });
 });
 

@@ -446,34 +446,57 @@ export function sourceDayOf(path: string, contexts: readonly WeavingContext[]): 
 const DOTTED_DAY = /^\d{4}\.\d{2}\.\d{2}$/;
 const DASHED_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** One visible entry-day label, with a navigation target only when one can be resolved. */
+export interface EntryDayLabel {
+  /** The recorded day, always canonical `YYYY-MM-DD`. */
+  day: string;
+  /** The destination to open, or null when the source note has no day-plane route. */
+  target: string | null;
+}
+
 /**
- * The creation-day link for an entry whose recorded day differs from its note's.
+ * Resolves the optional day-note target for an entry's recorded day.
  *
- * The target is a full vault path in the containing context's own format, so the
- * link crosses from one destination to another correctly; a note that is not a
- * configured destination keeps the basename-relative link it has always had. The
- * recorded day may be earlier or later than the note's — a branch written after
- * midnight belongs to yesterday's file — and a same-day or undated entry carries
- * no link at all.
+ * A recognized destination names its own day format; a legacy dotted or dashed
+ * note keeps its basename-relative route. An ordinary note has no honest route
+ * to a day note, so its date remains a label rather than a link.
  */
-export function entryDayLinkTarget(
-  day: string | null,
+function entryDayNavigationTarget(
+  day: string,
   sourcePath: string,
   contexts: readonly WeavingContext[]
 ): string | null {
-  if (day === null) return null;
-
   const contained = contextDayForPath(sourcePath, contexts);
   if (contained !== null) {
-    if (contained.day === day) return null;
     const context = contextById(contexts, contained.contextId);
-    if (context === null) return null;
-    return contextDayPath(context, day).replace(/\.md$/i, "");
+    return context === null ? null : contextDayPath(context, day).replace(/\.md$/i, "");
   }
 
   const basename = (sourcePath.split("/").pop() ?? sourcePath).replace(/\.md$/i, "");
-  const noteDay = dayKeyFromName(basename);
-  if (noteDay === null || noteDay === day) return null;
   if (DOTTED_DAY.test(basename)) return day.replace(/-/g, ".");
   return DASHED_DAY.test(basename) ? day : null;
+}
+
+/**
+ * The entry's recorded day when it is useful context for the note being read.
+ *
+ * A recognized day note is its own reference day, so entries recorded on that
+ * date need no repeated top-right label. An ordinary note has no filename day,
+ * so the viewer's current local day is the reference: today's entries stay
+ * uncluttered, while every other recorded day remains visible. Display and
+ * navigation are deliberately separate — a date can be useful without a safe
+ * day-note target to open.
+ */
+export function entryDayLabel(
+  day: string | null,
+  sourcePath: string,
+  contexts: readonly WeavingContext[],
+  currentDay: string
+): EntryDayLabel | null {
+  if (day === null) return null;
+
+  const referenceDay = sourceDayOf(sourcePath, contexts) ?? currentDay;
+  if (day === referenceDay) return null;
+
+  return { day, target: entryDayNavigationTarget(day, sourcePath, contexts) };
 }

@@ -16,9 +16,11 @@
  * background cuts the rail behind it, and a `data-weaver-n` stamp, which is how
  * the frame layer finds the row without asking for a DOM position.
  *
- * The address row also carries a persistent creation-day link when the recorded
- * day differs from the day-note filename. Same-day and historical undated
- * entries need no label. The date is not repeated in the clock widget.
+ * The address row also carries a persistent recorded-day label when the date is
+ * useful context: another date in a dated note, or any non-current date in an
+ * ordinary note. A resolvable label links to its day note; an ordinary note keeps
+ * a static date. Undated entries need no label, and the date is not repeated in
+ * the clock widget.
  */
 
 import { editorInfoField, editorLivePreviewField } from "obsidian";
@@ -31,12 +33,13 @@ import {
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 
 import { dimensionColor, dimensionColorVars } from "../core/color";
-import { entryDayLinkTarget, type WeavingContext } from "../core/contexts";
+import { dayKey } from "../core/day";
+import { entryDayLabel, type EntryDayLabel, type WeavingContext } from "../core/contexts";
 import type { Entry } from "../core/entries";
 import type { EntryClock } from "../entries/clock";
 import type { EntrySession } from "../entries/session";
 import { INK_CLASS, addressSlices, NUM_CLASS } from "../ui/dcn";
-import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
+import { entryDayElement, type OpenDayLink } from "../ui/day-link";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
 import { DurationWidget } from "./stopwatch-widget";
 
@@ -75,21 +78,25 @@ function addAddressRuns(ranges: Range<Decoration>[], from: number, text: string)
  * `ignoreEvent` keeps a click from also placing the caret: the link is the
  * click's, and the frame around the entry is not a place to write.
  */
-class DayLinkWidget extends WidgetType {
+class EntryDayWidget extends WidgetType {
   constructor(
-    readonly target: string,
+    readonly label: EntryDayLabel,
     readonly sourcePath: string,
     readonly open: OpenDayLink
   ) {
     super();
   }
 
-  eq(other: DayLinkWidget): boolean {
-    return other.target === this.target && other.sourcePath === this.sourcePath;
+  eq(other: EntryDayWidget): boolean {
+    return (
+      other.label.day === this.label.day &&
+      other.label.target === this.label.target &&
+      other.sourcePath === this.sourcePath
+    );
   }
 
   toDOM(): HTMLElement {
-    return dayLinkElement(this.target, this.sourcePath, this.open);
+    return entryDayElement(this.label, this.sourcePath, this.open);
   }
 
   ignoreEvent(): boolean {
@@ -128,7 +135,8 @@ export function entryDecorationSet(
   path: string,
   clock: EntryClock,
   contexts: readonly WeavingContext[],
-  openDayLink?: OpenDayLink
+  openDayLink?: OpenDayLink,
+  currentDay = dayKey(new Date())
 ): DecorationSet {
   const index = state.field(entryIndexField, false);
   if (index === undefined || index.entries.length === 0) return Decoration.none;
@@ -144,7 +152,7 @@ export function entryDecorationSet(
 
     const vars = dimensionColorVars(entry.d);
     const head = state.doc.line(entry.line + 1);
-    const dayLinkTarget = livePreview ? entryDayLinkTarget(entry.day, path, contexts) : null;
+    const dayLabel = livePreview ? entryDayLabel(entry.day, path, contexts, currentDay) : null;
     // Legacy inline prose keeps its rail and date label above the text.
     const inlineTitle =
       entry.firstProseLine !== null && entry.firstProseLine === entry.line;
@@ -183,14 +191,14 @@ export function entryDecorationSet(
     });
     addAddressRuns(ranges, head.from, state.doc.sliceString(head.from, prefixTo));
 
-    // The date labels the top rail without joining the text flow.
-    if (dayLinkTarget !== null) {
+    // The recorded date labels the top rail without joining the text flow.
+    if (dayLabel !== null) {
       ranges.push({
         from: head.to,
         to: head.to,
         value: Decoration.widget({
           side: 1,
-          widget: new DayLinkWidget(dayLinkTarget, path, openDayLink ?? (() => {}))
+          widget: new EntryDayWidget(dayLabel, path, openDayLink ?? (() => {}))
         })
       });
     }

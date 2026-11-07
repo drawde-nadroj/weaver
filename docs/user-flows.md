@@ -12,10 +12,11 @@ there is nothing to do.
    chooser without travelling. When viewing differs from writing, a quiet line
    says `viewing <realm>`. Choosing another destination with words present still
    requires accepting the proposed change; it never silently retargets the draft.
-3. Before typing, the clock icon previews the current time, marked Now; the
-   stopwatch shows zero. The first committed character freezes the local beginning
-   and starts counting composing time. A pause is labelled explicitly. Letters
-   and arrows in the prose stay ordinary writing and text selection.
+3. Before typing, the clock icon shows the current time; the stopwatch shows zero.
+   The first committed character freezes the local beginning the note will record
+   and starts counting composing time, while the clock keeps counting the present
+   beside it. A pause is labelled explicitly and holds the stopwatch. Letters and
+   arrows in the prose stay ordinary writing and text selection.
 4. `⏎` saves it. `Shift-⏎` is a newline, a soft keyboard's Return is a save, and
    `Esc` hides the surface without losing a word.
 

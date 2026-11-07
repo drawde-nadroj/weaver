@@ -409,14 +409,33 @@ describe("the entry processor", () => {
     clock.destroy();
   });
 
-  it("draws no day link on a note that is not a day", () => {
-    for (const path of ["Chronomancer/notes.md", ""]) {
-      const root = container();
-      paragraph(root, "{ 2.1.3 }");
-      paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
-      createEntryProcessor(() => [])(root as never, context(path));
-      expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
-    }
+  it("shows a past recorded day as a static label in an ordinary note", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
+
+    createEntryProcessor(() => [], undefined, undefined, () => "2026-11-07")(
+      root as never,
+      context("Chronomancer/notes.md")
+    );
+
+    const label = root.querySelector(".weaver-entry-daylabel");
+    expect(label?.textContent).toBe("2026-11-05");
+    expect(label?.getAttr("role")).toBeNull();
+  });
+
+  it("omits an ordinary note's entry date when it is today", () => {
+    const root = container();
+    paragraph(root, "{ 2.1.3 }");
+    paragraph(root, "+ 00:04:12 2026-11-05 13:27:43");
+
+    createEntryProcessor(() => [], undefined, undefined, () => "2026-11-05")(
+      root as never,
+      context("Chronomancer/notes.md")
+    );
+
+    expect(root.querySelector(".weaver-entry-daylabel")).toBeNull();
+    expect(root.querySelector(".weaver-entry-daylink")).toBeNull();
   });
 
   it("leaves a paragraph that is not an entry alone", () => {

@@ -122,6 +122,8 @@ export default class WeaverPlugin extends Plugin {
   captureStore!: CaptureStoreV2;
 
   private dayStatsTimer: number | null = null;
+  /** The one wake-up at the next local day boundary, for entry-date labels. */
+  private entryDayTimer: number | null = null;
   /** True while one navigation transaction is running. */
   private navigating = false;
   /**
@@ -342,6 +344,7 @@ export default class WeaverPlugin extends Plugin {
 
     this.registerCommands();
     this.addSettingTab(new WeaverSettingTab(this.app, this));
+    this.scheduleEntryDayRefresh();
 
     console.log(`Weaver loaded ${this.manifest.version}`);
   }
@@ -368,6 +371,10 @@ export default class WeaverPlugin extends Plugin {
     if (this.dayStatsTimer !== null) {
       window.clearTimeout(this.dayStatsTimer);
       this.dayStatsTimer = null;
+    }
+    if (this.entryDayTimer !== null) {
+      window.clearTimeout(this.entryDayTimer);
+      this.entryDayTimer = null;
     }
 
     removeCss();
@@ -544,6 +551,44 @@ export default class WeaverPlugin extends Plugin {
         annotations: programmaticWrite.of(true)
       });
     }
+  }
+
+  /**
+   * Re-draws entry-date labels at the one instant their current-day rule changes.
+   *
+   * Live Preview rebuilds its decorations through the same refresh effect as a
+   * settings change. Reading view owns static frame elements, so preview leaves
+   * re-render their Markdown instead. Neither path writes note bytes.
+   */
+  private refreshEntryDayLabels(): void {
+    for (const view of registeredEditorViews()) {
+      view.dispatch({
+        effects: refreshEntriesEffect.of(undefined),
+        annotations: programmaticWrite.of(true)
+      });
+    }
+
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView) || view.getMode() !== "preview") continue;
+      const preview = Reflect.get(view, "previewMode") as { rerender?: unknown } | undefined;
+      if (typeof preview?.rerender === "function") preview.rerender();
+    }
+  }
+
+  /** Schedules the next local midnight, when an ordinary note's date labels change. */
+  private scheduleEntryDayRefresh(): void {
+    if (this.entryDayTimer !== null) window.clearTimeout(this.entryDayTimer);
+
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 0, 0);
+    const delay = Math.max(1, next.getTime() - now.getTime());
+    this.entryDayTimer = window.setTimeout(() => {
+      this.entryDayTimer = null;
+      this.refreshEntryDayLabels();
+      this.scheduleEntryDayRefresh();
+    }, delay);
   }
 
   /**

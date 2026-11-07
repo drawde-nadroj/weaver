@@ -84,10 +84,14 @@ silent fall back to `main`. Creating is separate and explicit:
 accepts only a `TFile` at the exact path, so a concurrent create that wins the
 race is the file the caller asked for.
 
-Two consequences run through the rest of this document. A created day that differs
-from the note's filename is a link in that destination's own format —
-`src/core/contexts.ts#entryDayLinkTarget` — and a note no destination recognises is
-read by its basename, as it always was. And the reading index is derived, not stored:
+Two consequences run through the rest of this document. A recorded day that is
+useful context becomes an entry-day label through
+`src/core/contexts.ts#entryDayLabel`: a dated note hides its own day, while an
+ordinary note hides only the current local day. A resolved destination gives the
+label a link in that destination's own format; an ordinary note still keeps a
+static date. `src/main.ts#WeaverPlugin` refreshes Live Preview and Reading view
+at the next local-day boundary, without writing a note. And the reading index is
+derived, not stored:
 `src/entries/thought-index.ts#ThoughtIndex` reads every recognised note, prefers an
 open editor's own text, and selects a thought by its recorded day or, for an
 undated entry, its note's.
@@ -386,14 +390,13 @@ Nothing reflows. The text decides where the box is, never the reverse.
   records the real day without moving the note. Existing days and moments are
   never replaced. `src/core/duration.ts#parseClockRow` exposes the day
   and time; undated historical moments use the filename day without a rewrite.
-  `src/core/contexts.ts#entryDayLinkTarget` returns a link only when the recorded
-  day differs from the note's, as a full path in the containing destination's own
-  format — or, for a note no destination recognises, in the filename's style. Same-day
-  and historical undated entries carry no date label or hidden tab stop, and an
-  awaiting draft carries none either: it has not recorded a day for the link to
-  name.
-  `src/editor/entry-decorations.ts#DayLinkWidget` and
-  `src/reading/entry-processor.ts#createEntryProcessor` render that link
+  `src/core/contexts.ts#entryDayLabel` separates visibility from navigation: a
+  dated note hides its own recorded day; an ordinary note hides only a record from
+  the current local day; every other dated entry has a top-right label. A resolved
+  destination becomes a link in that destination's format, while an ordinary note
+  keeps static text. Undated historical entries and awaiting drafts carry no label.
+  `src/editor/entry-decorations.ts#EntryDayWidget` and
+  `src/reading/entry-processor.ts#createEntryProcessor` render that label
   persistently at the top-right, independent of caret, hover or focus. Legacy
   inline prose in Live Preview uses `.weaver-entry-inline` to put its date above
   the row, beside the raised rail. Its background halo extends only sideways,
@@ -440,13 +443,13 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 
 | Surface | Code | Writes | One undo | Empty |
 | --- | --- | --- | --- | --- |
-| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing (it renders the address's runs, the frame label, and a different-day entry's creation-day link) |
+| Entry decoration | `src/editor/entry-decorations.ts#entryDecorationSet` | nothing | — | draws nothing (it renders the address's runs, the frame label, and a useful recorded-day label) |
 | Clock row | `src/editor/stopwatch-widget.ts#DurationWidget` | nothing (ticks its own DOM) | — | — |
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
 | Loom | `src/ui/loom.ts#Loom` | one settled thought, when it is settled — nothing before | the plan | asked for nothing; a draft's top rail says `Thread` or `Branch`, never a fabricated address |
 | Invitation strip | `src/ui/loom.ts#Loom` | nothing | — | one idle offer; opening or dismissing never interrupts an active or hidden draft, and no countdown or Weave action appears inside the draft |
-| Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry and adds a creation-day link only when the day differs from the note) |
+| Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry and adds a useful recorded-day label) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Whisper the day | `src/entries/engine.ts#whisperDay` | one whisper per settled entry that has none | the whole pass | `Nothing to whisper: every settled entry already has one, or a name.` |
 | Descend command | `src/main.ts#WeaverPlugin` | settle `+`, or a child | the plan, once per transaction | `this needs an editable note.` or `put the caret in an entry.` — nothing written |
@@ -454,7 +457,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Settings tab | `src/settings-tab.ts#WeaverSettingTab` | `data.json` only | — | — |
 
 <!-- claim: src/editor/entry-keys.ts#handleEnterKey @05f01a81d6 -->
-<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @39d5cddb58 -->
+<!-- claim: src/reading/entry-processor.ts#createEntryProcessor @72718be3b1 -->
 
 A command's target is the day plane, and *Whisper the day* aims at the day note on
 screen — `src/entries/engine.ts#dayToWhisper` — falling back to today's note only
@@ -490,13 +493,18 @@ stale readings, and internal links use the public workspace router.
 `src/ui/loom.ts#Loom` retains the same editor across browsing, drafting and saved
 states. Mobile omits the identity row and places circular actions beside the prose;
 desktop retains the identity and action rails. `src/ui/loom-timing.ts#LoomTiming`
-owns the shared icon-and-digit grammar: clock for beginning, stopwatch for writing
-duration, normal-text digits and dimension-coloured colons. An empty draft previews
-the shared wall clock and zero duration, without a preview word. First input freezes its
-beginning; `src/entries/capture-model-controller.ts#CaptureView` exposes whether
+owns the shared icon-and-digit grammar: a clock for the present time, a stopwatch for
+writing duration, normal-text digits and dimension-coloured colons. An empty draft
+previews the shared wall clock and zero duration, without a preview word. First input
+freezes its beginning, and the clock keeps reading the shared sample beside the
+running stopwatch instead of stopping with it. `src/ui/loom-timing.ts#ClockFace`
+holds either that sample or a moment already recorded, so a reading never freezes a
+formatted time and one half can never stop because the other started. The beginning
+the input froze is the note's fact, and it labels the rail again once the thought is
+read back. `src/entries/capture-model-controller.ts#CaptureView` exposes whether
 its clock is running so a paused draft is explicit without guessing from digits.
 Changed shared-clock ticks commit their painted duration; incidental renders never
-advance it. A pause or save retains that exact second.
+advance it. A pause retains that exact second, while the clock keeps counting.
 Saved timing is read through `src/entries/thought-index.ts#ThoughtIndex`, never
 from the cleared draft clock. `src/ui/loom.ts#refreshTiming` re-reads changed notes,
 including the visible reference; late reads cannot replace a newer draft's timing.
@@ -639,7 +647,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-63 files, 497 exported symbols, 53 test files.
+63 files, 499 exported symbols, 53 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -649,7 +657,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/clock.ts` | core | 16 | 2 | no |
 | `src/core/close.ts` | core | 61 | 5 | no |
 | `src/core/color.ts` | core | 123 | 7 | no |
-| `src/core/contexts.ts` | core | 480 | 21 | no |
+| `src/core/contexts.ts` | core | 503 | 22 | no |
 | `src/core/day-stats.ts` | core | 90 | 4 | no |
 | `src/core/day.ts` | core | 72 | 6 | no |
 | `src/core/document.ts` | core | 92 | 6 | no |
@@ -668,7 +676,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/close-decorations.ts` | editor | 82 | 2 | yes |
 | `src/editor/duration-ticker.ts` | editor | 23 | 2 | no |
 | `src/editor/editor-path.ts` | editor | 11 | 1 | yes |
-| `src/editor/entry-decorations.ts` | editor | 311 | 2 | yes |
+| `src/editor/entry-decorations.ts` | editor | 319 | 2 | yes |
 | `src/editor/entry-field.ts` | editor | 62 | 6 | no |
 | `src/editor/entry-frame.ts` | editor | 411 | 3 | yes |
 | `src/editor/entry-keys.ts` | editor | 496 | 15 | no |
@@ -690,20 +698,20 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/entries/session.ts` | entries | 165 | 4 | no |
 | `src/entries/thought-index.ts` | entries | 271 | 2 | no |
 | `src/entries/writer.ts` | entries | 250 | 11 | yes |
-| `src/main.ts` | root | 1134 | 1 | yes |
+| `src/main.ts` | root | 1179 | 1 | yes |
 | `src/model/whisper-model.ts` | root | 186 | 6 | yes |
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
 | `src/notices.ts` | root | 169 | 23 | no |
 | `src/reading/close-processor.ts` | reading | 39 | 1 | yes |
-| `src/reading/entry-processor.ts` | reading | 347 | 1 | yes |
+| `src/reading/entry-processor.ts` | reading | 348 | 1 | yes |
 | `src/settings-tab.ts` | root | 785 | 1 | yes |
 | `src/settings.ts` | root | 325 | 8 | no |
 | `src/ui/css.ts` | ui | 88 | 4 | no |
-| `src/ui/day-link.ts` | ui | 51 | 2 | no |
+| `src/ui/day-link.ts` | ui | 62 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom-timing.ts` | ui | 151 | 3 | yes |
-| `src/ui/loom.ts` | ui | 2164 | 4 | yes |
+| `src/ui/loom-timing.ts` | ui | 183 | 4 | yes |
+| `src/ui/loom.ts` | ui | 2168 | 4 | yes |
 | `src/ui/markdown-pane.ts` | ui | 372 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -735,7 +743,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `portalMotion` | `"normal"` | `main.ts`<br>`settings-tab.ts` |
 | `dayNoteFolder` | `"Chronomancer"` | `entries/day-note.ts`<br>`settings-tab.ts` |
 | `dayNoteFormat` | `"YYYY.MM.DD"` | `entries/day-note.ts`<br>`settings-tab.ts` |
-| `contexts` | `[]` | `core/contexts.ts`<br>`core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` |
+| `contexts` | `[]` | `core/contexts.ts`<br>`core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/day-link.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` |
 | `equalizeEntrySizes` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entrySize` | `"1em"` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentStep` | `18` | `settings-tab.ts`<br>`ui/css.ts` |
@@ -838,6 +846,7 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-duration-num` | styled | `editor/stopwatch-widget.ts`<br>`ui/dcn.ts` |
 | `weaver-duration-raw` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts` |
 | `weaver-duration-sigil` | styled | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
+| `weaver-entry-daylabel` | styled | `ui/day-link.ts` |
 | `weaver-entry-daylink` | styled | `ui/day-link.ts` |
 | `weaver-entry-head` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`reading/entry-processor.ts`<br>`ui/css.ts` |
 | `weaver-entry-inline` | styled | `editor/entry-decorations.ts` |
@@ -913,7 +922,7 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | `src/ui/css.ts` | 0 | 4 |
 | `src/ui/dcn.ts` | 0 | 6 |
 | `src/ui/invitation.ts` | 0 | 5 |
-| `src/ui/loom-timing.ts` | 0 | 3 |
+| `src/ui/loom-timing.ts` | 0 | 4 |
 | `src/ui/markdown-pane.ts` | 0 | 3 |
 
 Modules with no symbol named by any test: 11.
@@ -1015,7 +1024,7 @@ Pads a clock component to two digits.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `pad2` | function | 2 | `export function pad2(value: number): string` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/day.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`ui/invitation.ts` | `tests/clock.test.ts` |
-| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/capture.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `formatClock` | function | 11 | `export function formatClock(date: Date): string` | `core/capture.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/duration.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/close.ts`
 
@@ -1069,7 +1078,8 @@ The destinations Weaver may weave into, and the way back from a path.
 | `readContexts` | function | 361 | `export function readContexts(value: unknown, main?: DayNoteOptions): ContextRead` | `entries/day-note.ts`<br>`settings-tab.ts`<br>`settings.ts` | `tests/contexts.test.ts` |
 | `contextDraftError` | function | 422 | `export function contextDraftError(folder: string, format: string): string \| null` | `settings-tab.ts` | `tests/contexts.test.ts` |
 | `sourceDayOf` | function | 439 | `export function sourceDayOf(path: string, contexts: readonly WeavingContext[]): string \| null` | `main.ts` | `tests/contexts.test.ts` |
-| `entryDayLinkTarget` | function | 459 | `export function entryDayLinkTarget( day: string \| null, sourcePath: string, contexts: readonly WeavingContext[] ): string \| null` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/contexts.test.ts` |
+| `EntryDayLabel` | interface | 450 | `export interface EntryDayLabel` | `editor/entry-decorations.ts`<br>`ui/day-link.ts` | — |
+| `entryDayLabel` | function | 490 | `export function entryDayLabel( day: string \| null, sourcePath: string, contexts: readonly WeavingContext[], currentDay: string ): EntryDayLabel \| null` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/contexts.test.ts` |
 
 #### `src/core/day-stats.ts`
 
@@ -1089,7 +1099,7 @@ The day's name, and nothing else.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DayNoteOptions` | interface | 18 | `export interface DayNoteOptions` | `core/contexts.ts`<br>`entries/day-note.ts` | — |
-| `dayKey` | function | 24 | `export function dayKey(now: Date): string` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/day-note.test.ts`<br>`tests/entry-plans.test.ts` |
+| `dayKey` | function | 24 | `export function dayKey(now: Date): string` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`editor/entry-decorations.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom.ts` | `tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/entry-plans.test.ts` |
 | `dayNotePathFor` | function | 36 | `export function dayNotePathFor(day: string, options: DayNoteOptions): string` | `core/contexts.ts` | `tests/day-note.test.ts` |
 | `dayNotePath` | function | 46 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | — | `tests/day-note.test.ts`<br>`tests/start-entry.test.ts` |
 | `dayKeyFromName` | function | 54 | `export function dayKeyFromName(basename: string): string \| null` | `core/contexts.ts`<br>`core/reference.ts`<br>`entries/engine.ts` | `tests/day-note.test.ts` |
@@ -1115,7 +1125,7 @@ The clock row of an entry, and the clocks it is written with.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DurationSigil` | type | 30 | `export type DurationSigil = "+" \| "-" \| "="` | `core/entries.ts`<br>`core/insert.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/engine.ts` | — |
-| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/capture.ts`<br>`core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
+| `formatClock` | function | 36 | `export function formatClock(ms: number): string` | `core/capture.ts`<br>`core/clock.ts`<br>`core/close.ts`<br>`core/day-stats.ts`<br>`core/insert.ts`<br>`editor/duration-ticker.ts`<br>`editor/stopwatch-widget.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`ui/loom-timing.ts` | `tests/clock.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-plans.test.ts` |
 | `formatDurationLine` | function | 41 | `export function formatDurationLine(sigil: DurationSigil, ms: number): string` | `core/insert.ts` | — |
 | `ClockRow` | interface | 56 | `export interface ClockRow` | `reading/entry-processor.ts` | — |
 | `parseClockRow` | function | 98 | `export function parseClockRow(text: string): ClockRow \| null` | `core/entries.ts`<br>`core/insert.ts`<br>`reading/entry-processor.ts` | `tests/duration.test.ts` |
@@ -1225,7 +1235,7 @@ Where you have been: a real history, with a cursor, not a stack that eats itself
 | `NavigationHistory` | interface | 69 | `export interface NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
 | `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
 | `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
-| `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-model-controller.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
+| `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-model-controller.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
 | `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `core/capture-state.ts`<br>`entries/loom.ts`<br>`main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/plugin.test.ts` |
 | `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
@@ -1394,8 +1404,8 @@ The entry, drawn.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `entryDecorationSet` | function | 125 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, contexts: readonly WeavingContext[], openDayLink?: OpenDayLink ):...` | — | `tests/entry-decorations.test.ts` |
-| `entryDecorationsExtension` | function | 280 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, getContexts: () => readonly WeavingContext[], openD...` | `main.ts` | `tests/stopped-clock-render.test.ts` |
+| `entryDecorationSet` | function | 132 | `export function entryDecorationSet( state: EditorState, session: EntrySession, path: string, clock: EntryClock, contexts: readonly WeavingContext[], openDayLink?: OpenDayLink, c...` | — | `tests/entry-decorations.test.ts` |
+| `entryDecorationsExtension` | function | 288 | `export function entryDecorationsExtension( getSession: () => EntrySession, getPath: () => string, getClock: () => EntryClock, getContexts: () => readonly WeavingContext[], openD...` | `main.ts` | `tests/stopped-clock-render.test.ts` |
 
 #### `src/editor/entry-field.ts`
 
@@ -1470,8 +1480,8 @@ The live editor views, in one place.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
-| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `registerEditorView` | function | 15 | `export function registerEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/plugin.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `unregisterEditorView` | function | 20 | `export function unregisterEditorView(view: EditorView): void` | — | `tests/entry-keys.test.ts`<br>`tests/plugin.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `viewRegistryExtension` | const | 25 | `export const viewRegistryExtension = ViewPlugin.fromClass( class` | `main.ts` | — |
 | `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
 | `findEditorViewForFile` | function | 43 | `export function findEditorViewForFile(file: TFile): EditorView \| null` | `entries/engine.ts`<br>`entries/writer.ts` | — |
@@ -1748,7 +1758,7 @@ Reading view: the same entry the editor draws, in the same frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `createEntryProcessor` | function | 132 | `export function createEntryProcessor( contexts: () => readonly WeavingContext[], openDayLink?: OpenDayLink, clock?: EntryClock ): MarkdownPostProcessor` | `main.ts` | `tests/entry-processor.test.ts` |
+| `createEntryProcessor` | function | 134 | `export function createEntryProcessor( contexts: () => readonly WeavingContext[], openDayLink?: OpenDayLink, clock?: EntryClock, currentDay: () => string = () => dayKey(new Date(...` | `main.ts` | `tests/entry-processor.test.ts` |
 
 #### `src/settings-tab.ts`
 
@@ -1786,12 +1796,12 @@ The generated stylesheet: the five numbers a note is drawn with, the two
 
 #### `src/ui/day-link.ts`
 
-The entry-day link at the top right of a frame: `[[YYYY.MM.DD]]`.
+The entry-day label at the top right of a frame.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `OpenDayLink` | type | 17 | `export type OpenDayLink = (target: string, sourcePath: string) => void` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | — |
-| `dayLinkElement` | function | 26 | `export function dayLinkElement( target: string, sourcePath: string, open: OpenDayLink ): HTMLElement` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/day-link.test.ts` |
+| `OpenDayLink` | type | 19 | `export type OpenDayLink = (target: string, sourcePath: string) => void` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | — |
+| `entryDayElement` | function | 28 | `export function entryDayElement( label: EntryDayLabel, sourcePath: string, open: OpenDayLink ): HTMLElement` | `editor/entry-decorations.ts`<br>`reading/entry-processor.ts` | `tests/day-link.test.ts` |
 
 #### `src/ui/dcn.ts`
 
@@ -1820,13 +1830,14 @@ How an invitation is named, in the words a writer reads.
 
 #### `src/ui/loom-timing.ts`
 
-The loom's timing group: one beginning clock and one writing duration, in the
+The loom's timing group: a clock half and a writing duration, in the shared
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `LoomTimingMode` | type | 17 | `export type LoomTimingMode = "preview" \| "running" \| "paused" \| "recorded" \| "pending"` | `ui/loom.ts` | — |
-| `LoomTimingReading` | interface | 20 | `export interface LoomTimingReading` | — | — |
-| `LoomTiming` | class | 63 | `export class LoomTiming` | `ui/loom.ts` | — |
+| `LoomTimingMode` | type | 24 | `export type LoomTimingMode = "preview" \| "running" \| "paused" \| "recorded" \| "pending"` | `ui/loom.ts` | — |
+| `LoomTimingReading` | interface | 27 | `export interface LoomTimingReading` | — | — |
+| `ClockFace` | type | 43 | `export type ClockFace = \|` | `ui/loom.ts` | — |
+| `LoomTiming` | class | 91 | `export class LoomTiming` | `ui/loom.ts` | — |
 
 #### `src/ui/loom.ts`
 
@@ -1834,10 +1845,10 @@ The Loom: the one compact surface a thought is written in, from anywhere.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `CaptureSurface` | interface | 38 | `export interface CaptureSurface` | — | — |
-| `LoomHost` | interface | 59 | `export interface LoomHost` | — | — |
-| `LoomInvitation` | interface | 84 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
-| `Loom` | class | 170 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
+| `CaptureSurface` | interface | 37 | `export interface CaptureSurface` | — | — |
+| `LoomHost` | interface | 58 | `export interface LoomHost` | — | — |
+| `LoomInvitation` | interface | 83 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
+| `Loom` | class | 169 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
 
 #### `src/ui/markdown-pane.ts`
 

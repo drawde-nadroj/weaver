@@ -1,15 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WeaverPlugin from "../src/main";
 import { entryIndexField } from "../src/editor/entry-field";
 import {
+  addLeafWithView,
   createApp,
+  createFile,
+  createView,
   editorExtensions,
   instantiatePlugin,
+  liveEditor,
   postProcessors,
   registeredCommands,
+  rerenderCount,
   resetHarness
 } from "../test-support/harness";
+import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 
 async function start(): Promise<WeaverPlugin> {
   const plugin = instantiatePlugin(WeaverPlugin, createApp());
@@ -19,6 +25,10 @@ async function start(): Promise<WeaverPlugin> {
 
 beforeEach(() => {
   resetHarness();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("the command surface", () => {
@@ -82,5 +92,28 @@ describe("the editor layer", () => {
     expect(postProcessors(plugin).length).toBe(2);
 
     plugin.onunload();
+  });
+
+  it("refreshes open entry dates at the local-day boundary", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 5, 23, 59, 59, 900));
+    const file = createFile("Projects/Idea.md", "{ 1.1.1 }\nprose\n2026-11-05 23:00:00");
+    const app = createApp([file]);
+    const preview = createView(app, file, {}, "preview");
+    const editor = liveEditor(file, "{ 1.1.1 }\nprose\n2026-11-05 23:00:00");
+    addLeafWithView(app, preview);
+    registerEditorView(editor);
+    const plugin = instantiatePlugin(WeaverPlugin, app);
+
+    await plugin.onload();
+    const beforeEditor = editor.dispatches;
+    const beforePreview = rerenderCount(preview);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(editor.dispatches).toBe(beforeEditor + 1);
+    expect(rerenderCount(preview)).toBe(beforePreview + 1);
+
+    plugin.onunload();
+    unregisterEditorView(editor);
   });
 });

@@ -139,19 +139,21 @@ Every surface must answer three questions; one that cannot is not a surface.
   midnight and typed after it records the day it was written in. Existing dates
   and moments are never replaced, and a settled entry never acquires one.
   Historical undated entries inherit the filename day.
-- The recorded day is labelled only when it differs from the note's own day: a
-  creation day other than the filename day has a permanently visible top-right
-  link in the note's date style. An awaiting draft has no recorded beginning, so
-  it has no date link — the filename's day would claim a creation day the first
-  input has not chosen yet — and a captured same-day entry and a historical
-  undated entry have none either, including no hidden keyboard stop.
-  `core/day.ts` makes that shared decision in `entryDayLinkTarget`;
-  `ui/day-link.ts` builds the link. The address row positions it absolutely in
-  Live Preview, and the static frame does the same in Reading view. Caret,
-  hover and focus never change visibility; keyboard focus retains its outline.
-  The link changes no text geometry. Opening or resuming an entry never redates it.
-  Source mode and non-day notes carry no generated link.
-- The frame's labels — address, entry-day link, stopwatch and moment —
+- The recorded day is labelled when it is useful context. In a dated note, its
+  reference is the note's own day, so another recorded day gets a persistent
+  top-right label. In an ordinary note, its reference is the current local day:
+  today's entries stay uncluttered and every other recorded day stays visible.
+  `core/contexts.ts#entryDayLabel` makes that shared decision. When the day has a
+  resolvable destination, `ui/day-link.ts` builds a keyboard-accessible link;
+  otherwise it builds static text. An awaiting draft and a historical undated
+  entry have no label. The address row positions the label absolutely in Live
+  Preview, and the static frame does the same in Reading view. Caret, hover and
+  focus never change visibility; keyboard focus retains its outline for a link.
+  The label changes no text geometry. Opening or resuming an entry never redates
+  it. Source mode carries no generated label. Weaver refreshes Live Preview
+  decorations and re-renders open Reading views at the next local-day boundary,
+  without writing a note.
+- The frame's labels — address, entry-day label, stopwatch and moment —
   carry the note's own weight; nothing sets one, and there is no weight setting. They
   are told apart from the prose by colour, tabular figures and position, not by
   weight.
@@ -270,12 +272,15 @@ existing evidence is refused rather than overwritten.
 prose and action rails through drafting, saving, reading and branching. The identity
 uses normal-text digits and dimension-coloured punctuation; a draft names its kind
 and dimension, never an invented address. Mobile omits that identity and places
-actions beside the prose. `src/ui/loom-timing.ts` draws beginning and duration
-clocks; mobile shows duration alone. Both use normal-text digits and
+actions beside the prose. `src/ui/loom-timing.ts` draws the clock and duration
+halves; mobile shows duration alone. Both use normal-text digits and
 dimension-coloured colons, distinguished by icons.
-An empty draft previews the shared wall clock beside zero duration, without a label;
-the first committed input freezes the beginning and starts the stopwatch. A
-paused draft says Paused and holds its displayed second. Saved or browsed timing
+The clock half carries a `ClockFace`: the shared sample while the draft is being
+written, or a moment the note recorded. Before input it shows the current time
+beside zero duration, without a label. The first committed input freezes the
+beginning the note will record, and the clock keeps counting the present beside the
+running stopwatch instead of stopping on its first tick. A paused draft says Paused
+and holds its displayed duration while the clock continues. Saved or browsed timing
 comes from the note; missing values remain unknown, never invented zero.
 When a reference and draft are visible together, each has its own timing group.
 

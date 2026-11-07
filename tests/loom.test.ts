@@ -251,7 +251,7 @@ describe("mobile writing", () => {
 
 
 describe("composer timing", () => {
-  it("previews the wall clock, freezes the beginning on input and marks a pause", () => {
+  it("counts the wall clock and the stopwatch together, then reads the recorded beginning", () => {
     const run = harness();
     expect(timing("beginning")).toBe("09:00:00");
     expect(timing("duration")).toBe("00:00:00");
@@ -259,11 +259,13 @@ describe("composer timing", () => {
     expect(timing("beginning")).toBe("09:00:01");
     type(run, "a beginning");
     run.advance(5400);
-    expect(timing("beginning")).toBe("09:00:01");
+    // The beginning froze at 09:00:01, but the clock keeps counting the present.
+    expect(timing("beginning")).toBe("09:00:06");
     expect(timing("duration")).toBe("00:00:05");
     run.controller.pause();
     expect(bodyQuery(".weaver-composer-state .weaver-composer-timing")?.getAttribute("data-mode")).toBe("paused");
     run.advance(10_000);
+    expect(timing("beginning")).toBe("09:00:16");
     expect(timing("duration")).toBe("00:00:05");
     expect(run.requests).toEqual([]);
   });
@@ -663,7 +665,8 @@ describe("browsing and composing one Loom", () => {
     await browse(run);
     run.advance(2400);
     expect(timing("duration")).toBe("00:00:02");
-    expect(timing("beginning")).toBe("09:00:00");
+    // The draft's clock reads the shared present; the reference keeps its record.
+    expect(timing("beginning")).toBe("09:00:02");
     expect(timing("duration", ".weaver-composer-reference")).toBe("00:01:14");
     expect(timing("beginning", ".weaver-composer-reference")).toBe("10:15:36");
     const prose = run.button(".weaver-composer-reference-prose .cm-content");
