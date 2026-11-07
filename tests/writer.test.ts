@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { EditorState } from "@codemirror/state";
+import { editorInfoField } from "obsidian";
 import { readAlignments } from "../src/core/alignments";
 import { parseEntries } from "../src/core/entries";
 import { planCaptureEntry, planDuration } from "../src/core/insert";
@@ -22,6 +24,7 @@ import {
   createApp,
   createFile,
   fileContent,
+  createView,
   liveEditor,
   resetHarness
 } from "../test-support/harness";
@@ -75,6 +78,34 @@ describe("the one writer", () => {
       expect(view.state.doc.toString()).toBe(withStats(typed));
     } finally {
       unregisterEditorView(view);
+    }
+  });
+
+  it("persists captures through the vault when Reading view retains a dormant editor", async () => {
+    const source = "{ 1.1.1 }\nrecorded prose\n+ 00:01:00 09:00:00\n";
+    const file = createFile(DAY, source);
+    const app = createApp([file]);
+    const dormant = liveEditor(file, "stale hidden prose");
+    const owner = createView(app, file, dormant, "preview");
+    dormant.state = EditorState.create({
+      doc: "stale hidden prose",
+      extensions: [editorInfoField.init(() => owner)]
+    });
+    registerEditorView(dormant);
+    try {
+      const result = await rewriteDay(
+        app, file,
+        planRewrite((data) => planCaptureEntry(
+          data, parseEntries(data), capture("captured from Reading view", new Date(2026, 10, 5, 9, 0, 0))
+        )),
+        true, { confirmPersistence: true }
+      );
+      expect(fileContent(file)).toBe(result?.source);
+      expect(parseEntries(fileContent(file)).entries.map((entry) => entry.title))
+        .toEqual(["recorded prose", "captured from Reading view"]);
+      expect(dormant.dispatches).toBe(0);
+    } finally {
+      unregisterEditorView(dormant);
     }
   });
 

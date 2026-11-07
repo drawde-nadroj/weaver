@@ -8,10 +8,10 @@ there is nothing to do.
 1. `⌘⇧⏎`, or *Weave a Thread* from the palette or the toolbar, or `Weave` on a
    Realm in the navigator. One surface opens at the bottom edge. The note you were
    reading does not move, and no note is created.
-2. Its header names the Realm once — `Realm: <name>`, which opens the navigator's
-   Realms tab without travelling — defaulting to what the workspace is showing, else
-   Main. When the workspace shows a different Realm, one quiet line says
-   `Writing to <realm> · viewing <realm>`; nothing is repeated.
+2. Its header names the writing Realm once — `<name> ▾` opens the destination
+   chooser without travelling. When viewing differs from writing, a quiet line
+   says `viewing <realm>`. Choosing another destination with words present still
+   requires accepting the proposed change; it never silently retargets the draft.
 3. Type. The first committed character freezes the draft's beginning: the local day
    and the moment, a duration that counts only while you are writing here, and the
    openings that instant qualifies for. Letters inside the input are prose; `N`, `T`,

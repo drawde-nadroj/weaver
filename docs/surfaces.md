@@ -243,41 +243,28 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 
 ### The Loom and its openings
 
-An opening is a minute, and the composer is where a thought is written. They are
-one surface, not two competing cards: `src/ui/loom.ts` owns the element, and
-`src/ui/loom.ts` draws the opening's status *inside* it — as the whole surface
-when no draft exists, and as one line of the status row when one does.
+An opening names a minute; an invitation offers a beginning. The Loom owns both
+the idle invitation and the writing surface, but never draws an invitation inside
+an active draft. An arriving invitation cannot change its destination, text,
+selection or timing, and hiding a draft shows its resume strip, not another offer.
 
-An opening is not a permission that waits to be used. For `04:33` the interval is
-`[04:33:00, 04:34:00)`: writing that *begins* inside it was written through it, and
-finishing later changes nothing. A minute nobody entered is gone, and waking after
-a sleep replays nothing, because the eligibility is derived from the calendar
-rather than accumulated from timers.
+When no draft exists, the reduced row names one outstanding invitation, its Realm,
+its local opening time and whether it is upcoming or available. Opening it starts
+ordinary writing; dismissing it writes nothing. The scheduler still limits
+availability to the opening's own minute. The UI draws no ticking deadline,
+closed-minute farewell or second Weave action in the writing field.
+The idle invitation's thin, static spectrum border identifies an offer; the draft
+keeps its dimension colour.
 
-There is no special gesture to enter an opening. The first committed non-whitespace
-character of a root samples the instant once, freezes the beginning, and asks which
-openings that instant qualifies for; a branch qualifies for none, because only a
-root is written into a minute. Clearing every character resets the timing *and* the
-association. Clicking `Weave` therefore does one thing — opens or resumes normal
-writing in that Realm.
+The first committed non-whitespace character still freezes the beginning and asks
+which openings that instant qualifies for. That evidence rule is separate from the
+offer: a root begun within its opening's minute qualifies, a branch does not, and
+finishing later changes nothing. Clearing the prose resets the association.
 
-Two rules keep that honest at the edges. An opening is a whole minute, so a one-off
-schedule configured at `05:11:04` is refused when read rather than silently snapped:
-a record names a minute, and a beginning is measured against one. And evidence never
-costs the words: when a record cannot be added to a note — an id that is not a whole
-minute, say — the thought is written without it, because the entry *is* the record
-and the alignment is extra. A note whose own history cannot be *read* is still
-refused outright, because writing over evidence that cannot be parsed is worse than
-declining to write.
-
-The strip says the opening once: its Realm, its own local `HH:MM`, and what it is
-doing — `opens in 06:05`, or `open · 00:39 left`, or `closed · writing normally`
-when it closed under an empty composer. It has two homes and is moved between them,
-never duplicated: when nothing is being written it *is* the surface, and while a
-draft is open it is one line of that draft's status row. The rainbow belongs to an
-opening that can still be entered and goes the moment its minute does;
-`portalMotion` sets its duration, and `off` pins the angle while keeping the six
-colours.
+An opening is a whole minute, so a one-off schedule configured at `05:11:04` is
+refused rather than silently snapped. Evidence never costs the words: a record
+that cannot be added is dropped while the thought is still written. Unreadable
+existing evidence is refused rather than overwritten.
 
 `src/ui/loom.ts` is the one bottom surface, and it speaks the note's own visual
 language: the draft's dimension colour, the same rounded frame, two rails cut behind
@@ -286,9 +273,9 @@ and the same digit grammar for an address. It is a labelled non-modal region —
 `aria-modal`, no focus trap, no dimming — mounted in the focused window's document
 above every leaf, so a layout change cannot destroy the draft's input.
 
-- Header: one destination control (`Writing to <Tapestry>`), `Hide`, and a `More`
-  overflow menu. When viewing differs from writing, one quiet line says
-  `viewing <realm>`; nothing repeats it. The destination control opens the chooser.
+- Header: a compact, left-aligned destination control (`Main ▾`, or `Branch · Main ▾`),
+  `Hide`, and a `More` overflow menu. When viewing differs from writing, one quiet
+  line says `viewing <realm>`. The destination control opens the chooser.
 - Editing: the prose is the dominant area, a textarea that grows with its content up
   to the usable viewport, with no nested input frame. `⇧⏎` is the newline and `⏎`
   commits on every platform — a phone's soft Return included — as does the footer's
@@ -297,11 +284,13 @@ above every leaf, so a layout change cannot destroy the draft's input.
   Obsidian's own scope claims `Mod+Enter` before any field listener can see it. A
   committed IME composition is one beginning, and a held key never saves twice.
 - Saving: the prose is read-only and the status says `Saving…`. A failed or
-  unconfirmed save keeps the text, the timing and the reason, and never writes twice.
-- Saved: the saved thought is drawn from its note by `renderMarkdown`, in its own
-  dimension colour. `Branch`, `New Thread` and a quiet `Close` are offered, and one
-  more `⏎` or `Esc` puts the reading away. The Loom does not travel or create another
-  entry by itself.
+  unconfirmed save keeps the text, timing and reason. `Check save` reads without
+  writing; only a proven-absent write offers `Retry save`, guarded against a note
+  that changed since the attempt. Reading view writes through the vault, never
+  into its dormant editor buffer.
+- Saved: the saved thought is drawn from its note by `renderMarkdown`. `Branch`
+  and `New Thread` are offered as secondary actions; Save is removed. The header's
+  `Hide`, one more `⏎`, or `Esc` puts the reading away without another write.
 - Branching: one compact parent excerpt is shown above the prose, expandable on
   request. A destination or parent change with words in the draft is still a
   proposal, revalidated when applied.
@@ -315,12 +304,15 @@ above every leaf, so a layout change cannot destroy the draft's input.
 - The chooser, the Tapestry list and the invitation list replace the content area
   temporarily; the draft, its selection, its timing and its scroll are preserved.
 
-Its box is measured from the visible surface, never inherited: the width is 720px
-centred in the viewport (the viewport less its inset on a narrow screen), the height
-follows the content up to the usable visual viewport, and the bottom edge stays
-anchored while a reference expands upward. A phone's keyboard and toolbar are
-reserved, not overlapped. Opening the Loom freezes the note's own clock first, so two
-clocks never run for one thought. Desktop shortcut suffixes are not drawn on touch.
+Its box follows the content up to the usable visual viewport. `loomAnchor` in
+`src/core/frame.ts` returns that viewport's bottom edge and the extent above it;
+the renderer grows upward from that edge rather than deriving a CSS bottom inset
+from the window height. Keyboard resize and panning preserve the textarea node and
+selection. Only an intersecting mobile toolbar reserves space; a toolbar behind
+the keyboard does not. The body scrolls while the header and footer remain fixed.
+Opening the Loom freezes the note's own clock first. Desktop controls are 32px
+high, with no native button shadows; mobile and coarse-pointer targets are 44px,
+without filling every target's background. Shortcut suffixes are not drawn on touch.
 
 Reading view draws no opening at all: a note is a record, and the surface floats
 above every leaf regardless of which one is showing.
@@ -383,8 +375,8 @@ surface, and the same area swaps to the Tapestry chooser or the invitation list.
 - The Tapestry chooser lists every destination with `Write here` (retarget the open
   draft) and `Open workspace` (a deliberate travel). Choosing a row for writing
   does not move the screen.
-- The invitation list shows the outstanding openings with `Open` and `Hide`; it is
-  the same portal model the footer strip reads, not a second machine.
+- The invitation list and idle invitation row read the same outstanding offers.
+  Neither inserts a second action into an active draft.
 - Rows carry address, recorded time and the first words; a thought with no
   recorded moment is labelled `Time not recorded`, never a fabricated midnight.
 

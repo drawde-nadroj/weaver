@@ -437,18 +437,4 @@ describe("the beginning a draft is written through", () => {
     expect(test.controller.captureAt("main", local(11, 0, 20))).toEqual([]);
   });
 
-  it("says which minute closed, and only while it is recent", () => {
-    const test = harness({ rhythm: false });
-
-    test.at(local(11, 0, 30));
-    test.controller.reconcile();
-    expect(test.controller.recentlyClosed(3000)).toEqual([]);
-
-    test.at(local(11, 1, 1));
-    expect(test.controller.recentlyClosed(3000).map((occurrence) => occurrence.portal.minute)).toEqual([0]);
-
-    // Long after: a wake replays nothing.
-    test.at(local(14, 30));
-    expect(test.controller.recentlyClosed(3000)).toEqual([]);
-  });
 });

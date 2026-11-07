@@ -27,7 +27,7 @@ import { threadViewOf, type ThoughtRef } from "./core/capture";
 import { portalAlignments, readPortalSchedules } from "./core/portals";
 import { editorPathOf } from "./editor/editor-path";
 import { back, canGoBack, canGoForward, forward, initialHistory, record, type NavigationHistory, type Stop } from "./core/navigation";
-import { OPENING_WINDOW_MS, portalTime } from "./core/portals";
+import { portalTime } from "./core/portals";
 import { closeDecorationsExtension } from "./editor/close-decorations";
 import { entryDecorationsExtension } from "./editor/entry-decorations";
 import { entryFrameExtension } from "./editor/entry-frame";
@@ -42,7 +42,7 @@ import { ensureDayNote, contextList, resolveContextDay } from "./entries/day-not
 import { EntryEngine } from "./entries/engine";
 import { LocalState, type WorkspaceSnapshot } from "./entries/local-state";
 import { PluginDataStore } from "./entries/plugin-data";
-import { PortalController, type OfferedInvitation } from "./entries/portals";
+import { PortalController } from "./entries/portals";
 import { ThoughtIndex } from "./entries/thought-index";
 import { ReferenceController } from "./entries/reference";
 import { EntrySession } from "./entries/session";
@@ -63,12 +63,9 @@ import { createEntryProcessor } from "./reading/entry-processor";
 import { normalizeData, whisperReachable, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
-import { Loom, type PortalStripView } from "./ui/loom";
+import { Loom } from "./ui/loom";
 import type { WeavingContext } from "./core/contexts";
 import { isMobile, isPhone, isTablet } from "./ui/platform";
-
-/** How long a minute that has closed keeps saying so, once. */
-const CLOSED_WINDOW_MS = 3000;
 
 /** Hand edits in a day note settle for this long before the counters follow. */
 const DAY_STATS_DELAY_MS = 2000;
@@ -221,7 +218,7 @@ export default class WeaverPlugin extends Plugin {
       invitations: () =>
         this.portals.outstanding().map((offered) => ({
           id: offered.occurrence.id,
-          name: offered.occurrence.name,
+          name: `${offered.occurrence.name || "Invitation"} · ${this.contextName(offered.occurrence.contextId)}`,
           opening: portalTime(offered.occurrence.portal),
           phase: offered.phase
         })),
@@ -230,17 +227,6 @@ export default class WeaverPlugin extends Plugin {
         this.openLoom(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
       },
       dismissInvitation: (occurrenceId) => {
-        this.portals.dismiss(occurrenceId);
-        this.repaintSurface();
-      },
-      portalStrip: () => this.portalStrip(),
-      weaveOpening: (occurrenceId) => {
-        const offered = this.portals
-          .outstanding()
-          .find((candidate) => candidate.occurrence.id === occurrenceId);
-        this.openLoom(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
-      },
-      dismissOpening: (occurrenceId) => {
         this.portals.dismiss(occurrenceId);
         this.repaintSurface();
       },
@@ -959,97 +945,9 @@ export default class WeaverPlugin extends Plugin {
     return this.entries.jumpTo(stop.path, stop.n, stop);
   }
 
-  /**
-   * Repaints the one bottom surface from the openings and the draft.
-   *
-   * There is no separate dock to keep in step any more: the strip is part of the
-   * composer, so one call draws both, and the navigator (when it is open) only
-   * re-derives its own list.
-   */
+  /** Repaints the one surface; invitations never interrupt an active draft. */
   repaintSurface(): void {
     this.composer?.render();
-  }
-
-  /**
-   * The opening the surface should speak about, if any.
-   *
-   * Closed, this is the whole surface: the nearest offering in the order the
-   * controller sorts — open first, then by opening time. A draft speaks about its
-   * own Realm only, and a draft that already qualified says `Through` itself,
-   * because an opening it already counts for is not something to offer again.
-   */
-  portalStrip(): PortalStripView | null {
-    const now = Date.now();
-    const state = this.controller.state;
-    const outstanding = this.portals.outstanding();
-
-    if (state.phase === "editing") {
-      if (state.invitations.length > 0) return null;
-      const mine = outstanding.find(
-        (candidate) => candidate.occurrence.contextId === state.contextId
-      );
-      if (mine !== undefined) {
-        const others = outstanding.filter(
-          (candidate) => candidate.occurrence.contextId !== state.contextId
-        ).length;
-        return this.offeredStrip(mine, now, others);
-      }
-      return this.closedStrip(state.contextId, true, 0);
-    }
-
-    if (state.phase !== "closed") return null;
-
-    const primary = outstanding[0];
-    if (primary !== undefined) return this.offeredStrip(primary, now, outstanding.length - 1);
-    return this.closedStrip(null, false, 0);
-  }
-
-  /** One outstanding opening, as the strip says it. */
-  private offeredStrip(
-    offered: OfferedInvitation,
-    now: number,
-    others: number
-  ): PortalStripView {
-    const opensAt = offered.occurrence.portal.opensAt;
-    const live = offered.phase === "available";
-    return {
-      occurrenceId: offered.occurrence.id,
-      contextName: this.contextName(offered.occurrence.contextId),
-      opening: portalTime(offered.occurrence.portal),
-      phase: live ? "available" : "approaching",
-      remainingMs: live ? opensAt + OPENING_WINDOW_MS - now : opensAt - now,
-      others,
-      writingNormally: false,
-      actionable: true
-    };
-  }
-
-  /**
-   * A minute that has just closed, said once and then forgotten.
-   *
-   * It is derived from the calendar rather than remembered, so waking after a long
-   * sleep replays nothing and no missed opening leaves a trace in any note.
-   */
-  private closedStrip(
-    contextId: string | null,
-    writingNormally: boolean,
-    others: number
-  ): PortalStripView | null {
-    const closed = this.portals
-      .recentlyClosed(CLOSED_WINDOW_MS)
-      .find((occurrence) => contextId === null || occurrence.contextId === contextId);
-    if (closed === undefined) return null;
-
-    return {
-      occurrenceId: closed.id,
-      contextName: this.contextName(closed.contextId),
-      opening: portalTime(closed.portal),
-      phase: "closed",
-      remainingMs: 0,
-      others,
-      writingNormally,
-      actionable: false
-    };
   }
 
   /** One Realm's display name, or its id when the settings cannot name it. */

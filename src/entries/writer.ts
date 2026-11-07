@@ -1,8 +1,9 @@
 /**
  * The one writer of a day note.
  *
- * A note has exactly one writer at a time: the live editor when the file is open
- * in one, `Vault.process` otherwise — never both. Two writers is what made
+ * A note has exactly one writer at a time: an active editing buffer, or
+ * `Vault.process` otherwise — never both. Reading view's dormant buffer is not a
+ * writer. Two writers is what made
  * Obsidian report the file as modified externally: the day-stats pass landed on
  * disk behind an editor holding the same note, and the editor's next keystroke
  * wrote over it (or lost the race the other way round).
@@ -121,11 +122,11 @@ export async function rewriteDay(
   return box.result;
 }
 
-/** The note that owns `file` in an open markdown leaf, if there is one. */
+/** The editing leaf that can save `file`; a Reading leaf saves different data. */
 function markdownViewFor(app: App, file: TFile): MarkdownView | null {
   for (const leaf of app.workspace.getLeavesOfType("markdown")) {
     const view = leaf.view;
-    if (view instanceof MarkdownView && view.file?.path === file.path) return view;
+    if (view instanceof MarkdownView && view.file?.path === file.path && view.getMode() === "source") return view;
   }
   return null;
 }

@@ -5,8 +5,8 @@
  * one footer for timing and Save. The destination control opens a chooser that
  * temporarily replaces the content area, so the writer never scrolls past
  * destination machinery to reach the words. Reference context is optional and
- * starts collapsed; the saved thought replaces the editor and offers Branch, New
- * Thread and a quiet close.
+ * starts collapsed; the saved thought replaces the editor and offers Branch and
+ * New Thread, while the header's Hide remains the one dismissal.
  *
  * The renderer owns only presentation and ephemeral interaction: mounted DOM, the
  * composing flag, measurements and a hint overlay. Every semantic action is a
@@ -20,7 +20,7 @@ import { formatClock as formatTimeOfDay } from "../core/clock";
 import { dimensionColor, dimensionColorVars } from "../core/color";
 import { formatClock as formatDuration } from "../core/duration";
 import { formatAddress } from "../core/entries";
-import { loomWidth } from "../core/frame";
+import { loomAnchor, type LoomAnchor, type LoomViewport } from "../core/frame";
 import type { ThreadView, ThoughtRef } from "../core/capture";
 import type { WeavingContext } from "../core/contexts";
 import type { CaptureView } from "../entries/capture-model-controller";
@@ -59,7 +59,7 @@ export interface LoomHost {
   /** Writes the open draft into a Tapestry. */
   writeHere?(contextId: string): void;
   /** Every outstanding invitation. */
-  invitations?(): readonly { id: string; name: string; opening: string; phase: string }[];
+  invitations?(): readonly LoomInvitation[];
   /** Opens an invitation's draft. */
   takeInvitation?(occurrenceId: string): void;
   /** Dismisses one invitation. */
@@ -82,26 +82,16 @@ export interface LoomHost {
   ): void;
   /** Opens the Tapestries panel, without travelling. */
   openRealms(): void;
-  /** The opening this surface should speak about, if any. */
-  portalStrip(): PortalStripView | null;
-  /** Writes into an opening's Realm: the same Loom, opened there. */
-  weaveOpening(occurrenceId: string): void;
-  /** Puts one opening away for this occurrence only. */
-  dismissOpening(occurrenceId: string): void;
   /** Opens the invitations panel. */
   openPortals(): void;
 }
 
-/** One opening, as the compact strip says it. */
-export interface PortalStripView {
-  occurrenceId: string;
-  contextName: string;
+/** An opening offered by the scheduler: upcoming, or in its available minute. */
+export interface LoomInvitation {
+  id: string;
+  name: string;
   opening: string;
-  phase: "approaching" | "available" | "closed";
-  remainingMs: number;
-  others: number;
-  writingNormally: boolean;
-  actionable: boolean;
+  phase: "approaching" | "available";
 }
 
 /** A contextual panel that temporarily replaces the content area. */
@@ -132,22 +122,6 @@ function isControl(target: unknown): boolean {
   return tag === "input" || tag === "textarea" || tag === "button" || tag === "select" || tag === "a";
 }
 
-/**
- * What an opening is doing, in the strip's own words: the countdown before it,
- * the remainder while it is open, and the ordinary day once it has closed.
- */
-function stripPhase(strip: PortalStripView): string {
-  return strip.phase === "available"
-    ? `open · ${countdown(strip.remainingMs)} left`
-    : strip.phase === "approaching"
-      ? `opens in ${countdown(strip.remainingMs)}`
-      : "closed · writing normally";
-}
-
-/** One opening said once: its Realm, its own local `HH:MM`, and what it is doing. */
-function stripLabel(strip: PortalStripView): string {
-  return `${strip.contextName} · ${strip.opening} · ${stripPhase(strip)}`;
-}
 
 /** The first words of prose, for a resume strip. */
 function excerpt(text: string): string {
@@ -155,28 +129,6 @@ function excerpt(text: string): string {
   return flat.length > 60 ? `${flat.slice(0, 60)}…` : flat;
 }
 
-/**
- * How much of the layout viewport the visual viewport misses at the bottom — the
- * keyboard, floored at zero. A page panned up (`offsetTop` > 0) can hide part of
- * that gap, which is why the offset is subtracted.
- */
-export function keyboardInset(
-  layoutHeight: number,
-  visual: { height?: number; offsetTop?: number } | null
-): number {
-  if (visual === null) return 0;
-  const rawHeight = visual.height;
-  const rawOffset = visual.offsetTop;
-  const height = typeof rawHeight === "number" && Number.isFinite(rawHeight) ? rawHeight : layoutHeight;
-  const offset = typeof rawOffset === "number" && Number.isFinite(rawOffset) ? rawOffset : 0;
-  return Math.max(0, layoutHeight - height - offset);
-}
-
-/** Whole seconds as `MM:SS`, floored so a countdown never reads one too high. */
-function countdown(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-}
 
 /** The one compact Loom surface. */
 export class Loom {
@@ -203,17 +155,6 @@ export class Loom {
   private readonly resume: HTMLElement;
   private readonly resumeButton: HTMLButtonElement;
   private readonly resumeDismiss: HTMLButtonElement;
-  /**
-   * The opening's one line in the status row, while a draft is open. It is the
-   * same strip that fills the whole surface when nothing is being written, moved
-   * between the two homes rather than duplicated.
-   */
-  private readonly portalLine: HTMLElement;
-  private readonly portalRealm: HTMLElement;
-  private readonly portalWhen: HTMLElement;
-  private readonly portalState: HTMLElement;
-  private readonly portalOpen: HTMLButtonElement;
-  private portalAction: (() => void) | null = null;
 
   private readonly rendered = new Component();
   private mountedIn: Mounted | null = null;
@@ -357,27 +298,6 @@ export class Loom {
     this.statusEl.setAttribute("role", "status");
     this.statusEl.setAttribute("hidden", "");
 
-    // The strip's three facts and its one action. The line is built once and
-    // re-used, so a ticking countdown only changes text, never the row it lives
-    // in.
-    this.portalLine = doc.createElement("div");
-    this.portalLine.className = "weaver-composer-portal";
-    this.portalLine.setAttribute("hidden", "");
-    this.portalRealm = doc.createElement("span");
-    this.portalRealm.className = "weaver-composer-portal-realm";
-    this.portalWhen = doc.createElement("span");
-    this.portalWhen.className = "weaver-composer-portal-opening";
-    this.portalState = doc.createElement("span");
-    this.portalState.className = "weaver-composer-portal-state";
-    this.portalOpen = doc.createElement("button");
-    this.portalOpen.type = "button";
-    this.portalOpen.className = "weaver-composer-portal-open";
-    this.portalOpen.textContent = "Weave";
-    this.portalLine.appendChild(this.portalRealm);
-    this.portalLine.appendChild(this.portalWhen);
-    this.portalLine.appendChild(this.portalState);
-    this.portalLine.appendChild(this.portalOpen);
-
     this.input = doc.createElement("textarea");
     this.input.className = "weaver-composer-input";
     this.input.setAttribute("aria-label", "Write a thought");
@@ -468,7 +388,6 @@ export class Loom {
     // both actions.
     this.resumeButton.addEventListener("click", () => this.activateResume());
     this.resumeDismiss.addEventListener("click", () => this.dismissResume());
-    this.portalOpen.addEventListener("click", () => this.portalAction?.());
     this.saveButton.addEventListener("click", () => void this.save());
   }
 
@@ -633,12 +552,10 @@ export class Loom {
   render(): void {
     if (this.destroyed || this.mountedIn === null) return;
     const state = this.host.controller.state;
-    // The strip has two homes: the whole surface when nothing is being written,
-    // and one line of the draft's status row while it is. Fetch it for every
-    // phase and let the phase decide which home draws it.
-    const strip = this.host.portalStrip();
+    // Invitations can offer a beginning, never interrupt an existing draft.
+    const invitation = state.phase === "closed" ? this.host.invitations?.()[0] ?? null : null;
 
-    if (state.phase === "closed" && strip === null) {
+    if (state.phase === "closed" && invitation === null) {
       this.hideElement();
       return;
     }
@@ -649,7 +566,7 @@ export class Loom {
     this.root.setAttribute("data-view", this.view);
 
     if (state.phase === "closed") {
-      this.renderResume(strip);
+      this.renderResume(invitation);
       this.layout();
       return;
     }
@@ -660,18 +577,19 @@ export class Loom {
       return;
     }
 
-    this.renderCard(state, strip);
+    this.renderCard(state);
     this.layout();
   }
 
-  private renderCard(state: CaptureView, strip: PortalStripView | null): void {
+  private renderCard(state: CaptureView): void {
     this.card.removeAttribute("hidden");
     this.resume.setAttribute("hidden", "");
     // Paint the dimension before the first frame of content: the box, the prose
     // and the Save action all read these two properties.
     this.paintDimension(state);
-    this.destButton.textContent = this.destinationLabel(state);
-    this.destButton.setAttribute("aria-label", `Destination: ${this.destinationLabel(state)}`);
+    const destination = this.destinationLabel(state);
+    this.destButton.textContent = `${destination} ▾`;
+    this.destButton.setAttribute("aria-label", `Writing destination: ${destination}`);
 
     const viewing = this.host.contexts().find((context) => context.id === this.host.viewing())?.name ?? null;
     const differs = viewing !== null && this.host.viewing() !== "" && this.host.viewing() !== state.contextId;
@@ -687,7 +605,7 @@ export class Loom {
     this.setVisible(this.menu, this.menuOpen);
 
     this.renderContext(state);
-    this.renderStatus(state, strip);
+    this.renderStatus(state);
 
     if (this.view === "chooser") {
       this.setVisible(this.chooserEl, true);
@@ -710,6 +628,7 @@ export class Loom {
 
     this.setVisible(this.chooserEl, false);
     this.setVisible(this.footer, true);
+    this.setVisible(this.saveButton, state.phase !== "resting");
 
     if (state.phase === "resting") {
       this.setVisible(this.input, false);
@@ -721,7 +640,7 @@ export class Loom {
       if (this.input.value !== state.text && this.mountedIn?.document.activeElement !== this.input) {
         this.input.value = state.text;
       }
-      this.input.readOnly = state.phase === "submitting" || state.phase === "uncertain";
+      this.input.readOnly = state.phase === "submitting" || state.phase === "uncertain" || state.phase === "retryable";
       this.growInput();
     }
 
@@ -734,13 +653,14 @@ export class Loom {
     this.body.scrollTop = this.bodyScroll;
     this.saveButton.textContent = isMobile() ? "Save" : "Save ↵";
     this.saveButton.disabled =
-      state.phase === "submitting" || state.phase === "uncertain" || state.pendingTarget !== null || state.text.trim() === "";
+      state.phase === "submitting" || state.phase === "uncertain" || state.phase === "retryable" ||
+      state.pendingTarget !== null || state.text.trim() === "";
     this.paintClock();
   }
 
   private destinationLabel(state: CaptureView): string {
     const name = this.host.contexts().find((context) => context.id === state.contextId)?.name ?? state.contextId;
-    return state.parent === null ? `Writing to ${name}` : `Branching · ${name}`;
+    return state.parent === null ? name : `Branch · ${name}`;
   }
 
   private renderContext(state: CaptureView): void {
@@ -765,13 +685,10 @@ export class Loom {
     this.contextEl.appendChild(details);
   }
 
-  private renderStatus(state: CaptureView, strip: PortalStripView | null): void {
+  private renderStatus(state: CaptureView): void {
     const doc = this.doc();
     this.statusEl.textContent = "";
     const actions: HTMLElement[] = [];
-    // An opening says one line here while a draft is open; the surface is not
-    // split into two cards for it.
-    const portal = state.phase === "editing" ? strip : null;
     let message = state.error ?? (state.phase === "submitting" ? "Saving…" : null);
     // An error is the one message that must be able to shout.
     if (state.error !== null) this.statusEl.setAttribute("data-kind", "error");
@@ -820,6 +737,13 @@ export class Loom {
         this.render();
       });
       actions.push(discard, keep);
+    } else if (state.phase === "retryable") {
+      const retry = doc.createElement("button");
+      retry.type = "button";
+      retry.className = "weaver-composer-save";
+      retry.textContent = "Retry save";
+      retry.addEventListener("click", () => void this.save());
+      actions.push(retry);
     } else if (state.phase === "uncertain") {
       const check = doc.createElement("button");
       check.type = "button";
@@ -831,7 +755,7 @@ export class Loom {
       actions.push(check);
     }
 
-    if (message === null && actions.length === 0 && portal === null) {
+    if (message === null && actions.length === 0) {
       this.statusEl.setAttribute("hidden", "");
       return;
     }
@@ -842,10 +766,6 @@ export class Loom {
       this.statusEl.appendChild(span);
     }
     for (const action of actions) this.statusEl.appendChild(action);
-    if (portal !== null) {
-      this.paintPortal(portal);
-      this.statusEl.appendChild(this.portalLine);
-    }
   }
 
   private renderChooser(): void {
@@ -1087,33 +1007,28 @@ export class Loom {
     fresh.addEventListener("click", () => void this.host.controller.newThread());
     actions.appendChild(fresh);
 
-    const close = doc.createElement("button");
-    close.type = "button";
-    close.className = "weaver-composer-quiet-close";
-    close.textContent = "Close";
-    close.addEventListener("click", () => this.hide());
-    actions.appendChild(close);
-
     this.savedEl.appendChild(actions);
   }
 
-  private renderResume(strip: PortalStripView | null, state?: CaptureView): void {
+  private renderResume(invitation: LoomInvitation | null, state?: CaptureView): void {
     this.setVisible(this.card, false);
     this.setVisible(this.resume, true);
 
-    if (strip !== null) {
-      this.resumeButton.textContent = stripLabel(strip);
-      this.resumeButton.setAttribute("aria-label", `Open the ${strip.opening} invitation in ${strip.contextName}`);
-      // Only an opening that is still enterable can be put away.
-      this.setVisible(this.resumeDismiss, strip.phase !== "closed");
-      this.resumeDismiss.setAttribute("aria-label", "Hide this invitation");
-      this.resumeAction = () => this.host.weaveOpening(strip.occurrenceId);
+    if (invitation !== null) {
+      this.resume.setAttribute("data-invitation", invitation.phase);
+      const phase = invitation.phase === "available" ? "Available" : "Upcoming";
+      this.resumeButton.textContent = `${invitation.name} · ${invitation.opening} · ${phase}`;
+      this.resumeButton.setAttribute("aria-label", `Open invitation: ${invitation.name} at ${invitation.opening}`);
+      this.setVisible(this.resumeDismiss, true);
+      this.resumeDismiss.setAttribute("aria-label", "Dismiss this invitation");
+      this.resumeAction = () => this.host.takeInvitation?.(invitation.id);
       this.resumeDismissAction = () => {
-        this.host.dismissOpening(strip.occurrenceId);
+        this.host.dismissInvitation?.(invitation.id);
         this.render();
       };
       return;
     }
+    this.resume.removeAttribute("data-invitation");
 
     this.setVisible(this.resumeDismiss, false);
     if (state === undefined) {
@@ -1133,37 +1048,8 @@ export class Loom {
     this.resumeDismissAction = null;
   }
 
-  /**
-   * Paints the opening's one line, or hides it. Called both by a full render and
-   * by the clock's tick: the countdown is the only thing that changes between
-   * them, so the row itself is never rebuilt while it ticks.
-   */
-  private paintPortal(strip: PortalStripView | null): void {
-    if (strip === null) {
-      this.portalLine.setAttribute("hidden", "");
-      this.portalAction = null;
-      return;
-    }
-    this.portalLine.removeAttribute("hidden");
-    this.portalLine.setAttribute("data-phase", strip.phase);
-    this.portalRealm.textContent = strip.contextName;
-    this.portalWhen.textContent = strip.opening;
-    this.portalState.textContent = stripPhase(strip);
-    // A closed minute is a fact, not a control: there is nothing left to enter.
-    const enterable = strip.phase !== "closed";
-    this.setVisible(this.portalOpen, enterable);
-    this.portalOpen.setAttribute(
-      "aria-label",
-      `Open the ${strip.opening} invitation in ${strip.contextName}`
-    );
-    this.portalAction = enterable ? () => this.host.weaveOpening(strip.occurrenceId) : null;
-  }
-
   private paintClock(): void {
     const state = this.host.controller.state;
-    // The clock is the only thing that moves an opening's countdown, so the line
-    // is repainted here rather than by a second timer or a whole render.
-    this.paintPortal(state.phase === "editing" ? this.host.portalStrip() : null);
     if (state.phase === "resting") {
       this.durationEl.textContent = "";
       this.momentEl.textContent = state.selected?.time ?? "";
@@ -1274,7 +1160,7 @@ export class Loom {
 
   private growInput(): void {
     this.input.style.height = "auto";
-    const max = this.usableHeight();
+    const max = this.viewportBox().maxHeight;
     const next = Math.min(this.input.scrollHeight, Math.max(48, max));
     this.input.style.height = `${next}px`;
     this.measure();
@@ -1473,56 +1359,53 @@ export class Loom {
 
   private applyBox(): void {
     if (this.mountedIn === null) return;
-    const view = this.mountedIn.window;
-    const layoutWidth = view.innerWidth ?? 1024;
-    const layoutHeight = view.innerHeight ?? 768;
-    const visual = view.visualViewport ?? null;
-    const visualWidth = visual?.width ?? layoutWidth;
-    const visualLeft = visual?.offsetLeft ?? 0;
-    const keyboard = keyboardInset(layoutHeight, visual);
-    const { width: loomW, inset } = loomWidth(Math.min(visualWidth, layoutWidth));
-    const reserve = this.bottomReserve();
-    const usable = this.usableHeight();
-    const state = this.host.controller.state;
-    const dimension = this.dimensionOf(state);
-
-    // The surface hangs from the bottom of the *visible* area, so the keyboard
-    // cannot cover it and its own height never moves that edge.
-    const left = Math.round(visualLeft + Math.max(inset, (visualWidth - loomW) / 2));
-    const bottom = Math.round(keyboard + inset + reserve);
+    const box = this.viewportBox();
+    const dimension = this.dimensionOf(this.host.controller.state);
+    // Fixed `bottom` and innerHeight need not share a coordinate system in a
+    // mobile webview. Anchor to the visual edge itself, then grow upward.
     this.root.setAttribute(
       "style",
       [
         "position: fixed",
-        `left: ${left}px`,
-        `bottom: ${bottom}px`,
-        `width: ${loomW}px`,
-        `max-height: ${usable}px`,
-        `--weaver-composer-max-height: ${usable}px`,
+        `left: ${box.left}px`,
+        `top: ${box.bottom}px`,
+        "transform: translateY(-100%)",
+        `width: ${box.width}px`,
+        `max-height: ${box.maxHeight}px`,
+        `--weaver-composer-max-height: ${box.maxHeight}px`,
         dimensionColorVars(dimension)
       ].join("; ")
     );
     this.root.setAttribute("data-d", String(dimension));
+    // Keep a pending decision reachable before returning to prose. Scroll only
+    // this body: native scrollIntoView could pan the whole webview.
+    const target = !this.statusEl.hasAttribute("hidden") ? this.statusEl
+      : this.mountedIn.document.activeElement === this.input && !this.input.hasAttribute("hidden") ? this.input : null;
+    if (target !== null) {
+      const body = this.body.getBoundingClientRect();
+      const content = target.getBoundingClientRect();
+      if (content.bottom > body.bottom) this.body.scrollTop += content.bottom - body.bottom;
+      else if (content.top < body.top) this.body.scrollTop -= body.top - content.top;
+      this.bodyScroll = this.body.scrollTop;
+    }
   }
 
-  private usableHeight(): number {
-    const view = this.mountedIn?.window;
-    if (view === undefined) return 480;
-    const visual = view.visualViewport ?? null;
-    const height = visual?.height ?? view.innerHeight ?? 768;
-    const width = visual?.width ?? view.innerWidth ?? 1024;
-    const reserve = this.bottomReserve();
-    return Math.max(160, height - 2 * loomWidth(width).inset - reserve);
-  }
-
-  /** The host's mobile toolbar height, when it is on screen. */
-  private bottomReserve(): number {
-    const doc = this.mountedIn?.document;
-    if (doc === undefined) return 0;
-    const toolbar = doc.querySelector(".mobile-toolbar") as Element | null;
-    if (toolbar === null) return 0;
-    const height = toolbar.getBoundingClientRect().height;
-    return height > 0 ? height : 0;
+  private viewportBox(): LoomAnchor {
+    const view = this.mountedIn?.window ?? window;
+    const visual = view.visualViewport;
+    const left = visual?.offsetLeft ?? 0;
+    const top = visual?.offsetTop ?? 0;
+    const viewport: LoomViewport = {
+      left,
+      right: left + (visual?.width ?? view.innerWidth),
+      top,
+      bottom: top + (visual?.height ?? view.innerHeight)
+    };
+    const toolbar = this.mountedIn?.document.querySelector(".mobile-toolbar");
+    const rect = toolbar?.getBoundingClientRect();
+    const visible = toolbar !== null && toolbar !== undefined &&
+      view.getComputedStyle(toolbar).visibility !== "hidden";
+    return loomAnchor(viewport, visible && rect !== undefined ? rect : null);
   }
 
   /** The document the surface is mounted in, or the ambient one before mount. */

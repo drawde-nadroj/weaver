@@ -5,7 +5,7 @@
  * leaves for it would tie every caller to the workspace's shape.
  */
 
-import { editorInfoField, type App, type TFile } from "obsidian";
+import { editorInfoField, MarkdownView, type App, type TFile } from "obsidian";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 
 /** Every live CodeMirror view, so controllers can find one without a leaf scan. */
@@ -39,13 +39,16 @@ export function registeredEditorViews(): readonly EditorView[] {
   return [...views];
 }
 
-/** The editor showing `file`, preferring the focused one. */
+/** The editor actively editing `file`, never Reading view's dormant buffer. */
 export function findEditorViewForFile(file: TFile): EditorView | null {
   let fallback: EditorView | null = null;
 
   for (const view of views) {
     const info = view.state.field(editorInfoField, false);
     if (info === undefined || info.file !== file) continue;
+    // Obsidian keeps CodeMirror alive in Reading view, but saves preview data
+    // instead of that buffer. Dispatching there cannot persist a capture.
+    if (info instanceof MarkdownView && info.getMode() !== "source") continue;
     if (view.hasFocus) return view;
     fallback ??= view;
   }

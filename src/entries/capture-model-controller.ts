@@ -135,7 +135,7 @@ function writeReceiptOf(receipt: CaptureReceipt): WriteReceipt {
 
 /** The lower surface's view of the model, for the still-legacy renderer. */
 export interface CaptureView {
-  phase: CapturePhase;
+  phase: CapturePhase | "retryable";
   collapsed: boolean;
   contextId: string;
   root: ThoughtRef | null;
@@ -275,7 +275,8 @@ export class CaptureModelController implements LoomCaptureOwner {
         const revision = state.pending.intent.kind === "revision" ? state.pending.intent.revision : null;
         return {
           ...base,
-          phase: state.kind === "writing" || state.kind === "finalizing" ? "submitting" : "uncertain",
+          phase: state.kind === "writing" || state.kind === "finalizing" ? "submitting"
+            : state.kind === "retryable" ? "retryable" : "uncertain",
           contextId: draft !== null && draft.target.kind === "root" ? draft.target.contextId : MAIN_CONTEXT_ID,
           root: null,
           selected: null,
@@ -671,9 +672,14 @@ export class CaptureModelController implements LoomCaptureOwner {
     }
   }
 
-  /** Settles the draft: one Enter, one write. Resolves once its effect settles. */
+  /** Saves once, or retries only after a check proved the previous write absent. */
   async settle(): Promise<void> {
     const state = this.modelValue.state;
+    if (state.kind === "retryable") {
+      this.dispatch({ kind: "retry", id: this.nextId(), published: captureInstantAt(this.host.now()) });
+      await this.settled();
+      return;
+    }
     if (isPending(state) || state.kind === "preparing") {
       this.dismissAfterSuccess = true;
       this.notify();

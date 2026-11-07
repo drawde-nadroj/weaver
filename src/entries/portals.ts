@@ -248,39 +248,6 @@ export class PortalController {
     );
   }
 
-  /**
-   * Openings that closed within `windowMs`, for one brief farewell.
-   *
-   * This is how a surface says "04:33 closed" without inventing history: the
-   * opening is a fact about the calendar, and it is reported only while it is
-   * recent. Nothing here records anything, so a missed minute leaves no trace in
-   * any note, and waking after a long sleep replays nothing.
-   */
-  recentlyClosed(windowMs: number): PortalOccurrence[] {
-    if (this.destroyed || !this.host.enabled()) return [];
-    if (!Number.isFinite(windowMs) || windowMs <= 0) return [];
-
-    const now = this.host.now();
-    const result: PortalOccurrence[] = [];
-
-    for (const source of this.sources()) {
-      const runtime = this.runtime.get(source.id);
-      const floor = Math.max(runtime?.activatedAt ?? 0, (runtime?.acknowledgedThrough ?? 0) + 1);
-
-      // An opening's *close* is what falls in the window, so the search runs one
-      // window earlier: the minute that ended recently began a minute before it.
-      const closed = sourceOccurrences(
-        source,
-        now - windowMs - OPENING_WINDOW_MS,
-        now - OPENING_WINDOW_MS
-      ).filter((portal) => portal.opensAt + OPENING_WINDOW_MS > now - windowMs);
-      const last = closed[closed.length - 1];
-      if (last === undefined || last.opensAt < floor) continue;
-      result.push(this.occurrenceOf(source, last));
-    }
-
-    return result.sort((left, right) => right.portal.opensAt - left.portal.opensAt);
-  }
 
   /**
    * Records that one invitation was answered, and reports what happened.

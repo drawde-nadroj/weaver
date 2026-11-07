@@ -5,6 +5,7 @@ import {
   frameBox,
   frameColumn,
   frameSpan,
+  loomAnchor,
   loomLayout,
   loomWidth,
   type FrameColumn,
@@ -358,5 +359,34 @@ describe("the Loom's geometry", () => {
     const narrow = layout({ viewport: { left: 0, right: 500, top: 0, bottom: 700 } });
     expect(narrow.header).toBe(44);
     expect(narrow.padding).toBe(12);
+  });
+});
+
+describe("the Loom's visual viewport anchor", () => {
+  it("stays inside a panned keyboard viewport without consulting the layout height", () => {
+    const box = loomAnchor({ left: 12, right: 402, top: 90, bottom: 440 }, null);
+    expect(box.left).toBe(20);
+    expect(box.width).toBe(374);
+    expect(box.bottom).toBe(432);
+    expect(box.bottom - box.maxHeight).toBe(98);
+  });
+
+  it("reserves an overlapping toolbar but not one hidden behind the keyboard", () => {
+    const viewport = { left: 0, right: 390, top: 0, bottom: 350 };
+    const visible = loomAnchor(viewport, { left: 0, right: 390, top: 306, bottom: 350 });
+    expect(visible.bottom).toBe(298);
+    expect(visible.maxHeight).toBe(290);
+    const hidden = loomAnchor(viewport, { left: 0, right: 390, top: 800, bottom: 844 });
+    expect(hidden).toEqual(loomAnchor(viewport, null));
+  });
+
+  it("does not enforce a minimum height beyond the space available in landscape", () => {
+    const viewport = { left: 0, right: 844, top: 30, bottom: 150 };
+    const box = loomAnchor(viewport, null);
+    expect(box.maxHeight).toBe(88);
+    expect(box.bottom - box.maxHeight).toBeGreaterThanOrEqual(viewport.top);
+    const occluded = loomAnchor(viewport, { left: 0, right: 844, top: 0, bottom: 200 });
+    expect(occluded.maxHeight).toBe(0);
+    expect(occluded.bottom).toBe(viewport.top);
   });
 });

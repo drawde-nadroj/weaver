@@ -155,9 +155,14 @@ describe("writing through the model", () => {
     expect(controller.model.state.kind).toBe("unconfirmed");
 
     host.persisted = "before";
-    controller.dispatch({ kind: "check" });
-    await flush();
+    await controller.checkSave();
     expect(controller.model.state.kind).toBe("retryable");
+    expect(controller.state.phase).toBe("retryable");
+    host.outcome = "confirmed";
+    await controller.settle();
+    expect(controller.model.state.kind).toBe("resting");
+    expect(host.store.envelope?.state.kind).toBe("resting");
+    expect(host.stages).toHaveLength(1);
   });
 
   it("confirms a Check when the note holds the expected bytes", async () => {

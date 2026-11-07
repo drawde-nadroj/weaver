@@ -143,6 +143,14 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
+Reading view may retain a CodeMirror buffer without saving it.
+`src/editor/view-registry.ts#findEditorViewForFile` excludes that dormant buffer,
+so `src/entries/writer.ts#rewriteDay` uses the vault unless an editing view owns
+the file; its save-owner lookup also excludes Reading leaves. An absent uncertain
+capture reaches a visible Retry save only after
+`src/entries/capture-model-controller.ts#CaptureModelController` checks the receipt
+against the note; a retry keeps the original compare-before-write guard.
+
 <!-- claim: src/entries/engine.ts#EntryEngine @b59b21c084 -->
 
 ## 3. The plans
@@ -288,8 +296,8 @@ the writer's hands. `src/core/portals.ts#occurrencesBetween` and
 schedule offers — a daylight-saving gap produces nothing and a repeated hour
 produces two distinct instants — and `src/core/portals.ts#dueOpening` takes the
 newest occurrence this device has neither outlived nor answered.
-`src/core/portals.ts#portalPhase` has two states: approaching, and available
-without an expiry. `src/core/portals.ts#portalAlignments` still recognises every
+`src/core/portals.ts#portalPhase` has three states: approaching, available during
+the opening's own minute, and expired. `src/core/portals.ts#portalAlignments` recognises every
 coincident boundary, hour echo and minute echo from the actual input second, and
 that recognition is what the entry's frame acknowledges.
 
@@ -383,6 +391,11 @@ Nothing reflows. The text decides where the box is, never the reverse.
   inline prose in Live Preview uses `.weaver-entry-inline` to put its date above
   the row, beside the raised rail. Its background halo extends only sideways,
   rather than adding vertical clearance over adjacent rows.
+- `src/core/frame.ts#loomAnchor` places the Loom from visual-viewport bounds and
+  only intersecting toolbar bounds. `src/ui/loom.ts#Loom` anchors its bottom edge
+  there and grows upward, so a resized window height cannot confuse a fixed
+  containing block's coordinates. Only the body scrolls; the textarea survives
+  keyboard resize and panning with its selection intact.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
 <!-- claim: src/core/frame.ts#frameSpan @324739146a -->
@@ -424,7 +437,7 @@ document bytes it can cause; "empty" is what it shows with nothing to show.
 | Frame layer | `src/editor/entry-frame.ts#entryFrameExtension` | nothing | — | draws nothing |
 | Entry keys | `src/editor/entry-keys.ts#handleEnterKey` | settle `+`, or a child | the plan | not handled outside an entry |
 | Loom | `src/ui/loom.ts#Loom` | one settled thought, when it is settled — nothing before | the plan | asked for nothing; a draft's top rail says `Thread` or `Branch`, never a fabricated address |
-| Invitation strip | `src/ui/loom.ts#Loom` | nothing | — | one offer in the reduced row; Open and Hide |
+| Invitation strip | `src/ui/loom.ts#Loom` | nothing | — | one idle offer; opening or dismissing never interrupts an active or hidden draft, and no countdown or Weave action appears inside the draft |
 | Reading view | `src/reading/entry-processor.ts#createEntryProcessor` | nothing | — | leaves the paragraph alone (it frames the entry and adds a creation-day link only when the day differs from the note) |
 | Close mark | `src/reading/close-processor.ts#createCloseProcessor` | nothing | — | leaves the paragraph alone |
 | Whisper the day | `src/entries/engine.ts#whisperDay` | one whisper per settled entry that has none | the whole pass | `Nothing to whisper: every settled entry already has one, or a name.` |
@@ -556,7 +569,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-61 files, 487 exported symbols, 53 test files.
+61 files, 488 exported symbols, 53 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -572,7 +585,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 157 | 6 | no |
 | `src/core/entries.ts` | core | 426 | 15 | no |
-| `src/core/frame.ts` | core | 327 | 19 | no |
+| `src/core/frame.ts` | core | 362 | 21 | no |
 | `src/core/insert.ts` | core | 675 | 14 | no |
 | `src/core/loom.ts` | core | 379 | 12 | no |
 | `src/core/navigation.ts` | core | 150 | 12 | no |
@@ -591,8 +604,8 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/entry-keys.ts` | editor | 496 | 15 | no |
 | `src/editor/frame-effects.ts` | editor | 86 | 4 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 278 | 4 | no |
-| `src/editor/view-registry.ts` | editor | 65 | 6 | yes |
-| `src/entries/capture-model-controller.ts` | entries | 961 | 5 | no |
+| `src/editor/view-registry.ts` | editor | 68 | 6 | yes |
+| `src/entries/capture-model-controller.ts` | entries | 967 | 5 | no |
 | `src/entries/capture-store.ts` | entries | 482 | 6 | no |
 | `src/entries/capture.ts` | entries | 1187 | 5 | no |
 | `src/entries/clock.ts` | entries | 131 | 3 | no |
@@ -602,12 +615,12 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/entries/local-state.ts` | entries | 491 | 13 | no |
 | `src/entries/loom.ts` | entries | 205 | 8 | no |
 | `src/entries/plugin-data.ts` | entries | 461 | 4 | no |
-| `src/entries/portals.ts` | entries | 556 | 3 | no |
+| `src/entries/portals.ts` | entries | 523 | 3 | no |
 | `src/entries/reference.ts` | entries | 545 | 13 | no |
 | `src/entries/session.ts` | entries | 165 | 4 | no |
 | `src/entries/thought-index.ts` | entries | 271 | 2 | no |
-| `src/entries/writer.ts` | entries | 237 | 10 | yes |
-| `src/main.ts` | root | 1259 | 1 | yes |
+| `src/entries/writer.ts` | entries | 238 | 10 | yes |
+| `src/main.ts` | root | 1157 | 1 | yes |
 | `src/model/whisper-model.ts` | root | 186 | 6 | yes |
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
 | `src/notices.ts` | root | 169 | 23 | no |
@@ -619,7 +632,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom.ts` | ui | 1544 | 5 | yes |
+| `src/ui/loom.ts` | ui | 1427 | 4 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
 ### Commands
@@ -702,11 +715,6 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-moment` | styled | `ui/loom.ts` |
 | `weaver-composer-more` | styled | `ui/loom.ts` |
 | `weaver-composer-new` | styled | `ui/loom.ts` |
-| `weaver-composer-portal` | styled | `ui/loom.ts` |
-| `weaver-composer-portal-open` | styled | `ui/loom.ts` |
-| `weaver-composer-portal-opening` | hook | `ui/loom.ts` |
-| `weaver-composer-portal-realm` | styled | `ui/loom.ts` |
-| `weaver-composer-portal-state` | styled | `ui/loom.ts` |
 | `weaver-composer-quiet-close` | styled | `ui/loom.ts` |
 | `weaver-composer-ref-toggle` | styled | `ui/loom.ts` |
 | `weaver-composer-reference` | styled | `ui/loom.ts` |
@@ -1051,11 +1059,13 @@ The frame around one entry: a box, and nothing else.
 | `FrameSpanInput` | interface | 194 | `export interface FrameSpanInput` | — | — |
 | `FrameSpan` | interface | 206 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
 | `frameSpan` | function | 227 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
-| `LoomViewport` | interface | 235 | `export interface LoomViewport` | — | — |
+| `LoomViewport` | interface | 235 | `export interface LoomViewport` | `ui/loom.ts` | — |
 | `LoomBoxInput` | interface | 243 | `export interface LoomBoxInput` | — | — |
 | `LoomBox` | interface | 263 | `export interface LoomBox` | — | — |
-| `loomWidth` | function | 276 | `export function loomWidth(viewportWidth: number):` | `ui/loom.ts` | `tests/frame.test.ts` |
-| `loomLayout` | function | 295 | `export function loomLayout(input: LoomBoxInput): LoomBox` | — | `tests/frame.test.ts` |
+| `loomWidth` | function | 276 | `export function loomWidth(viewportWidth: number):` | — | `tests/frame.test.ts` |
+| `LoomAnchor` | interface | 285 | `export interface LoomAnchor` | `ui/loom.ts` | — |
+| `loomAnchor` | function | 300 | `export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport \| null ): LoomAnchor` | `ui/loom.ts` | `tests/frame.test.ts` |
+| `loomLayout` | function | 330 | `export function loomLayout(input: LoomBoxInput): LoomBox` | — | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -1143,7 +1153,7 @@ Invitations: when Weaver may offer to weave, and which offer is outstanding.
 | `PortalSource` | interface | 84 | `export interface PortalSource` | `entries/portals.ts` | `tests/portals.test.ts` |
 | `PortalOccurrence` | interface | 96 | `export interface PortalOccurrence` | `entries/portals.ts`<br>`ui/invitation.ts` | — |
 | `PortalPhase` | type | 106 | `export type PortalPhase = "approaching" \| "available" \| "expired"` | `entries/portals.ts` | — |
-| `OPENING_WINDOW_MS` | const | 109 | `export const OPENING_WINDOW_MS = 60_000` | `entries/portals.ts`<br>`main.ts` | — |
+| `OPENING_WINDOW_MS` | const | 109 | `export const OPENING_WINDOW_MS = 60_000` | `entries/portals.ts` | — |
 | `PortalScheduleError` | interface | 112 | `export interface PortalScheduleError` | — | — |
 | `PortalScheduleRead` | interface | 118 | `export interface PortalScheduleRead` | — | — |
 | `portalAt` | function | 160 | `export function portalAt(opensAt: number): PortalInstant` | — | `tests/entry-plans.test.ts`<br>`tests/portals.test.ts`<br>`tests/writer.test.ts` |
@@ -1359,7 +1369,7 @@ The live editor views, in one place.
 | `viewRegistryExtension` | const | 25 | `export const viewRegistryExtension = ViewPlugin.fromClass( class` | `main.ts` | — |
 | `registeredEditorViews` | function | 38 | `export function registeredEditorViews(): readonly EditorView[]` | `editor/entry-keys.ts`<br>`entries/engine.ts`<br>`main.ts` | — |
 | `findEditorViewForFile` | function | 43 | `export function findEditorViewForFile(file: TFile): EditorView \| null` | `entries/engine.ts`<br>`entries/writer.ts` | — |
-| `findActiveEditorView` | function | 57 | `export function findActiveEditorView(app: App): EditorView \| null` | `entries/engine.ts` | — |
+| `findActiveEditorView` | function | 60 | `export function findActiveEditorView(app: App): EditorView \| null` | `entries/engine.ts` | — |
 
 #### `src/entries/capture-model-controller.ts`
 
@@ -1494,7 +1504,7 @@ The invitation lifecycle: which schedule is offering what, right now.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `PortalHost` | interface | 52 | `export interface PortalHost` | — | `tests/portal-controller.test.ts` |
-| `OfferedInvitation` | interface | 80 | `export interface OfferedInvitation` | `main.ts` | — |
+| `OfferedInvitation` | interface | 80 | `export interface OfferedInvitation` | — | — |
 | `PortalController` | class | 93 | `export class PortalController` | `main.ts` | `tests/portal-controller.test.ts` |
 
 #### `src/entries/reference.ts`
@@ -1543,16 +1553,16 @@ The one writer of a day note.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `RewriteResult` | interface | 28 | `export interface RewriteResult` | `entries/engine.ts` | — |
-| `Rewrite` | type | 36 | `export type Rewrite = (source: string) => RewriteResult \| null` | `settings.ts` | — |
-| `RewriteRefused` | class | 45 | `export class RewriteRefused extends Error` | `entries/engine.ts` | — |
-| `RewriteOptions` | interface | 48 | `export interface RewriteOptions` | — | — |
-| `rewriteDay` | function | 70 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
-| `planRewrite` | function | 142 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
-| `minimalChange` | function | 155 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
-| `confirmExistingWrite` | function | 178 | `export async function confirmExistingWrite( app: App, file: TFile, expected: string ): Promise<boolean>` | `main.ts` | — |
-| `registerWrite` | function | 224 | `export function registerWrite(operationId: string, promise: Promise<unknown>): () => void` | `entries/engine.ts` | `tests/writer.test.ts` |
-| `waitForWrite` | function | 233 | `export async function waitForWrite(_app: App, operationId: string): Promise<void>` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `RewriteResult` | interface | 29 | `export interface RewriteResult` | `entries/engine.ts` | — |
+| `Rewrite` | type | 37 | `export type Rewrite = (source: string) => RewriteResult \| null` | `settings.ts` | — |
+| `RewriteRefused` | class | 46 | `export class RewriteRefused extends Error` | `entries/engine.ts` | — |
+| `RewriteOptions` | interface | 49 | `export interface RewriteOptions` | — | — |
+| `rewriteDay` | function | 71 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `planRewrite` | function | 143 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `minimalChange` | function | 156 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `confirmExistingWrite` | function | 179 | `export async function confirmExistingWrite( app: App, file: TFile, expected: string ): Promise<boolean>` | `main.ts` | — |
+| `registerWrite` | function | 225 | `export function registerWrite(operationId: string, promise: Promise<unknown>): () => void` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `waitForWrite` | function | 234 | `export async function waitForWrite(_app: App, operationId: string): Promise<void>` | `entries/engine.ts` | `tests/writer.test.ts` |
 
 #### `src/main.ts`
 
@@ -1560,7 +1570,7 @@ Weaver: a day note is a linear list of entries, and a thought may be written
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `WeaverPlugin` | class | 94 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts` |
+| `WeaverPlugin` | class | 91 | `export default class WeaverPlugin extends Plugin` | `entries/engine.ts`<br>`settings-tab.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/platform-classes.test.ts`<br>`tests/plugin.test.ts`<br>`tests/settings-tab.test.ts`<br>`tests/start-entry.test.ts`<br>`tests/stopped-clock-render.test.ts`<br>`tests/whisper-act.test.ts` |
 
 #### `src/model/whisper-model.ts`
 
@@ -1709,9 +1719,8 @@ The Loom: the one compact surface a thought is written in, from anywhere.
 | --- | --- | --- | --- | --- | --- |
 | `CaptureSurface` | interface | 32 | `export interface CaptureSurface` | — | — |
 | `LoomHost` | interface | 54 | `export interface LoomHost` | — | — |
-| `PortalStripView` | interface | 96 | `export interface PortalStripView` | `main.ts` | `tests/loom.test.ts` |
-| `keyboardInset` | function | 163 | `export function keyboardInset( layoutHeight: number, visual:` | — | `tests/loom.test.ts` |
-| `Loom` | class | 182 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
+| `LoomInvitation` | interface | 90 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
+| `Loom` | class | 134 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
 
 #### `src/ui/platform.ts`
 

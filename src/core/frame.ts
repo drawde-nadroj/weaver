@@ -281,6 +281,41 @@ export function loomWidth(viewportWidth: number): { width: number; padding: numb
   return { width, padding, inset };
 }
 
+/** A bottom-edge anchor and the surface's maximum extent above it. */
+export interface LoomAnchor {
+  left: number;
+  bottom: number;
+  width: number;
+  maxHeight: number;
+}
+
+/**
+ * The Loom's bottom anchor in visual-viewport coordinates, not a CSS bottom
+ * inset derived from `innerHeight`: a mobile webview can resize the latter
+ * without resizing the containing block used by fixed-positioned elements.
+ * The renderer translates the surface upward from this edge, so content growth
+ * and keyboard panning do not need a second measurement or a retained height.
+ * Only a toolbar intersecting the visible rectangle reserves space.
+ */
+export function loomAnchor(
+  viewport: LoomViewport,
+  toolbar: LoomViewport | null
+): LoomAnchor {
+  const { width, inset } = loomWidth(Math.max(0, viewport.right - viewport.left));
+  const obstructs = toolbar !== null &&
+    toolbar.right > viewport.left && toolbar.left < viewport.right &&
+    toolbar.bottom > viewport.top && toolbar.top < viewport.bottom;
+  const edge = obstructs ? Math.max(viewport.top, toolbar.top) : viewport.bottom;
+  const air = Math.min(inset, Math.max(0, edge - viewport.top) / 2);
+  return {
+    left: viewport.left + Math.max(0, (viewport.right - viewport.left - width) / 2),
+    bottom: edge - air,
+    width,
+    maxHeight: Math.max(0, edge - viewport.top - 2 * air)
+  };
+}
+
+
 /**
  * Where the bottom-anchored Loom sits, independent of the active note's column.
  *

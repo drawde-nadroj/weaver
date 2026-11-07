@@ -5,7 +5,7 @@ import { mainContext, type WeavingContext } from "../src/core/contexts";
 import { CaptureController, type CaptureHost, type CaptureRecord, type CaptureStore } from "../src/entries/capture";
 import { EntryClock } from "../src/entries/clock";
 import { EntrySession } from "../src/entries/session";
-import { Loom, keyboardInset, type PortalStripView } from "../src/ui/loom";
+import { Loom, type LoomInvitation } from "../src/ui/loom";
 import { bodyQuery, createApp, resetHarness } from "../test-support/harness";
 import { fireWindowEvent, type ShimElement } from "../test-support/dom";
 
@@ -56,9 +56,8 @@ interface Run {
   saved(): ShimElement;
   menu(): ShimElement;
   status(): ShimElement;
-  portal(): ShimElement;
   openings: string[];
-  setStrip(strip: PortalStripView | null): void;
+  setInvitation(strip: LoomInvitation | null): void;
   button(selector: string): ShimElement | null;
   answer(result: CaptureResult): void;
   destroy(): void;
@@ -79,7 +78,7 @@ function harness(): Run {
   const writes: string[] = [];
   const travels: string[] = [];
   const openings: string[] = [];
-  let strip: PortalStripView | null = null;
+  let strip: LoomInvitation | null = null;
   const store = new MemoryStore();
   let reply: CaptureResult = { ok: false, error: "not configured" };
 
@@ -122,9 +121,8 @@ function harness(): Run {
     saved: () => bodyQuery(".weaver-composer-saved") as ShimElement,
     menu: () => bodyQuery(".weaver-composer-menu") as ShimElement,
     status: () => bodyQuery(".weaver-composer-status") as ShimElement,
-    portal: () => bodyQuery(".weaver-composer-portal") as ShimElement,
     openings,
-    setStrip(next) {
+    setInvitation(next) {
       strip = next;
     },
     button: (selector) => bodyQuery(`.weaver-composer ${selector}`) as ShimElement | null,
@@ -153,12 +151,9 @@ function harness(): Run {
     },
     openRealms: () => {},
     writeHere: (contextId) => writes.push(contextId),
-    invitations: () => [],
-    takeInvitation: () => {},
-    dismissInvitation: () => {},
-    portalStrip: () => strip,
-    weaveOpening: (occurrenceId) => openings.push(occurrenceId),
-    dismissOpening: () => {},
+    invitations: () => strip === null ? [] : [strip],
+    takeInvitation: (id) => openings.push(id),
+    dismissInvitation: () => { strip = null; },
     openPortals: () => {}
   });
 
@@ -197,14 +192,6 @@ beforeEach(() => {
 });
 
 describe("the compact surface", () => {
-  it("names the destination once and hides the writing frame", () => {
-    const run = harness();
-    const dest = run.button(".weaver-composer-dest");
-    expect(dest?.textContent).toContain("Writing to Main");
-    expect(run.card().hasAttribute("hidden")).toBe(false);
-    expect(run.root().getAttribute("role")).toBe("dialog");
-    expect(run.root().getAttribute("aria-modal")).toBe("false");
-  });
 
   it("shows prose as the dominant field and no nested frame", () => {
     const run = harness();
@@ -428,87 +415,42 @@ describe("hiding and resuming", () => {
   });
 });
 
-describe("an opening while a draft is open", () => {
-  const offered = (phase: PortalStripView["phase"], remainingMs = 65_000): PortalStripView => ({
-    occurrenceId: "occ-1",
-    contextName: "Spanish",
-    opening: "04:33",
-    phase,
-    remainingMs,
-    others: 0,
-    writingNormally: false,
-    actionable: phase !== "closed"
-  });
+describe("invitations and writing", () => {
+  const offered: LoomInvitation = {
+    id: "occ-1", name: "Spanish", opening: "04:33", phase: "available"
+  };
 
-  it("moves into one line of the status row, and Weave enters it", () => {
+  it("keeps an arriving invitation out of an active draft, including its resume strip", () => {
     const run = harness();
     type(run, "a draft in progress");
-    run.setStrip(offered("approaching"));
+    run.input().setSelectionRange(4, 7);
+    run.controller.setSelection({ from: 4, to: 7 });
+    run.setInvitation(offered);
     run.composer.render();
-
-    const line = run.portal();
-    expect(line.hasAttribute("hidden")).toBe(false);
-    expect(line.getAttribute("data-phase")).toBe("approaching");
-    expect(line.textContent).toContain("Spanish");
-    expect(line.textContent).toContain("04:33");
-    expect(line.textContent).toContain("opens in 01:05");
-
-    line.querySelector(".weaver-composer-portal-open")?.click();
-    expect(run.openings).toEqual(["occ-1"]);
+    expect(run.status().hasAttribute("hidden")).toBe(true);
+    expect(run.controller.state.text).toBe("a draft in progress");
+    expect(run.input().selectionStart).toBe(4);
+    expect(run.input().selectionEnd).toBe(7);
+    run.button(".weaver-composer-hide")!.click();
+    expect(run.resume().textContent).toContain("a draft in progress");
+    expect(run.resume().textContent).not.toContain("04:33");
+    expect(run.openings).toEqual([]);
+    expect(run.requests).toEqual([]);
   });
 
-  it("keeps ticking the countdown without rebuilding the line", () => {
+  it("dismisses an idle invitation without creating an entry", () => {
     const run = harness();
-    type(run, "a draft in progress");
-    run.setStrip(offered("available", 39_000));
-    run.composer.render();
-    const line = run.portal();
-    expect(line.textContent).toContain("open · 00:39 left");
-
-    run.setStrip(offered("available", 38_000));
-    run.clock.refresh();
-    expect(run.portal()).toBe(line);
-    expect(line.textContent).toContain("open · 00:38 left");
-  });
-
-  it("offers nothing to enter once the minute has closed", () => {
-    const run = harness();
-    type(run, "a draft in progress");
-    run.setStrip(offered("closed"));
-    run.composer.render();
-
-    expect(run.portal().textContent).toContain("closed · writing normally");
-    expect(run.portal().querySelector(".weaver-composer-portal-open")?.hasAttribute("hidden")).toBe(true);
-  });
-
-  it("is the whole surface when nothing is being written", () => {
-    const run = harness();
-    type(run, "gone");
     run.controller.discardDraft();
-    run.setStrip(offered("approaching"));
+    run.setInvitation(offered);
     run.composer.render();
-
     expect(run.resume().hasAttribute("hidden")).toBe(false);
-    expect(run.resume().textContent).toContain("Spanish · 04:33 · opens in 01:05");
-    // The one line is a home for the strip only while a draft is open; the
-    // surface itself is now showing the same opening.
-    expect(run.portal()).toBeNull();
+    run.resume().querySelector(".weaver-composer-resume-dismiss")?.click();
+    expect(run.root().hasAttribute("hidden")).toBe(true);
+    expect(run.requests).toEqual([]);
   });
 });
 
 describe("the saved state", () => {
-  it("offers Branch, New Thread and a quiet close", async () => {
-    const run = harness();
-    type(run, "typed");
-    run.answer(saved());
-    run.button(".weaver-composer-save")!.click();
-    await flush();
-
-    expect(run.saved().querySelector(".weaver-composer-branch")).not.toBeNull();
-    expect(run.saved().querySelector(".weaver-composer-new")).not.toBeNull();
-    expect(run.saved().querySelector(".weaver-composer-quiet-close")).not.toBeNull();
-    expect(run.saved().textContent).toContain("typed");
-  });
 
   it("branches from the saved thought and starts a fresh Thread", async () => {
     const run = harness();
@@ -534,38 +476,9 @@ describe("the saved state", () => {
     run.button(".weaver-composer-save")!.click();
     await flush();
 
-    run.saved().querySelector(".weaver-composer-quiet-close")?.click();
+    run.button(".weaver-composer-hide")?.click();
     expect(run.root().hasAttribute("hidden")).toBe(true);
     expect(run.requests).toHaveLength(1);
   });
 });
 
-describe("expanded and collapsed positioning", () => {
-  it("anchors the bottom edge to the visible viewport, not the card height", async () => {
-    const run = harness();
-    run.card().rect = { top: 0, left: 0, right: 0, bottom: 0, width: 720, height: 300 };
-    run.resume().rect = { top: 0, left: 0, right: 0, bottom: 0, width: 720, height: 44 };
-    type(run, "kept");
-    run.composer.render();
-    await tick();
-    const expanded = run.root().getAttribute("style") ?? "";
-    expect(expanded).toContain("bottom: 16px");
-    expect(expanded).toContain("max-height: 868px");
-
-    run.button(".weaver-composer-hide")!.click();
-    await tick();
-    const collapsed = run.root().getAttribute("style") ?? "";
-    // The bottom edge is the same in both modes; only the visible surface's own
-    // height changed, so a retained card height can never misplace the strip.
-    expect(collapsed).toContain("bottom: 16px");
-    expect(collapsed).toContain("max-height: 868px");
-  });
-
-  it("computes the keyboard inset from the visual viewport", () => {
-    expect(keyboardInset(900, { height: 500, offsetTop: 0 })).toBe(400);
-    expect(keyboardInset(900, { height: 900, offsetTop: 0 })).toBe(0);
-    expect(keyboardInset(900, null)).toBe(0);
-    // A page panned up hides part of the keyboard gap; never go negative.
-    expect(keyboardInset(900, { height: 500, offsetTop: 400 })).toBe(0);
-  });
-});

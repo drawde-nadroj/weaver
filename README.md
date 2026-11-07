@@ -54,8 +54,8 @@ pixel. The manual checks they need are at the end of this file.
    daily note for the day the thought *began* — which may be yesterday if you
    started before midnight — and `Saving…` becomes the saved thought.
 4. **Return.** The Loom keeps the saved thought visible, read from its note, and
-   offers **Branch**, **New Thread**, and a quiet **Close**. One more `⏎` or `Esc`
-   puts it away. It does not travel or create another entry by itself.
+   offers **Branch** and **New Thread**. Save disappears; **Hide**, one more `⏎`,
+   or `Esc` puts it away without travelling or creating another entry.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
    asked; reference context is optional and starts collapsed.
 6. **Browse** with `⌘⇧P`: the Loom's reference opens on the day's thoughts, with
@@ -450,6 +450,18 @@ These need a live Obsidian and are not covered by `npm test`:
   thought and press `⏎`: the note for the day the thought *began* gains one entry —
   address, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
   the second `⏎` closes the composer without writing again.
+- Composer controls: destination, Reference, Hide and More are quiet text controls,
+  not native raised buttons. Save is accented only while editing; after saving,
+  only Branch and New Thread remain below the prose.
+- Composer, phone: open the keyboard, select text, rotate, then dismiss it. The
+  same draft and selection remain; Save stays above the keyboard and any visible
+  toolbar. With a long draft or parent excerpt, the body scrolls, not the footer.
+- Composer, Reading view: save a thought while its destination note is in Reading
+  view, then switch to Live Preview: the thought exists once in both. An absent
+  unconfirmed save offers Retry save only after Check save has verified absence.
+- Invitations: an offer arriving while writing does not add a countdown or Weave
+  action to the draft. An idle offer disappears after its opening minute without
+  a farewell or a write. A hidden draft always resumes that same draft.
 - The same with a saved reference beside it: `Go` switches to the other
   destination and the draft is still there, with its text and its selection, when
   you come back.
