@@ -506,12 +506,14 @@ reading-only surface without beginning a draft.
 `src/main.ts#openLoom` retrieves the existing draft or saved reading on an unnamed
 open, restores the writing pane and its selection, and focuses it without starting
 another Thread. `src/ui/loom.ts#rememberFocus` retains the last outside focus
-target across repeated retrievals so Hide can return there.
+target across repeated retrievals so Escape can return there.
 The draft's dashed frame and the prose-focus outline are independent signals;
 the drawn CodeMirror caret has an explicit normal-text-colour stroke. A saved
-reading has a solid frame and persistent completion status with a desktop
-Enter-to-hide hint. Two compact metadata lines keep timing stationary as the
-status changes.
+reading has a solid frame and persistent Saved status. Enter saves a draft or
+branches from a saved thought; modified Enter saves a draft or starts a new Thread.
+Pending saves and held-key repeats cannot queue a continuation. Escape hides the
+surface; there is no Hide button. Action labels prefix shortcuts before their names
+with a middle dot. Two compact metadata lines keep timing stationary as status changes.
 The entry actions share Save's tinted fill and border. Branch previews the saved
 thought's next dimension through `src/core/color.ts#dimensionColorVars`; New Thread
 always uses the red first dimension, independent of the current reading.
@@ -661,9 +663,9 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/editor/frame-effects.ts` | editor | 86 | 4 | no |
 | `src/editor/stopwatch-widget.ts` | editor | 278 | 4 | no |
 | `src/editor/view-registry.ts` | editor | 68 | 6 | yes |
-| `src/entries/capture-model-controller.ts` | entries | 967 | 5 | no |
+| `src/entries/capture-model-controller.ts` | entries | 951 | 5 | no |
 | `src/entries/capture-store.ts` | entries | 482 | 6 | no |
-| `src/entries/capture.ts` | entries | 1187 | 5 | no |
+| `src/entries/capture.ts` | entries | 1124 | 5 | no |
 | `src/entries/clock.ts` | entries | 131 | 3 | no |
 | `src/entries/context-workspaces.ts` | entries | 554 | 4 | yes |
 | `src/entries/day-note.ts` | entries | 170 | 5 | yes |
@@ -688,7 +690,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom.ts` | ui | 2137 | 4 | yes |
+| `src/ui/loom.ts` | ui | 2139 | 4 | yes |
 | `src/ui/markdown-pane.ts` | ui | 879 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -770,7 +772,6 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-elapsed` | styled | `ui/loom.ts` |
 | `weaver-composer-footer` | styled | `ui/loom.ts` |
 | `weaver-composer-header` | styled | `ui/loom.ts` |
-| `weaver-composer-hide` | styled | `ui/loom.ts` |
 | `weaver-composer-identity` | styled | `ui/loom.ts` |
 | `weaver-composer-identity-address` | styled | `ui/loom.ts` |
 | `weaver-composer-identity-label` | styled | `ui/loom.ts` |

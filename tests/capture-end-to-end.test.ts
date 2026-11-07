@@ -73,19 +73,19 @@ describe("a thought begun before midnight", () => {
     instance.onunload();
   });
 
-  it("writes exactly one entry, however many times Enter is pressed", async () => {
+  it("ignores another submission while saving and retains the confirmed reading", async () => {
     const instance = await plugin();
 
     instance.openLoom();
     instance.controller.setText("one thought");
     const saving = instance.controller.settle();
-    // A distinct second Enter during the save dismisses, and writes nothing more.
+    // A pending save cannot queue a hide, branch or second write.
     await instance.controller.settle();
     await saving;
 
     const created = noteOf(instance, mainPath("2026-11-05"));
     expect(parseEntries(created).entries).toHaveLength(1);
-    expect(instance.controller.state.phase).toBe("closed");
+    expect(instance.controller.state.phase).toBe("resting");
 
     instance.onunload();
   });
@@ -107,7 +107,7 @@ describe("a thought begun before midnight", () => {
     expect(instance.controller.state.selection).toEqual({ from: 4, to: 12 });
     expect(instance.controller.state.text).toBe("one retained thought");
 
-    bodyQuery(".weaver-composer-hide")?.click();
+    bodyQuery(".weaver-composer-prose .cm-content")?.dispatch("keydown", { key: "Escape" });
     expect(instance.controller.state.collapsed).toBe(true);
     instance.openLoom();
     expect(instance.controller.state.collapsed).toBe(false);
@@ -130,7 +130,7 @@ describe("a thought begun before midnight", () => {
     expect(shimDocument.activeElement === input).toBe(true);
     expect(noteOf(instance, mainPath("2026-11-05"))).toBe(recorded);
 
-    bodyQuery(".weaver-composer-hide")?.click();
+    bodyQuery(".weaver-composer-prose .cm-content")?.dispatch("keydown", { key: "Escape" });
     expect(shimDocument.activeElement === outside as unknown).toBe(true);
     instance.onunload();
   });

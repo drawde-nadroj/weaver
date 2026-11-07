@@ -408,7 +408,7 @@ describe("hiding and resuming", () => {
     run.input().setSelectionRange(4, 4);
     run.controller.setSelection({ from: 4, to: 4 });
 
-    run.button(".weaver-composer-hide")!.click();
+    run.input().dispatch("keydown", { key: "Escape" });
 
     expect(run.card().hasAttribute("hidden")).toBe(true);
     expect(run.resume().hasAttribute("hidden")).toBe(false);
@@ -438,7 +438,7 @@ describe("invitations and writing", () => {
     expect(run.controller.state.text).toBe("a draft in progress");
     expect(run.input().selectionStart).toBe(4);
     expect(run.input().selectionEnd).toBe(7);
-    run.button(".weaver-composer-hide")!.click();
+    run.input().dispatch("keydown", { key: "Escape" });
     expect(run.resume().textContent).toContain("a draft in progress");
     expect(run.resume().textContent).not.toContain("04:33");
     expect(run.openings).toEqual([]);
@@ -466,7 +466,7 @@ describe("the saved state", () => {
     run.button(".weaver-composer-save")!.click();
     await flush();
 
-    run.button(".weaver-composer-branch")?.click();
+    run.input().dispatch("keydown", { key: "Enter" });
     await flush();
     expect(run.controller.state.parent?.n).toBe(1);
 
@@ -475,10 +475,32 @@ describe("the saved state", () => {
     run.button(".weaver-composer-save")?.click();
     await flush();
     expect(run.requests[1]?.parent?.n).toBe(1);
-    run.button(".weaver-composer-new")?.click();
+    fireWindowEvent("keydown", { key: "Enter", metaKey: true, target: run.input() });
     await flush();
     expect(run.controller.state.text).toBe("");
     expect(run.controller.state.parent).toBeNull();
+  });
+
+  it("requires a fresh Enter after saving and never queues a branch", async () => {
+    const run = harness();
+    type(run, "typed");
+    run.answer(saved());
+    run.input().dispatch("keydown", { key: "Enter" });
+    expect(run.controller.state.phase).toBe("submitting");
+    run.input().dispatch("keydown", { key: "Enter" });
+    await flush();
+    expect(run.controller.state.phase).toBe("resting");
+    run.input().dispatch("keydown", { key: "Enter", repeat: true });
+    run.input().dispatch("keydown", { key: "Enter", shiftKey: true });
+    await flush();
+    expect(run.controller.state.phase).toBe("resting");
+    expect(run.requests).toHaveLength(1);
+
+    run.input().dispatch("keydown", { key: "Enter" });
+    await flush();
+    expect(run.controller.state.phase).toBe("editing");
+    expect(run.controller.state.parent?.n).toBe(1);
+    expect(run.requests).toHaveLength(1);
   });
 
   it("closes quietly without creating another entry", async () => {
@@ -488,7 +510,7 @@ describe("the saved state", () => {
     run.button(".weaver-composer-save")!.click();
     await flush();
 
-    run.button(".weaver-composer-hide")?.click();
+    run.input().dispatch("keydown", { key: "Escape" });
     expect(run.root().hasAttribute("hidden")).toBe(true);
     expect(run.requests).toHaveLength(1);
   });

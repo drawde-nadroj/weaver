@@ -174,7 +174,6 @@ export class Loom {
   private readonly destButton: HTMLButtonElement;
   private readonly viewingEl: HTMLElement;
   private readonly refButton: HTMLButtonElement;
-  private readonly hideButton: HTMLButtonElement;
   private readonly moreButton: HTMLButtonElement;
   private readonly menu: HTMLElement;
   private readonly shortcuts: HTMLElement;
@@ -260,7 +259,7 @@ export class Loom {
 
   private readonly onKeyDown = (event: KeyboardEvent): void => this.handleKey(event);
   /**
-   * The save chord, taken in the window's capture phase while focus is inside
+   * Modified Enter, taken in the window's capture phase while focus is inside
    * the Loom.
    *
    * Obsidian's own key scope runs in the document's capture phase and claims
@@ -280,7 +279,7 @@ export class Loom {
     if (!isNode(node) || !this.root.contains(node)) return;
     event.preventDefault();
     event.stopPropagation();
-    void this.save();
+    this.activateEnter(event);
   };
   private readonly onPointerDown = (event: PointerEvent): void => {
     const target = event.target;
@@ -328,11 +327,6 @@ export class Loom {
     this.refButton.textContent = "Reference";
     this.refButton.setAttribute("aria-expanded", "false");
 
-    this.hideButton = doc.createElement("button");
-    this.hideButton.type = "button";
-    this.hideButton.className = "weaver-composer-hide";
-    this.hideButton.textContent = "Hide";
-
     this.moreButton = doc.createElement("button");
     this.moreButton.type = "button";
     this.moreButton.className = "weaver-composer-more";
@@ -360,7 +354,6 @@ export class Loom {
     this.header.appendChild(this.destButton);
     this.header.appendChild(this.viewingEl);
     this.header.appendChild(this.refButton);
-    this.header.appendChild(this.hideButton);
     this.header.appendChild(this.moreButton);
 
     this.body = doc.createElement("div");
@@ -536,8 +529,8 @@ export class Loom {
     this.keepDraftButton = this.button(doc, "Keep writing", "weaver-composer-quiet-close");
     this.retryButton = this.button(doc, "Retry save", "weaver-composer-save weaver-composer-retry");
     this.checkButton = this.button(doc, "Check save", "weaver-composer-save weaver-composer-check");
-    this.branchButton = this.button(doc, "Branch", "weaver-composer-branch");
-    this.freshButton = this.button(doc, "New Thread", "weaver-composer-new");
+    this.branchButton = this.button(doc, "↵ · Branch", "weaver-composer-branch");
+    this.freshButton = this.button(doc, "⌘↵ · New Thread", "weaver-composer-new");
     this.freshButton.setAttribute("style", dimensionColorVars(1));
 
     // The primary Save stays first in the rail so a generic `.weaver-composer-save`
@@ -1123,7 +1116,7 @@ export class Loom {
     else this.host.controller.setSelection(selection);
   }
 
-  /** The writing pane's own keys: Enter finishes, Escape puts the surface away. */
+  /** Enter saves a draft or continues a saved thought; Escape puts it away. */
   private onPaneKey(event: KeyboardEvent): boolean {
     if (event.isComposing || this.composing) return false;
     if (event.key === "Escape") {
@@ -1133,9 +1126,20 @@ export class Loom {
     }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return false;
     event.preventDefault();
-    if (this.host.controller.state.phase === "resting") this.hide();
-    else void this.save();
+    this.activateEnter(event);
     return true;
+  }
+
+  /** Every Enter route shares one state decision; repeats and pending saves do nothing. */
+  private activateEnter(event: KeyboardEvent): void {
+    if (event.repeat) return;
+    const phase = this.host.controller.state.phase;
+    if (phase === "resting") {
+      if (event.metaKey || event.ctrlKey) this.freshButton.click();
+      else this.branchButton.click();
+    } else if (phase === "editing") {
+      void this.save();
+    }
   }
 
   /** The reading pane owns its text; Escape only puts the reading away. */
@@ -1162,7 +1166,7 @@ export class Loom {
     } else if (state.phase === "submitting") {
       message = "Saving…";
     } else if (state.phase === "resting") {
-      message = isMobile() ? "Saved" : "Saved · Enter to hide";
+      message = "Saved";
     }
 
     this.statusEl.textContent = message ?? "";
@@ -1212,7 +1216,7 @@ export class Loom {
     this.setVisible(this.branchButton, resting);
     this.setVisible(this.freshButton, resting);
 
-    this.saveButton.textContent = isMobile() ? "Save" : "Save ↵";
+    this.saveButton.textContent = "↵ · Save";
     this.saveButton.disabled =
       state.phase !== "editing" || pending || this.composing || state.text.trim() === "";
     this.branchButton.disabled = saved === null;
@@ -1666,9 +1670,9 @@ export class Loom {
     this.shortcuts.appendChild(title);
 
     const rows: [string, string][] = [
-      ["↵", "Save the thought"],
+      ["↵", "Save a draft; branch after saving"],
       ["⇧↵", "Start a new line"],
-      ["⌘↵", "Save the thought"],
+      ["⌘↵", "Save a draft; new Thread after saving"],
       ["↑ ↓", "Previous or next thought (reading toolbar)"],
       ["/", "Search the reading"],
       ["↵", "Open the selected thought (reading toolbar)"],
@@ -1811,7 +1815,6 @@ export class Loom {
       else this.beginPanel("chooser");
     });
     this.refButton.addEventListener("click", () => this.toggleReference());
-    this.hideButton.addEventListener("click", () => this.hide());
     this.moreButton.addEventListener("click", () => {
       if (this.menuOpen) this.closeMenu(true);
       else if (this.shortcutsOpen) this.closeShortcuts(true);
@@ -1935,7 +1938,7 @@ export class Loom {
 
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !isField(event.target)) {
       event.preventDefault();
-      void this.save();
+      this.activateEnter(event);
       return;
     }
 
@@ -1972,8 +1975,7 @@ export class Loom {
       }
     }
 
-    // After a save, one more Return closes the reading — the same gesture that
-    // finished the thought finishes the visit.
+    // A fresh Return continues the saved thought; toolbar navigation stays separate.
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
@@ -1983,7 +1985,7 @@ export class Loom {
       !isControl(event.target)
     ) {
       event.preventDefault();
-      this.hide();
+      this.activateEnter(event);
     }
   }
 

@@ -913,11 +913,11 @@ body.weaver-phone .weaver-composer-card {
   margin-left: auto;
 }
 
-.weaver-composer .weaver-composer-header > button.weaver-composer-hide {
+.weaver-composer .weaver-composer-header > button.weaver-composer-more {
   margin-left: auto;
 }
 
-.weaver-composer .weaver-composer-ref-toggle:not([hidden]) ~ button.weaver-composer-hide {
+.weaver-composer .weaver-composer-ref-toggle:not([hidden]) ~ button.weaver-composer-more {
   margin-left: 0;
 }
 

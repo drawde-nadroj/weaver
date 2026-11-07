@@ -398,9 +398,9 @@ describe("one submission", () => {
 
     held.release(savedResult());
     await first;
-    // The deferred Enter dismissed the composer, and wrote nothing more.
+    // Repeated submission never queues a hide or a continuation.
     expect(test.requests).toHaveLength(1);
-    expect(test.controller.state.phase).toBe("closed");
+    expect(test.controller.state.phase).toBe("resting");
   });
 
   it("keeps the text and its timing when the note refuses", async () => {

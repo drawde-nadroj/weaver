@@ -165,8 +165,6 @@ export class CaptureController {
 
   /** Bumped by every entry point that can change what this thread means. */
   private generation = 0;
-  /** A second Enter during Saving dismisses, and only after success. */
-  private dismissAfterSuccess = false;
   /** Kept only while an answer is unknown. */
   private receipt: CaptureReceipt | null = null;
   private error: string | null = null;
@@ -258,7 +256,6 @@ export class CaptureController {
     this.collapsed = false;
     this.error = null;
     this.recovered = false;
-    this.dismissAfterSuccess = false;
     this.pendingTarget = null;
     this.root = null;
     this.selected = null;
@@ -316,7 +313,6 @@ export class CaptureController {
     this.collapsed = false;
     this.error = null;
     this.recovered = false;
-    this.dismissAfterSuccess = false;
 
     this.host.freezeNative();
     void this.pauseNative();
@@ -504,10 +500,8 @@ export class CaptureController {
   /**
    * Settles the draft: one Enter, one write.
    *
-   * While a submission is in flight this records the deferred dismissal instead
-   * of starting another write — that is what makes a distinct second Enter a
-   * dismiss and never a duplicate record. In the resting state it is `Close`: the
-   * composer closes and nothing is written.
+   * Pending and already-saved work ignores another submission. Continuation and
+   * hiding are separate surface actions, never an intent queued during a write.
    *
    * The submitted request is frozen before the write is asked for, and its clock
    * is paused at the painted second. A refusal puts the writer back in the draft
@@ -515,15 +509,6 @@ export class CaptureController {
    * state a surface must not guess at.
    */
   async settle(): Promise<void> {
-    if (this.phase === "submitting") {
-      this.dismissAfterSuccess = true;
-      this.host.onChange();
-      return;
-    }
-    if (this.phase === "resting") {
-      this.dismiss();
-      return;
-    }
     if (this.phase !== "editing") return;
 
     if (this.pendingTarget !== null) {
@@ -575,7 +560,6 @@ export class CaptureController {
 
     if (!result.ok) {
       this.phase = "editing";
-      this.dismissAfterSuccess = false;
       this.error = result.error;
       this.clock = resumeClock(this.clock, this.host.now());
       this.host.onChange();
@@ -948,13 +932,11 @@ export class CaptureController {
   /** A successful submission, from the write or from a confirmed receipt. */
   private complete(saved: SavedThought, beginning: CaptureInstant): void {
     const invitations = this.invitations;
-    const done = this.dismissAfterSuccess;
 
     this.generation += 1;
     this.receipt = null;
     this.recovered = false;
     this.error = null;
-    this.dismissAfterSuccess = false;
 
     // Every opening the beginning qualified for is spent, each through its own
     // identity and generation: two schedules may share one epoch minute.
@@ -970,15 +952,6 @@ export class CaptureController {
     this.clock = idleClock();
     this.phase = "resting";
 
-    if (done) {
-      // The writer asked to be done while the write was in flight: now that it
-      // is confirmed, that intent is honoured, and nothing was written twice.
-      const stored = this.performClose(saved);
-      if (!stored.ok) this.error = stored.error;
-      this.host.onChange();
-      return;
-    }
-
     try {
       this.host.store.clear();
     } catch {
@@ -988,40 +961,6 @@ export class CaptureController {
     }
 
     this.host.onChange();
-  }
-
-  /**
-   * Closes on a confirmed save, keeping the saved thread as the resting selection.
-   *
-   * A local cleanup that fails is reported, never turned into a failed save: the
-   * note is the record, and it already holds the words.
-   */
-  private performClose(saved: SavedThought): { ok: true } | { ok: false; error: string } {
-    this.phase = "closed";
-    this.collapsed = false;
-    this.root = null;
-    this.selected = null;
-    this.parent = null;
-    this.text = "";
-    this.selection = { from: 0, to: 0 };
-    this.beginning = null;
-    this.clock = idleClock();
-    this.invitations = [];
-    this.pendingTarget = null;
-    this.receipt = null;
-    this.recovered = false;
-    this.dismissAfterSuccess = false;
-    void saved;
-
-    try {
-      this.host.store.clear();
-      return { ok: true };
-    } catch {
-      return {
-        ok: false,
-        error: "Saved to the note, but the local draft could not be cleared; it may reappear after a reload."
-      };
-    }
   }
 
   /** Closes and forgets everything the composer was holding. */
@@ -1041,7 +980,6 @@ export class CaptureController {
     this.receipt = null;
     this.error = null;
     this.recovered = false;
-    this.dismissAfterSuccess = false;
 
     try {
       this.host.store.clear();
@@ -1065,7 +1003,6 @@ export class CaptureController {
     this.collapsed = false;
     this.error = null;
     this.recovered = false;
-    this.dismissAfterSuccess = false;
     this.contextId = target.contextId;
     this.root = target.root;
     this.parent = target.parent;

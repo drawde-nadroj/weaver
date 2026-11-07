@@ -4,7 +4,7 @@
  *
  * `src/entries/capture.ts` used to hold a phase string beside nine independent
  * fields — `phase`, `collapsed`, nullable `root`/`selected`/`parent`, text,
- * `pendingTarget`, `receipt`, `recovered`, `dismissAfterSuccess`. A phase string
+ * `pendingTarget`, `receipt`, `recovered`. A phase string
  * does not constrain those fields, so recovery, completion and hiding could each
  * build a different subset of them. This module replaces that bag with a tagged
  * union: there is no state in which "editable work" and "an unresolved write"

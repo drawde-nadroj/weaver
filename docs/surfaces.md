@@ -278,7 +278,7 @@ The saved duration is the last painted second, retained across pauses—not a
 fresh time sample or a discarded draft clock.
 
 - Header: a compact, left-aligned destination control (`Main ▾`, or `Branch · Main ▾`),
-  `Reference`, `Hide`, and `More`. The destination control opens the chooser;
+  `Reference` and `More`. The destination control opens the chooser;
   when viewing differs from writing, one quiet line names the viewing Realm.
 - Editing: one persistent rich Markdown editor grows with its content rather
   than reserving an empty field. Formatting appears during composition; reading
@@ -298,11 +298,13 @@ fresh time sample or a discarded draft clock.
   that changed since the attempt. Reading view writes through the vault, never
   into its dormant editor buffer.
 - Saved: the same prose pane becomes read-only and its frame becomes solid.
-  `Branch` and `New Thread` occupy the action slot that held Save; the status
-  persistently says Saved, with an Enter-to-hide hint on desktop. The real address
-  replaces the draft identity without adding a new row or repeating the status.
+  `↵ · Branch` and `⌘↵ · New Thread` occupy the action slot that held `↵ · Save`;
+  the status persistently says Saved. The real address replaces the draft identity
+  without adding a new row or repeating the status. Enter branches from the saved
+  thought; modified Enter starts a new Thread. Escape puts the reading away without
+  another write; there is no Hide button. Pending saves and held-key repeats never
+  queue a continuation: branching requires a fresh press after saving completes.
   The metadata rail reserves two compact lines so feedback does not move timing.
-  `Hide`, one more `⏎`, or `Esc` puts the reading away without another write.
   Branch uses the next dimension's colour; New Thread always uses first-dimension
   red. Both share Save's tinted fill, border and text treatment. Branch restores
   focus to the new draft after its parent has been validated.
@@ -342,7 +344,8 @@ The current usable width chooses the stacked or split arrangement on viewport
 updates, without requiring another keystroke.
 Opening the Loom freezes the note's own clock first. Desktop controls are 32px
 high, with no native button shadows; mobile and coarse-pointer targets are 44px,
-without filling every target's background. Shortcut suffixes are not drawn on touch.
+without filling every target's background. Action labels put shortcut characters
+before the name, separated by a middle dot.
 
 Reading view draws no opening at all: a note is a record, and the surface floats
 above every leaf regardless of which one is showing.

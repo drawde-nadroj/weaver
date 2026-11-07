@@ -164,8 +164,6 @@ export class CaptureModelController implements LoomCaptureOwner {
   private selected: ThoughtRef | null = null;
   /** The serial effect chain, so a caller can await a submission's completion. */
   private effects: Promise<void> = Promise.resolve();
-  /** A second Enter during Saving closes once the write is confirmed. */
-  private dismissAfterSuccess = false;
 
   constructor(private readonly host: CaptureModelHost) {}
 
@@ -415,11 +413,6 @@ export class CaptureModelController implements LoomCaptureOwner {
       }
     }
     this.modelValue = model;
-    if (this.dismissAfterSuccess && model.state.kind === "resting") {
-      this.dismissAfterSuccess = false;
-      this.reset();
-      return true;
-    }
     this.notify();
     return true;
   }
@@ -678,15 +671,6 @@ export class CaptureModelController implements LoomCaptureOwner {
     if (state.kind === "retryable") {
       this.dispatch({ kind: "retry", id: this.nextId(), published: captureInstantAt(this.host.now()) });
       await this.settled();
-      return;
-    }
-    if (isPending(state) || state.kind === "preparing") {
-      this.dismissAfterSuccess = true;
-      this.notify();
-      return;
-    }
-    if (state.kind === "resting") {
-      this.dismiss();
       return;
     }
     if (state.kind === "draft" || state.kind === "revision") {

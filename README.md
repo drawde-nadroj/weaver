@@ -55,7 +55,8 @@ pixel. The manual checks they need are at the end of this file.
    started before midnight — and `Saving…` becomes the saved thought.
 4. **Return.** The same prose pane becomes a rendered reading. Its draft identity
    becomes the real address; **Branch** and **New Thread** replace Save in the same
-   action rail. **Hide**, another `⏎`, or `Esc` puts it away without another write.
+   action rail. Another `⏎` branches; `⌘⏎` / `Ctrl⏎` starts a new Thread.
+   `Esc` puts it away without another write. Pending saves ignore continuation keys.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
    asked; reference context is optional and starts collapsed.
 6. **Browse** with `⌘⇧P`: the Loom's reference opens on your thoughts without
@@ -452,13 +453,14 @@ These need a live Obsidian and are not covered by `npm test`:
   workspace, the note is untouched, and the destination reads `Main`. Type a
   thought and press `⏎`: the note for the day the thought *began* gains one entry —
   address, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
-  the second `⏎` closes the composer without writing again.
+  a fresh second `⏎` opens a branch without writing it. `⌘⏎` after saving opens
+  a new Thread; held-key repeats and Enter during Saving do neither.
 - Composer focus: type and select a range, click into the note, then press
   `⌘⇧⏎`. The same draft and selection regain focus, with a visible caret for an
   insertion point and a solid focus outline separate from the dashed draft frame.
-  Hide and retrieve the draft, then save: the frame becomes solid, Saved remains
-  visible, and timing does not shift. Click away and retrieve the saved reading:
-  no new Thread or write occurs. A second `⏎` hides it and restores outside focus.
+  Escape hides the draft; retrieve it, then save: the frame becomes solid, Saved
+  remains visible, and timing does not shift. Click away and retrieve the saved
+  reading: no new Thread or write occurs. Escape hides it and restores outside focus.
 - Composer structure: a short empty draft is compact. Identity, prose and action
   rail keep their positions through saving and reading. One muted bottom-left label
   shows duration and start time while writing, then recorded duration and creation
