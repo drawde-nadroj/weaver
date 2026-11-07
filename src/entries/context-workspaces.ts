@@ -48,10 +48,17 @@ export interface WorkspaceHost {
   layout(): LayoutApi | null;
   /** Every destination, `main` first. */
   contexts(): readonly WeavingContext[];
-  /** The stored record. */
+  /** The stored record, read fresh when a decision is made. */
   state(): LocalStateRecord;
-  /** Replaces the stored record. */
-  save(record: LocalStateRecord): void;
+  /**
+   * Applies one synchronous update to the latest stored record.
+   *
+   * Travel spans awaited layout work, so a whole-envelope save made from the
+   * record read before the await would carry a stale workspace field back and
+   * clobber a change another owner made meanwhile. The updater sees the current
+   * record and returns the next one; this module only ever edits `workspaces`.
+   */
+  save(update: (current: LocalStateRecord) => LocalStateRecord): LocalStateRecord;
   /** Freezes the draft's clock and stores it, before the screen moves. */
   freezeDraft(): void;
   /** Opens (creating when needed) a destination's note for a day. */
@@ -164,11 +171,9 @@ export class ContextWorkspaces {
         return false;
       }
 
-      const record = this.host.state();
-      record.workspaces.activeContextId = contextId;
+      this.update((workspaces) => ({ ...workspaces, activeContextId: contextId }));
       this.active = contextId;
       this.adopted = true;
-      this.persist(record);
       return true;
     } finally {
       this.travelling = false;
@@ -219,13 +224,14 @@ export class ContextWorkspaces {
     // overwrite a real destination's memory with something unrecognised.
     if (this.active === null) return;
 
-    const record = this.host.state();
     const snapshot = this.snapshot();
     if (snapshot === null) return;
 
     const key = layoutKey(this.active);
-    record.workspaces.snapshots[key] = snapshot;
-    this.persist(record);
+    this.update((workspaces) => ({
+      ...workspaces,
+      snapshots: { ...workspaces.snapshots, [key]: snapshot }
+    }));
   }
 
   /**
@@ -279,10 +285,12 @@ export class ContextWorkspaces {
         // The destination now has a screen of its own to come back to, so its
         // next visit restores a real arrangement instead of opening again.
         const initial = this.snapshot() ?? before;
-        if (initial !== null) record.workspaces.snapshots[key] = initial;
-        record.workspaces.activeContextId = contextId;
+        this.update((workspaces) => ({
+          ...workspaces,
+          activeContextId: contextId,
+          ...(initial === null ? {} : { snapshots: { ...workspaces.snapshots, [key]: initial } })
+        }));
         this.active = contextId;
-        this.persist(record);
         return true;
       }
 
@@ -295,17 +303,15 @@ export class ContextWorkspaces {
         // Even the rollback failed: leave the real screen alone and stop
         // claiming it is a destination.
         this.active = null;
-        record.workspaces.activeContextId = null;
-        this.persist(record);
+        this.update((workspaces) => ({ ...workspaces, activeContextId: null }));
         this.host.notify(
           `Could not open ${context.name}, and the previous workspace could not be restored. The screen is unchanged.`
         );
         return false;
       }
 
-      record.workspaces.activeContextId = contextId;
+      this.update((workspaces) => ({ ...workspaces, activeContextId: contextId }));
       this.active = contextId;
-      this.persist(record);
       if (restored.approximate) {
         this.host.notify(
           `Opened ${context.name}. Some panes had changed, so their positions are the host's own.`
@@ -445,9 +451,16 @@ export class ContextWorkspaces {
     return this.host.openNote(path);
   }
 
-  private persist(record: LocalStateRecord): void {
+  /**
+   * Applies a workspace-only change to the latest stored record.
+   *
+   * Only the `workspaces` slice is ever written here, and it is applied to the
+   * record read at the moment of the write, so a schedule acknowledgement or a
+   * Loom field written during an awaited travel survives this save.
+   */
+  private update(apply: (workspaces: LocalStateRecord["workspaces"]) => LocalStateRecord["workspaces"]): void {
     try {
-      this.host.save(record);
+      this.host.save((current) => ({ ...current, workspaces: apply(current.workspaces) }));
     } catch {
       // A layout that could not be stored costs the next visit its position,
       // never the writer's words.

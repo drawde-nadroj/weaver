@@ -34,15 +34,19 @@ import { entryFrameExtension } from "./editor/entry-frame";
 import { entryEditExtension, entryKeysExtension } from "./editor/entry-keys";
 import { entryIndexExtension, programmaticWrite, refreshEntriesEffect } from "./editor/entry-field";
 import { registeredEditorViews, viewRegistryExtension } from "./editor/view-registry";
-import { CaptureController, type CaptureHost } from "./entries/capture";
+import { CaptureModelController, type CaptureModelHost } from "./entries/capture-model-controller";
+import { CaptureStoreV2 } from "./entries/capture-store";
 import { EntryClock } from "./entries/clock";
 import { ContextWorkspaces, type LayoutApi } from "./entries/context-workspaces";
 import { ensureDayNote, contextList, resolveContextDay } from "./entries/day-note";
 import { EntryEngine } from "./entries/engine";
 import { LocalState, type WorkspaceSnapshot } from "./entries/local-state";
+import { PluginDataStore } from "./entries/plugin-data";
 import { PortalController, type OfferedInvitation } from "./entries/portals";
+import { ThoughtIndex } from "./entries/thought-index";
+import { ReferenceController } from "./entries/reference";
 import { EntrySession } from "./entries/session";
-import { minimalChange, rewriteDay } from "./entries/writer";
+import { confirmExistingWrite, minimalChange, rewriteDay } from "./entries/writer";
 import { NoModel, OmLxModel, type WhisperModel } from "./model/whisper-model";
 import { WhisperRunner } from "./model/whisper-runner";
 import {
@@ -59,9 +63,8 @@ import { createEntryProcessor } from "./reading/entry-processor";
 import { normalizeData, whisperReachable, type WeaverData, type WeaverSettings } from "./settings";
 import { WeaverSettingTab } from "./settings-tab";
 import { applyCss, removeCss } from "./ui/css";
-import { Composer, type PortalStripView } from "./ui/composer";
+import { Loom, type PortalStripView } from "./ui/loom";
 import type { WeavingContext } from "./core/contexts";
-import { Navigator, type NavigatorOptions } from "./ui/navigator";
 import { isMobile, isPhone, isTablet } from "./ui/platform";
 
 /** How long a minute that has closed keeps saying so, once. */
@@ -72,6 +75,9 @@ const DAY_STATS_DELAY_MS = 2000;
 
 /** How long a captured exact-second alignment shows its one acknowledgement. */
 const ALIGNED_ACK_MS = 800;
+
+/** Where this device's durable Review replica lives, never synced. */
+const REPLICA_STORAGE_KEY = "weaver:device-replica:v1";
 
 /** The local stamp an alignment record writes: `2026-11-05T22:55:00-08:00`. */
 const LOCAL_STAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})[+-]\d{2}:\d{2}$/;
@@ -101,14 +107,23 @@ export default class WeaverPlugin extends Plugin {
   history = initialHistory();
   /** This device's unsent draft, layouts and acknowledgements. */
   local!: LocalState;
+  /** The one owner of `data.json`: settings and shared Reviews. */
+  dataStore!: PluginDataStore;
   /** The one floating thread surface. */
-  composer!: Composer;
+  composer!: Loom;
   /** Destination travel: what the workspace was, and what it becomes. */
   workspaces!: ContextWorkspaces;
   /** The draft, its timing, and its one submission. */
-  controller!: CaptureController;
+  controller!: CaptureModelController;
+  /** The reading index over recognised notes. */
+  thoughtIndex!: ThoughtIndex;
+  /** The upper half's reading owner. */
+  reference!: ReferenceController;
+  /** Bumped to discard stale reading queries. */
+  private referenceGeneration = 0;
+  /** The versioned capture record over vault-local storage. */
+  captureStore!: CaptureStoreV2;
 
-  private navigator: Navigator | null = null;
   private dayStatsTimer: number | null = null;
   /** True while one navigation transaction is running. */
   private navigating = false;
@@ -123,17 +138,28 @@ export default class WeaverPlugin extends Plugin {
   private readonly alignedTimers = new Set<number>();
 
   async onload(): Promise<void> {
+    this.local = new LocalState({
+      load: (key) => this.loadLocal(key),
+      save: (key, value) => this.saveLocal(key, value)
+    });
+
+    this.captureStore = new CaptureStoreV2({
+      load: (key) => this.loadLocal(key),
+      save: (key, value) => this.saveLocal(key, value)
+    });
+    try {
+      // Retire v1 only after a verified v2 record exists.
+      this.captureStore.migrateFromV1(this.local.load());
+    } catch {
+      // An unreadable v1 record is left alone; v2 starts empty.
+    }
+
     await this.loadSettings();
     this.syncBodyClasses();
     applyCss(this.settings);
 
     this.session = new EntrySession();
     this.clock = new EntryClock(this.session, () => Date.now());
-
-    this.local = new LocalState({
-      load: (key) => this.loadLocal(key),
-      save: (key, value) => this.saveLocal(key, value)
-    });
 
     this.portals = new PortalController({
       now: () => Date.now(),
@@ -142,7 +168,7 @@ export default class WeaverPlugin extends Plugin {
       rhythmContext: () => MAIN_CONTEXT_ID,
       schedules: () => this.schedules(),
       state: () => this.local.workspace(),
-      persist: (record) => this.local.saveWorkspace(record),
+      persist: (update) => this.local.updateWorkspace(update),
       visible: () => document.visibilityState !== "hidden",
       invite: (occurrence) => {
         new Notice(noticePortal(occurrence.name, portalTime(occurrence.portal), 0), NOTICE_NOOP_MS);
@@ -157,34 +183,68 @@ export default class WeaverPlugin extends Plugin {
       onChange: () => this.repaintFrames()
     });
 
-    this.controller = new CaptureController(this.captureHost());
-    this.composer = new Composer({
+    this.controller = new CaptureModelController(this.captureModelHost());
+
+    this.thoughtIndex = new ThoughtIndex({
+      paths: () =>
+        typeof this.app.vault.getMarkdownFiles === "function"
+          ? this.app.vault.getMarkdownFiles().map((file) => file.path)
+          : [],
+      read: (path) => this.readNote(path),
+      generation: () => this.referenceGeneration,
+      contexts: () => this.contexts()
+    });
+    this.reference = new ReferenceController({
+      index: this.thoughtIndex,
+      load: (target) => this.thoughtIndex.loadThought(target),
+      onChange: () => this.composer?.render()
+    });
+    this.composer = new Loom({
       app: this.app,
       controller: this.controller,
+      reference: this.reference,
       clock: this.clock,
       contexts: () => this.contexts(),
       loadThread: async (target) => {
         const source = await this.readNote(target.path);
         return source === null ? null : threadViewOf(parseEntries(source), target.path, target);
       },
-      travel: (contextId) => this.visitRealm(contextId),
+      travel: (contextId) => this.visitTapestry(contextId),
       viewing: () => this.workspaces.viewing(),
       renderMarkdown: (element, markdown, sourcePath, component) => {
         void this.renderMarkdown(element, markdown, sourcePath, component);
       },
-      openRealms: () => void this.openNavigator({ section: "realms" }),
+      openRealms: () => this.composer.showPanel("tapestries"),
+      writeHere: (contextId) => {
+        void this.controller.setDestination(contextId);
+      },
+      invitations: () =>
+        this.portals.outstanding().map((offered) => ({
+          id: offered.occurrence.id,
+          name: offered.occurrence.name,
+          opening: portalTime(offered.occurrence.portal),
+          phase: offered.phase
+        })),
+      takeInvitation: (occurrenceId) => {
+        const offered = this.portals.outstanding().find((candidate) => candidate.occurrence.id === occurrenceId);
+        this.openLoom(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
+      },
+      dismissInvitation: (occurrenceId) => {
+        this.portals.dismiss(occurrenceId);
+        this.repaintSurface();
+      },
       portalStrip: () => this.portalStrip(),
       weaveOpening: (occurrenceId) => {
         const offered = this.portals
           .outstanding()
           .find((candidate) => candidate.occurrence.id === occurrenceId);
-        this.openComposer(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
+        this.openLoom(offered === undefined ? {} : { contextId: offered.occurrence.contextId });
       },
       dismissOpening: (occurrenceId) => {
         this.portals.dismiss(occurrenceId);
         this.repaintSurface();
       },
-      openPortals: () => void this.openNavigator({ section: "portals" })
+      openPortals: () => this.composer.showPanel("invitations")
     });
 
     this.workspaces = new ContextWorkspaces({
@@ -192,7 +252,7 @@ export default class WeaverPlugin extends Plugin {
       layout: () => this.layoutApi(),
       contexts: () => this.contexts(),
       state: () => this.local.workspace(),
-      save: (record) => this.local.saveWorkspace(record),
+      save: (update) => this.local.updateWorkspace(update),
       freezeDraft: () => this.controller.pause(),
       openNote: (path) => this.openNote(path),
       notify: (message) => new Notice(message, NOTICE_NOOP_MS)
@@ -235,7 +295,9 @@ export default class WeaverPlugin extends Plugin {
       this.repaintFrames();
       this.portals.start();
       this.repaintSurface();
-      // A recovered draft is offered, never forced: it shows hidden and paused.
+      // Reconcile shared Reviews before the surface mounts, so the reading place
+      // is current, then recover the paused draft and mount hidden/reduced.
+      void this.dataStore.onExternalChange();
       this.controller.recover();
       this.composer.mount();
     });
@@ -263,6 +325,22 @@ export default class WeaverPlugin extends Plugin {
       this.app.vault.on("modify", (file) => {
         this.scheduleDayStats(file instanceof TFile ? file : null);
         this.syncPortalEntries();
+        this.invalidateIndex(file instanceof TFile ? [file.path] : []);
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        this.invalidateIndex(file instanceof TFile ? [file.path] : []);
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        this.invalidateIndex(file instanceof TFile ? [file.path] : []);
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        this.invalidateIndex(file instanceof TFile ? [file.path, oldPath] : [oldPath]);
       })
     );
     this.registerEvent(
@@ -291,10 +369,15 @@ export default class WeaverPlugin extends Plugin {
   }
 
   onunload(): void {
+    // Ask the data owner to flush now, then release it once that settles; the
+    // host does not await unload, so this must not depend on it.
+    if (this.dataStore !== undefined) {
+      void this.dataStore.flush().finally(() => this.dataStore.dispose());
+    }
+    this.reference?.dispose();
+    this.thoughtIndex?.dispose();
     this.workspaces?.remember();
     this.composer?.destroy();
-    this.navigator?.close();
-    this.navigator = null;
     this.portals.destroy();
     this.clock.destroy();
     this.whisper.clear();
@@ -314,8 +397,20 @@ export default class WeaverPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
-    this.data.settings = this.settings;
-    await this.saveData(this.data);
+    this.data = { ...this.data, settings: this.settings };
+    await this.dataStore.saveSettings(this.settings);
+  }
+
+  /**
+   * Merges a shared-file change without restarting controllers.
+   *
+   * Only Reviews and the stored envelope move; the runtime settings object is left
+   * as it is, so a Review update from another device never silently reconfigures
+   * this session.
+   */
+  async onExternalSettingsChange(): Promise<void> {
+    await this.dataStore?.onExternalChange();
+    this.data = this.dataStore.currentData;
   }
 
   /**
@@ -393,22 +488,69 @@ export default class WeaverPlugin extends Plugin {
    * inside a note lands where the note lives, and `main` when the screen is not a
    * destination. An opening is not passed in: an invitation only chooses the
    * Realm, and whether the writing counts as entered is decided by the first
-   * committed input itself.
+   * committed input itself. Naming that Realm while another draft exists is a
+   * proposal to move it, not a silent retarget; an unnamed open resumes.
    *
    * The surface is mounted and drawn before the input is touched, so the caret can
    * only be restored into a textarea that is already on screen — a phone will not
    * raise a keyboard for an element the writer cannot see.
    */
-  openComposer(options: { contextId?: string } = {}): void {
+  openLoom(options: { contextId?: string } = {}, window?: Window): void {
     const contextId = options.contextId ?? this.workspaces.viewing() ?? MAIN_CONTEXT_ID;
     // Where focus came from, remembered before the surface takes it, so Hide can
     // put it back exactly there.
     this.composer.rememberFocus();
-    this.controller.open(contextId === "" ? MAIN_CONTEXT_ID : contextId);
-    this.composer.mount();
+    this.controller.open(contextId === "" ? MAIN_CONTEXT_ID : contextId, {
+      move: options.contextId !== undefined
+    });
+    this.composer.mount(window?.document ?? document);
     this.composer.render();
     this.composer.restoreSelection();
     if (this.controller.state.phase === "editing") this.composer.focusInput();
+  }
+
+  /**
+   * Opens the Loom's reference at the last thought in Time order, without
+   * starting a draft or moving an underlying note.
+   */
+  async openReference(): Promise<void> {
+    this.composer.rememberFocus();
+    this.referenceGeneration += 1;
+    await this.reference.open(
+      { scope: { kind: "history", tapestryId: null }, order: "time", search: { kind: "none" } },
+      "last",
+      null
+    );
+    this.composer.mount();
+    this.composer.render();
+  }
+
+  /** Cycles the Tapestries in configured order while the Loom is focused. */
+  private cycleTapestry(delta: 1 | -1): void {
+    const contexts = this.contexts();
+    if (contexts.length === 0) return;
+    const current = this.controller.state.contextId || MAIN_CONTEXT_ID;
+    const at = Math.max(0, contexts.findIndex((context) => context.id === current));
+    const next = contexts[(at + delta + contexts.length) % contexts.length];
+    if (next !== undefined) void this.controller.setDestination(next.id);
+    this.repaintSurface();
+  }
+
+  /** Opens the reference scoped to today's recorded thoughts, without a draft. */
+  async openReferenceToday(): Promise<void> {
+    this.composer.rememberFocus();
+    this.referenceGeneration += 1;
+    await this.reference.open(
+      {
+        scope: { kind: "today", tapestryId: null, day: dayKeyOf(new Date()) },
+        order: "time",
+        search: { kind: "none" }
+      },
+      "last",
+      null
+    );
+    this.composer.mount();
+    this.composer.render();
   }
 
   /** Re-measures the open notes, so a frame effect that changed on its own is drawn. */
@@ -488,16 +630,6 @@ export default class WeaverPlugin extends Plugin {
     }
   }
 
-  /** Opens the navigator over the workspace, without revealing or creating a note. */
-  async openNavigator(options: NavigatorOptions = {}): Promise<void> {
-    if (this.navigator?.isOpen === true) {
-      await this.navigator.choose(options);
-      return;
-    }
-    this.navigator = new Navigator(this);
-    await this.navigator.open(options);
-  }
-
   /** Closes the day note on screen, else today's in the current destination. */
   async closeDay(): Promise<void> {
     const now = new Date();
@@ -547,17 +679,18 @@ export default class WeaverPlugin extends Plugin {
 
   // ── the composer's world ─────────────────────────────────────────────────
 
-  private captureHost(): CaptureHost {
+  private captureModelHost(): CaptureModelHost {
     return {
       now: () => Date.now(),
       contexts: () => this.contexts(),
-      capture: (request, invitations) =>
-        this.entries.capture(
-          request,
-          (receipt) => this.controller.attachReceipt(receipt),
-          invitations
-        ),
+      writeCapture: (request, retry, beforeCommit, invitations) =>
+        this.entries.writeCapture(request, retry, beforeCommit, invitations),
       read: (path) => this.readNote(path),
+      confirmPersisted: async (path, expected) => {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) return false;
+        return confirmExistingWrite(this.app, file, expected);
+      },
       editInNote: (target) => this.editInNote(target),
       freezeNative: () => {
         // Synchronous, so the note's clock stops on the second on screen before
@@ -565,8 +698,10 @@ export default class WeaverPlugin extends Plugin {
         if (this.session.active() !== null) this.session.freezeDisplay();
       },
       pauseNative: async () => {
-        await this.entries.pause();
-        return this.session.active() === null;
+        const result = await this.entries.pause();
+        // Forward the captured publish result, never a later idle inference: a
+        // replacement session must not make a failed stop look successful.
+        return result.kind !== "failed";
       },
       invitationsAt: (contextId, at) =>
         this.portals.captureAt(contextId, at).map(({ occurrence, generation }) => ({
@@ -578,7 +713,7 @@ export default class WeaverPlugin extends Plugin {
           contextId: occurrence.contextId
         })),
       acknowledge: (invitation, saved, beginning) => {
-        this.portals.acknowledge(
+        const status = this.portals.acknowledge(
           {
             id: invitation.occurrenceId,
             scheduleId: invitation.scheduleId,
@@ -590,13 +725,16 @@ export default class WeaverPlugin extends Plugin {
         );
         // The frame acknowledges an entry only when its first input landed on an
         // exact second of the opening it was written into.
-        this.portalEntered(
-          saved.thought.path,
-          saved.thought.n,
-          portalAlignments(invitation.portal, beginning.at).length > 0
-        );
+        if (beginning !== null) {
+          this.portalEntered(
+            saved.thought.path,
+            saved.thought.n,
+            portalAlignments(invitation.portal, beginning.at).length > 0
+          );
+        }
+        return status;
       },
-      store: this.local,
+      store: this.captureStore,
       onChange: () => this.composer?.render()
     };
   }
@@ -684,7 +822,7 @@ export default class WeaverPlugin extends Plugin {
    * after it succeeded, so a failed visit leaves the history where it was and
    * `Back` can never walk into a place that was not reached.
    */
-  async visitRealm(contextId: string): Promise<boolean> {
+  async visitTapestry(contextId: string): Promise<boolean> {
     return this.navigate(async () => {
       const departure = this.workspaceStop();
       const moved = await this.workspaces.visit(contextId);
@@ -830,7 +968,6 @@ export default class WeaverPlugin extends Plugin {
    */
   repaintSurface(): void {
     this.composer?.render();
-    void this.navigator?.refresh();
   }
 
   /**
@@ -928,7 +1065,7 @@ export default class WeaverPlugin extends Plugin {
       icon: "plus",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "Enter" }],
       // Not an editor callback: a thought may be woven from any view, or none.
-      callback: () => this.openComposer()
+      callback: () => this.openLoom()
     });
 
     this.addCommand({
@@ -956,10 +1093,66 @@ export default class WeaverPlugin extends Plugin {
 
     this.addCommand({
       id: "navigate",
-      name: "Navigator",
+      name: "Browse the Loom",
       icon: "list",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "P" }],
-      callback: () => void this.openNavigator()
+      callback: () => void this.openReference()
+    });
+
+    this.addCommand({
+      id: "view-today",
+      name: "View Today",
+      icon: "calendar",
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "t" }],
+      callback: () => void this.openReferenceToday()
+    });
+
+    this.addCommand({
+      id: "loom-previous-tapestry",
+      name: "Previous Tapestry",
+      icon: "chevron-left",
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "ArrowLeft" }],
+      checkCallback: (checking) => {
+        if (this.composer?.isOpen !== true) return false;
+        if (!checking) this.cycleTapestry(-1);
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: "loom-next-tapestry",
+      name: "Next Tapestry",
+      icon: "chevron-right",
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "ArrowRight" }],
+      checkCallback: (checking) => {
+        if (this.composer?.isOpen !== true) return false;
+        if (!checking) this.cycleTapestry(1);
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: "loom-reference",
+      name: "Show the Loom reference",
+      icon: "book-open",
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "ArrowUp" }],
+      checkCallback: (checking) => {
+        if (this.composer?.isOpen !== true) return false;
+        if (!checking) void this.openReference();
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: "loom-write",
+      name: "Return to writing",
+      icon: "pencil",
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "ArrowDown" }],
+      checkCallback: (checking) => {
+        if (this.composer?.isOpen !== true) return false;
+        if (!checking) this.openLoom();
+        return true;
+      }
     });
 
     this.addCommand({
@@ -977,15 +1170,27 @@ export default class WeaverPlugin extends Plugin {
     });
   }
 
-  private async loadSettings(): Promise<void> {
-    const stored = await this.loadData();
-    const normalized = normalizeData(stored);
-    this.data = normalized;
-    this.settings = normalized.settings;
+  /** Invalidates the reading index for changed paths and discards stale queries. */
+  private invalidateIndex(paths: readonly string[]): void {
+    for (const path of paths) this.thoughtIndex?.invalidate(path);
+    this.referenceGeneration += 1;
+  }
 
-    if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
-      await this.saveData(this.data);
-    }
+  private async loadSettings(): Promise<void> {
+    this.dataStore = new PluginDataStore({
+      readShared: () => this.loadData(),
+      writeShared: (data) => this.saveData(data),
+      readLocal: () => this.loadLocal(REPLICA_STORAGE_KEY),
+      writeLocal: (value) => this.saveLocal(REPLICA_STORAGE_KEY, value),
+      now: () => Date.now(),
+      deviceId: () => this.local.deviceId(),
+      notify: (message) => new Notice(message, NOTICE_NOOP_MS),
+      onChange: () => this.repaintSurface()
+    });
+
+    await this.dataStore.load();
+    this.data = this.dataStore.currentData;
+    this.settings = this.dataStore.currentSettings;
   }
 
   /** Vault-local storage, when this host exposes it. */

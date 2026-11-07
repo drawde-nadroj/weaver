@@ -3,7 +3,7 @@ import { readAlignments } from "../src/core/alignments";
 import { parseEntries } from "../src/core/entries";
 import { planCaptureEntry, planDuration } from "../src/core/insert";
 import { portalAt } from "../src/core/portals";
-import { captureBeginningAt, type CaptureRequest } from "../src/core/capture";
+import { captureInstantAt, type CaptureRequest } from "../src/core/capture";
 
 /** A capture request for one root, so the writer tests speak the real shape. */
 function capture(text: string, began: Date, portal = null as ReturnType<typeof portalAt> | null): CaptureRequest {
@@ -11,12 +11,12 @@ function capture(text: string, began: Date, portal = null as ReturnType<typeof p
     contextId: "main",
     parent: null,
     text,
-    beginning: captureBeginningAt(began.getTime()),
+    beginning: captureInstantAt(began.getTime()),
     durationMs: 0,
     portal
   };
 }
-import { minimalChange, planRewrite, rewriteDay } from "../src/entries/writer";
+import { minimalChange, planRewrite, registerWrite, rewriteDay, waitForWrite } from "../src/entries/writer";
 import { registerEditorView, unregisterEditorView } from "../src/editor/view-registry";
 import {
   createApp,
@@ -236,5 +236,29 @@ describe("portals through the one writer", () => {
     expect(records.records).toHaveLength(1);
     expect(records.records[0]?.entry).toBe(2);
     expect(records.records[0]?.portal).toBe(portal.id);
+  });
+});
+
+describe("the in-flight write registry", () => {
+  it("awaits a registered write until it settles, then becomes a no-op", async () => {
+    let finish: () => void = () => {};
+    const flight = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const release = registerWrite("op-registry", flight);
+
+    let settled = false;
+    const waiting = waitForWrite(null as never, "op-registry").then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    finish();
+    await waiting;
+    expect(settled).toBe(true);
+
+    release();
+    await expect(waitForWrite(null as never, "op-registry")).resolves.toBeUndefined();
   });
 });

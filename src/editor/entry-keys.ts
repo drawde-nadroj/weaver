@@ -28,7 +28,7 @@ import {
   type Entry,
   type EntryIndex
 } from "../core/entries";
-import type { EntrySession } from "../entries/session";
+import type { EntrySession, NativeStopResult } from "../entries/session";
 import { isPhone } from "../ui/platform";
 import { editorPathOf } from "./editor-path";
 import {
@@ -53,12 +53,12 @@ export const ENTRY_KEYS = ["Mod-Shift-Enter", "Enter"] as const;
 export interface EntryKeyHost {
   session: EntrySession;
   /** Opens the one composer: from a note, from a view, or from nowhere. */
-  openComposer(options?: { contextId?: string; invitationId?: string }): void;
+  openLoom(options?: { contextId?: string; invitationId?: string }, window?: Window): void;
   entries: {
     settle(view: EditorView, entry: Entry): void;
     descend(view: EditorView, entry: Entry): void;
     deleteEntry(view: EditorView, entry: Entry): void;
-    pause(): Promise<void>;
+    pause(): Promise<NativeStopResult>;
   };
 }
 
@@ -117,8 +117,8 @@ export function handleEnterKey(view: EditorView, host: EntryKeyHost): boolean {
  * so claiming it here cannot take anything away from the writer. Opening it does
  * not write a byte, and the note the caret is in is untouched.
  */
-export function handleStartKey(_view: EditorView, host: EntryKeyHost): boolean {
-  host.openComposer();
+export function handleStartKey(view: EditorView, host: EntryKeyHost): boolean {
+  host.openLoom({}, view.dom?.ownerDocument?.defaultView ?? undefined);
   return true;
 }
 

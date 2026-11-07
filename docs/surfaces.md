@@ -241,11 +241,11 @@ positioned layer inside `.cm-scroller`, one box per entry, in document coordinat
 - Frames are Live Preview only. Source mode is the file's own text, which is the
   point of it.
 
-### The composer and its openings
+### The Loom and its openings
 
 An opening is a minute, and the composer is where a thought is written. They are
-one surface, not two competing cards: `src/ui/composer.ts` owns the element, and
-`src/ui/portal.ts` draws the opening's status *inside* it — as the whole surface
+one surface, not two competing cards: `src/ui/loom.ts` owns the element, and
+`src/ui/loom.ts` draws the opening's status *inside* it — as the whole surface
 when no draft exists, and as one line of the status row when one does.
 
 An opening is not a permission that waits to be used. For `04:33` the interval is
@@ -279,51 +279,48 @@ opening that can still be entered and goes the moment its minute does;
 `portalMotion` sets its duration, and `off` pins the angle while keeping the six
 colours.
 
-`src/ui/composer.ts` is the one bottom surface, and it speaks the note's own visual
+`src/ui/loom.ts` is the one bottom surface, and it speaks the note's own visual
 language: the draft's dimension colour, the same rounded frame, two rails cut behind
 their labels, the duration at the bottom-left and the moment at the bottom-right,
 and the same digit grammar for an address. It is a labelled non-modal region — no
 `aria-modal`, no focus trap, no dimming — mounted in the focused window's document
 above every leaf, so a layout change cannot destroy the draft's input.
 
-- Header: one `Realm: <name>` control, which opens the navigator's Realms tab
-  without changing the destination or travelling. When viewing differs from writing,
-  one quiet line says `Writing to <realm> · viewing <realm>`, and nothing repeats it.
-- Editing: `Save ↵`, `Hide · Esc`, and a `More` menu holding `New Thread` and
-  `Discard draft`. Saving is the draft's own accent rather than a second product's
-  colour. `Shift-Enter` is a newline; a soft keyboard's Return is a save; a committed
-  IME composition is one beginning, and its confirmation `Enter` is never a save; a
-  held key never saves twice.
-- Saving: the prose is read-only and the status says `Saving…`. A distinct second
-  `Enter` dismisses, but only once the write is confirmed, and the note gains one
-  settled entry either way.
-- Resting: the saved thought is drawn from its note by `renderMarkdown`, the
-  selection is the focusable target, `Branch · N` opens a child in the next
-  dimension and `New Thread · T` a root, `More` holds `Edit in note`, and
-  `Close · Enter` — a quiet action — closes.
-- Structural motions on the saved selection: `j`/`↓` next thought, `k`/`↑` previous,
-  `h`/`←` parent, `l`/`→` first child, all in document preorder over the Thread's own
-  nodes. They are claimed only where no editable control or native button has focus,
-  so `Tab` still reaches the surface's actions.
-- `Hide` is not a dismissal: the words stay, the caret is remembered, and the clock
-  stops on the second that was on screen. A hidden draft leaves one strip,
-  `Resume · <realm> — <excerpt>`, which expands *then* restores the caret *then*
-  focuses. An untouched root has nothing to resume and closes; a chosen branch is
-  kept even while empty, because opening one was an intent.
-- Choosing a Realm or another parent with words in the draft is a *proposal*, not an
-  edit: the same draft is paused, the current and proposed parent are shown side by
-  side, `Use this parent ↵` revalidates and applies, and `Keep original · Esc`
-  changes nothing. The words, the beginning and the seconds on screen survive either
-  way, and no saved entry ever moves.
-- A failed save keeps the text, the timing and the reason; an unconfirmed one offers
-  `Check save` and never a second write. A save that completes while the surface is
-  hidden never expands it or takes focus.
+- Header: one destination control (`Writing to <Tapestry>`), `Hide`, and a `More`
+  overflow menu. When viewing differs from writing, one quiet line says
+  `viewing <realm>`; nothing repeats it. The destination control opens the chooser.
+- Editing: the prose is the dominant area, a textarea that grows with its content up
+  to the usable viewport, with no nested input frame. `⇧⏎` is the newline and `⏎`
+  commits on every platform — a phone's soft Return included — as does the footer's
+  `Save` (labelled `Save ↵`); `⌘⏎` / `Ctrl⏎` still commit too. The modifier chord is
+  taken in the window's capture phase while focus is inside the Loom, because
+  Obsidian's own scope claims `Mod+Enter` before any field listener can see it. A
+  committed IME composition is one beginning, and a held key never saves twice.
+- Saving: the prose is read-only and the status says `Saving…`. A failed or
+  unconfirmed save keeps the text, the timing and the reason, and never writes twice.
+- Saved: the saved thought is drawn from its note by `renderMarkdown`, in its own
+  dimension colour. `Branch`, `New Thread` and a quiet `Close` are offered, and one
+  more `⏎` or `Esc` puts the reading away. The Loom does not travel or create another
+  entry by itself.
+- Branching: one compact parent excerpt is shown above the prose, expandable on
+  request. A destination or parent change with words in the draft is still a
+  proposal, revalidated when applied.
+- Hidden: the Loom reduces to one short resume strip — destination and a draft
+  excerpt — anchored above the visible bottom controls and the keyboard boundary.
+  `Resume` restores the draft and caret *before* focusing. The strip measures itself,
+  never a height retained from the expanded card.
+- Reference: optional, collapsed by default, expanded through an explicit control.
+  It shows one thought at a time; `/` searches, `↑`/`↓` walk, `Enter` accepts or edits.
+  On a wide pane it may sit beside the prose; on a narrow pane it stacks above it.
+- The chooser, the Tapestry list and the invitation list replace the content area
+  temporarily; the draft, its selection, its timing and its scroll are preserved.
 
-Its box is measured, never inherited: `floatingComposerBox` puts it in the active
-pane's text column, on the bottom edge of the visual viewport, and it grows upward by
-exactly the height it rendered — a phone's keyboard and toolbar are reserved, not
-overlapped. Opening it freezes the note's own clock first, so two clocks never run
-for one thought.
+Its box is measured from the visible surface, never inherited: the width is 720px
+centred in the viewport (the viewport less its inset on a narrow screen), the height
+follows the content up to the usable visual viewport, and the bottom edge stays
+anchored while a reference expands upward. A phone's keyboard and toolbar are
+reserved, not overlapped. Opening the Loom freezes the note's own clock first, so two
+clocks never run for one thought. Desktop shortcut suffixes are not drawn on touch.
 
 Reading view draws no opening at all: a note is a record, and the surface floats
 above every leaf regardless of which one is showing.
@@ -373,51 +370,23 @@ emphasis, stays in the DOM exactly as Obsidian made it. A different-day entry's
 creation-day link is appended to the static frame at its top-right corner; it
 is a child of the frame, not of the shrink-wrapped head.
 
-### The navigator
+### The Loom's upper panels
 
-One component, one list, on both platforms: three tabs over the same card.
+The Loom is one non-modal, bottom-anchored dialog; its upper area is the reading
+surface, and the same area swaps to the Tapestry chooser or the invitation list.
 
-- Self-mounted overlay, not a `Modal`: it must never take a `Scope`. A scope is what
-  swallowed `⌘,` and stopped Obsidian's own settings from opening. Keys are handled
-  on the card in the capture phase, and every chord it does not claim reaches
-  Obsidian untouched.
-- `History` is one chronology for the chosen day, read from every recognised day
-  note at once — including a branch written today inside yesterday's file. A row
-  carries its address, its recorded time, and the reading or the first words, and a
-  Realm tag only when the filter is `All Realms`. Rows with no recorded moment stay
-  in their own group rather than at a fabricated midnight. The Realm filter is a
-  picker that offers `All Realms` explicitly, and the day is a date field: both keep
-  their native keys.
-- `Realms` lists every Realm with one current indicator, and two different acts:
-  `Travel` is a deliberate visit and `Write here` makes it the draft's destination
-  without moving the screen. `Manage Realms` opens Weaver's settings rather than a
-  second configuration surface.
-- `Portals` lists the openings that can still be entered, the one that closed a
-  moment ago, and the captures the notes really recorded — linked by their own note
-  path and a validated entry, so a recorded row stays listed even when its entry is
-  gone, with `Open` disabled and the reason beside it.
-- Actions belong to the selected row, not to every row: `Open`, `Continue Thread`,
-  `Branch`, and `Delete` behind a second press. There is no per-row delete control
-  and no non-actionable heading to walk past.
-- Keys: `j`/`↓` and `k`/`↑` move; `⏎` activates the selected row; `⇧⏎` and `n`
-  branch, which opens a draft under that thought and writes nothing; `t` starts a new
-  Thread; `c` continues the row's Thread; `Delete` arms and confirms; `⌘[` back and
-  `⌘]` forward work while Weaver holds focus; `Esc` cancels a confirmation and then
-  closes. On the tab list the arrows change tabs, so `h`/`l` never silently travel a
-  Realm. Every handled key is prevented and stopped.
-- Focus and selection are one model: a stable key identifies the row, a roving
-  `tabindex` puts focus on it, and mouse and keyboard update the same value. A
-  countdown tick rewrites the text of the rows that changed instead of rebuilding
-  the list, so a ticking second never steals the row the writer is on.
-- Opening pauses the stopwatch, like leaving the note. Every action re-reads the
-  document: the card never caches a line number across a write.
-- Travel is centralised in `src/main.ts`: `visitRealm` and `visitThought` capture the
-  departure, refresh the current history stop to it, and append the arrival only
-  after it succeeded. `Back` and `Forward` restore the recorded stop — the exact
-  screen, not the Realm's latest one — so the history lives in
-  `src/core/navigation.ts` as a cursor over up to sixty-four visits. A failed
-  navigation changes neither the history nor the screen, and two overlapping ones are
-  refused rather than raced.
+- The reference shows one thought at a time: its `x of y` position, its address,
+  and its authored text, read live-editor-first from the recognised notes. `↑`/`↓`
+  move within the frozen sequence, `/` opens a scoped search, `Enter` accepts a
+  match or edits the selected original, and `Esc` cancels the search before
+  hiding. Reading never travels the workspace, opens a note or moves the caret.
+- The Tapestry chooser lists every destination with `Write here` (retarget the open
+  draft) and `Open workspace` (a deliberate travel). Choosing a row for writing
+  does not move the screen.
+- The invitation list shows the outstanding openings with `Open` and `Hide`; it is
+  the same portal model the footer strip reads, not a second machine.
+- Rows carry address, recorded time and the first words; a thought with no
+  recorded moment is labelled `Time not recorded`, never a fabricated midnight.
 
 ### The close mark
 
@@ -445,7 +414,7 @@ with the caret's entry selected.
 | Clock row | flex widget, ticks while live, the duration at the bottom-left corner and the moment at the bottom-right | same, pinned to the bottom of the writing band after each keystroke |
 | Navigator | card centred over the note, keys in its footer | full-screen sheet, rows ≥ 44 px, taps in its footer |
 | Navigator keys | `j`/`k`/`↑`/`↓`, `⏎`, `⇧⏎`, `n`, `t`, `c`, `Delete`, `⌘[`, `⌘]`, `Esc` | tap a row to select it, its action buttons to act, `Delete` twice to remove |
-| Composer | bottom-anchored card in the text column with rails, dimension colour and the measured box | same surface, reserved toolbar and safe area, ≥ 44 px targets |
+| Loom | bottom-anchored card in the text column with rails, dimension colour and the measured box | same surface, reserved toolbar and safe area, ≥ 44 px targets |
 | Toolbar | *Weave a Thread*, *Branch from this thought*, *Back*, *Forward*, *Navigator*, *Whisper the day*, *Close the day* — every command carries an icon | the same seven, added under *Manage toolbar options* |
 | Whisper | asked during a pause in typing and again at settle; the answer lands as its own undo | rendered identically; asked only when the endpoint is an address the phone can reach, so a default loopback endpoint generates nothing there |
 

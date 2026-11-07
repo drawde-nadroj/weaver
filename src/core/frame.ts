@@ -230,3 +230,97 @@ export function frameSpan(input: FrameSpanInput): FrameSpan {
   const clear = input.nextRail === null || input.nextRail - bottom >= input.air;
   return { top, bottom, drawn: bottom > top && clear };
 }
+
+/** The rectangle a viewport offers the Loom, in viewport coordinates. */
+export interface LoomViewport {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** Everything the Loom's placement may read; none of it is the active note's column. */
+export interface LoomBoxInput {
+  /** The visual viewport a phone keyboard shrinks. */
+  viewport: LoomViewport;
+  /** Reserved space at the bottom: a mobile toolbar and the safe area. */
+  safeArea: number;
+  /** True when an upper reference or panel is showing. */
+  expanded: boolean;
+  /** True for the 44px reduced invitation/draft row. */
+  reduced: boolean;
+  /** Which half owns focus when the fit test fails. */
+  activeArea: "lower" | "upper";
+  /** The resolved prose font size, in pixels. */
+  fontPx: number;
+  /** The maximum contextual control rows either region shows. */
+  controlRows: number;
+  /** Prose lines each region must fit before a split is chosen. Default 2. */
+  proseLines?: number;
+}
+
+/** The Loom's rectangle and its internal chrome metrics. */
+export interface LoomBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  mode: "lower" | "split" | "upper" | "reduced";
+  header: number;
+  footer: number;
+  padding: number;
+  gap: number;
+}
+
+/** The width the Loom takes across a viewport: 720, or the viewport less its inset. */
+export function loomWidth(viewportWidth: number): { width: number; padding: number; inset: number } {
+  const narrow = viewportWidth <= 600;
+  const padding = narrow ? 12 : 16;
+  const inset = narrow ? 8 : 16;
+  const width = Math.max(0, narrow ? viewportWidth - 16 : Math.min(720, viewportWidth - 32));
+  return { width, padding, inset };
+}
+
+/**
+ * Where the bottom-anchored Loom sits, independent of the active note's column.
+ *
+ * The width never measures the writing column: it is 720 centred in the viewport,
+ * clamped to the available width less its inset, and 16px narrower still on a
+ * narrow screen. The lower-only surface is 320px, an expanded one 640px, and the
+ * reduced row 44px, each clamped to the usable height. An expanded surface splits
+ * into equal regions only when both fit their controls and two prose lines; below
+ * 480px, or when that fit fails, the active region takes the whole body. Nothing
+ * here mutates work, selection or focus — it returns a layout only.
+ */
+export function loomLayout(input: LoomBoxInput): LoomBox {
+  const viewportWidth = Math.max(0, input.viewport.right - input.viewport.left);
+  const { width, padding, inset } = loomWidth(viewportWidth);
+  const narrow = viewportWidth <= 600;
+  const header = narrow ? 44 : 40;
+  const footer = 44;
+  const gap = 8;
+  const left = Math.round(input.viewport.left + Math.max(0, (viewportWidth - width) / 2));
+
+  const usable = Math.max(0, input.viewport.bottom - input.viewport.top - inset - input.safeArea);
+  const anchoredTop = (height: number): number =>
+    Math.round(Math.max(input.viewport.top + inset, input.viewport.bottom - inset - input.safeArea - height));
+
+  if (input.reduced) {
+    const height = Math.min(44, usable);
+    return { left, top: anchoredTop(height), width, height, mode: "reduced", header, footer, padding, gap };
+  }
+
+  if (!input.expanded) {
+    const height = Math.min(320, usable);
+    return { left, top: anchoredTop(height), width, height, mode: "lower", header, footer, padding, gap };
+  }
+
+  const lineHeight = input.fontPx * 1.35;
+  const proseLines = input.proseLines ?? 2;
+  const minRegion = proseLines * lineHeight + input.controlRows * lineHeight + 2 * padding;
+  const body = usable - header - footer - 2 * gap;
+  const fits = usable >= 480 && body / 2 >= minRegion;
+  const height = Math.min(640, usable);
+  const mode: LoomBox["mode"] = fits ? "split" : input.activeArea === "upper" ? "upper" : "lower";
+  return { left, top: anchoredTop(height), width, height, mode, header, footer, padding, gap };
+}

@@ -116,3 +116,39 @@ describe("EntrySession", () => {
     expect(session.frozen()).toBe(false);
   });
 });
+
+describe("session identity", () => {
+  it("gives each start a fresh id and reports a tagged state", () => {
+    const session = new EntrySession();
+    expect(session.state()).toEqual({ kind: "idle" });
+
+    session.start("a.md", 1, 0, START);
+    const first = session.active()?.id;
+    expect(first).toBeTypeOf("number");
+    expect(session.state().kind).toBe("running");
+
+    session.freezeDisplay();
+    expect(session.state().kind).toBe("held");
+
+    session.start("a.md", 1, 0, START + 1000);
+    expect(session.active()?.id).not.toBe(first);
+    expect(session.state().kind).toBe("running");
+  });
+
+  it("clears only the session id it captured, never a replacement", () => {
+    const session = new EntrySession();
+    session.start("a.md", 1, 0, START);
+    const first = session.active()?.id ?? -1;
+
+    // A replacement that shares the path, the N and even the resume instant.
+    session.start("a.md", 1, 0, START);
+    expect(session.active()?.id).not.toBe(first);
+
+    expect(session.clearIf(first)).toBe(false);
+    expect(session.active()?.seq).toBe(1);
+
+    const second = session.active()?.id ?? -1;
+    expect(session.clearIf(second)).toBe(true);
+    expect(session.active()).toBeNull();
+  });
+});

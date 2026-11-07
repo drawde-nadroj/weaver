@@ -53,7 +53,7 @@ describe("successful stop rendering", () => {
     } as unknown as EditorView;
     registerEditorView(view);
     try {
-      expect(clockWidget(view.state).input.mode).toBe("running");
+      expect(clockWidget(view.state).input.durationMode).toBe("session");
       if (action === "pause") await plugin.entries.pause();
       else {
         const entry = parseEntries(view.state.doc.toString()).entries[0];
@@ -62,7 +62,7 @@ describe("successful stop rendering", () => {
       }
       expect(plugin.session.active()).toBeNull();
       const stopped = clockWidget(view.state);
-      expect(stopped.input.mode).toBe("fixed");
+      expect(stopped.input.durationMode).toBe("fixed");
       const root = stopped.toDOM();
       vi.advanceTimersByTime(2500);
       plugin.clock.refresh();

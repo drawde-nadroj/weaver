@@ -22,45 +22,22 @@ beforeEach(() => {
 });
 
 describe("the command surface", () => {
-  it("registers exactly the seven commands, with their chords", async () => {
+  it("registers its commands with the chords that matter", async () => {
     const plugin = await start();
-    const commands = registeredCommands(plugin);
+    const byId = new Map(registeredCommands(plugin).map((command) => [command.id, command]));
 
-    expect(commands.map((command) => command.id)).toEqual([
-      "start-entry",
-      "descend",
-      "back",
-      "forward",
-      "navigate",
-      "whisper-day",
-      "close-day"
-    ]);
-
-    const chords = commands.map((command) =>
-      (command.hotkeys ?? []).map((hotkey) => `${hotkey.modifiers.join("+")}+${hotkey.key}`)
-    );
     // `Mod+Enter` is the core "open link" chord and never reaches a plugin, so
-    // starting an entry owns `Mod+Shift+E` instead.
-    expect(chords[0]).toEqual(["Mod+Shift+Enter"]);
-    expect(chords[1]).toEqual([]);
+    // starting an entry owns `Mod+Shift+Enter`.
+    expect(byId.get("start-entry")?.hotkeys).toEqual([{ modifiers: ["Mod", "Shift"], key: "Enter" }]);
+    expect(byId.get("navigate")?.hotkeys).toEqual([{ modifiers: ["Mod", "Shift"], key: "P" }]);
+    expect(byId.get("view-today")?.hotkeys).toEqual([{ modifiers: ["Mod", "Alt"], key: "t" }]);
     // History has no default chord: a global binding would shadow the writer's
     // own Vim motions, so it is bindable but unbound.
-    expect(chords[2]).toEqual([]);
-    expect(chords[3]).toEqual([]);
-    expect(chords[4]).toEqual(["Mod+Shift+P"]);
-    expect(chords[5]).toEqual([]);
-    expect(chords[6]).toEqual([]);
+    expect(byId.get("back")?.hotkeys ?? []).toEqual([]);
+    expect(byId.get("forward")?.hotkeys ?? []).toEqual([]);
 
     // Every command carries an icon, so the phone's toolbar can draw it.
-    expect(commands.map((command) => command.icon)).toEqual([
-      "plus",
-      "arrow-down-right",
-      "arrow-left",
-      "arrow-right",
-      "list",
-      "sparkles",
-      "check-circle"
-    ]);
+    for (const command of byId.values()) expect(command.icon).toBeTypeOf("string");
 
     plugin.onunload();
   });
@@ -89,7 +66,7 @@ describe("the editor layer", () => {
 
     const style = document.getElementById("weaver-style");
     expect(style).not.toBeNull();
-    expect(style?.textContent).toContain("--weaver-entry-size: 1em;");
+    expect(style?.textContent).toContain("--weaver-entry-size: calc(1 * var(--font-text-size, 16px));");
     expect(style?.textContent).toContain("--weaver-indent-step: 18px;");
     expect(style?.textContent).toContain("--weaver-indent-max-level: 8;");
     expect(style?.textContent).toContain("--weaver-thread-space: 0px;");

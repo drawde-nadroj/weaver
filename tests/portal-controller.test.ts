@@ -57,9 +57,11 @@ function harness(options: { schedules?: PortalSchedule[]; rhythm?: boolean } = {
     rhythmContext: () => "main",
     schedules: () => schedules,
     state: () => state,
-    persist: (record) => {
-      state.schedules = record.schedules;
-      persist.push(record);
+    persist: (update) => {
+      const next = update(state);
+      state.schedules = next.schedules;
+      persist.push(next);
+      return next;
     },
     visible: () => visible,
     invite: (occurrence) => {
@@ -219,6 +221,25 @@ describe("activation and acknowledgement", () => {
     expect(test.controller.outstanding()[0]?.occurrence.id).not.toBe(first);
   });
 
+  it("dismisses an approaching offer without suppressing the next one", () => {
+    const test = harness({ rhythm: false });
+    test.at(local(10, 50));
+    test.controller.reconcile();
+    const approaching = test.controller.outstanding()[0];
+    if (approaching === undefined) throw new Error("expected an approaching offer");
+    expect(approaching.phase).toBe("approaching");
+
+    expect(test.controller.dismiss(approaching.occurrence.id)).toBe("acknowledged");
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toEqual([]);
+
+    // The next day's notice is still offered later.
+    test.at(local(10, 50, 0, 6));
+    test.controller.reconcile();
+    expect(test.controller.outstanding()).toHaveLength(1);
+    expect(test.controller.dismiss("not-an-occurrence")).toBe("obsolete");
+  });
+
   it("reconciles the latest due opening after a restart, without replaying every elapsed minute", () => {
     const test = harness({ rhythm: false });
     test.at(local(11, 0));
@@ -264,7 +285,7 @@ describe("activation and acknowledgement", () => {
     test.at(local(12, 0));
     test.controller.reconcile();
 
-    test.controller.acknowledge(frozen.occurrence, frozen.generation);
+    expect(test.controller.acknowledge(frozen.occurrence, frozen.generation)).toBe("obsolete");
     test.controller.reconcile();
 
     // The new generation's invitation is untouched by the old answer.

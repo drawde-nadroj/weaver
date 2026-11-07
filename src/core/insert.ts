@@ -440,6 +440,42 @@ export function planDuration(
 }
 
 /**
+ * Settles an open entry: the duration becomes `+`, and the moment is written only
+ * when the row has none.
+ *
+ * The moment is the publication instant, recorded once at settle. A row that
+ * already carries a moment — settled, paused, or a historical row — is never
+ * re-stamped, and a malformed clock row is refused rather than guessed.
+ */
+export function planSettleEntry(
+  _source: string,
+  index: EntryIndex,
+  entry: Entry,
+  ms: number,
+  publishedAt: Date
+): InsertPlan | null {
+  if (entry.clockLine === null || entry.state === "settled") return null;
+  if (index.legacyFormat) return null;
+
+  const line = index.lines[entry.clockLine] ?? "";
+  const row = parseClockRow(line);
+  if (row === null || row.durationSpan === null) return null;
+
+  // Add the moment only when the row has neither half; a time-only or day-only
+  // row keeps what it has and only its duration changes.
+  const addMoment = entry.time === null && entry.day === null;
+  const time = addMoment ? formatClock(publishedAt) : entry.time;
+  const day = addMoment ? dayKey(publishedAt) : entry.day;
+  const target = formatClockRow(time, "+", ms, day);
+  if (line === target) return null;
+
+  return {
+    changes: [{ from: entry.clockFrom, to: entry.clockTo, text: target }],
+    selection: { from: entry.proseFrom, to: entry.proseFrom }
+  };
+}
+
+/**
  * Writes a whisper above an entry's first prose line. One insertion, so one
  * undo.
  *

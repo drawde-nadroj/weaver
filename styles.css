@@ -606,152 +606,14 @@ body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static 
   text-align: left;
 }
 
-/* ── The bottom surface: one draft, and the opening it counts for ──────── */
+/* ── The Loom: one compact surface, one draft ─────────────────────────── */
 
-/* One surface, one owner. A draft, a hidden draft, and an opening's status are
- * three states of the same fixed element at the same edge — never two cards
- * competing for the bottom of the screen.
- *
- * The surface speaks the note's own language: the draft's dimension colour on
- * the card, the two rails as label rows that cut the border behind them, the
- * duration and the moment at the bottom corners, and the same digit grammar for
- * every address. The prose inside is coloured; the chrome is not.
- *
- * The rainbow belongs to an opening that is live. Closed, it goes at once — a
- * minute nobody entered must not keep glowing like a standing invitation — and
- * `portalMotion` remains the only thing that animates it.
- */
-
-@property --weaver-portal-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-.weaver-portal-strip {
-  --weaver-portal-stops: var(--weaver-anchor-1), var(--weaver-anchor-2),
-    var(--weaver-anchor-3), var(--weaver-anchor-4), var(--weaver-anchor-5),
-    var(--weaver-anchor-6), var(--weaver-anchor-1);
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 14px;
-  border-radius: 12px;
-  background: var(--background-primary);
-  font-family: var(--font-interface);
-  font-size: 0.8em;
-  line-height: 1.3;
-  color: var(--text-muted);
-}
-
-/* The rail, drawn only for an opening that can still be entered. */
-.weaver-portal-strip[data-phase="approaching"]::before,
-.weaver-portal-strip[data-phase="available"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(from var(--weaver-portal-angle), var(--weaver-portal-stops));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: weaver-portal-orbit var(--weaver-portal-motion, 12s) linear infinite;
-}
-
-.weaver-portal-strip[data-phase="closed"] {
-  border: 1px solid var(--background-modifier-border);
-}
-
-.weaver-portal-strip[hidden],
-.weaver-portal-strip [hidden] {
-  display: none !important;
-}
-
-.weaver-portal-realm {
-  color: var(--text-normal);
-  font-weight: 600;
-}
-
-.weaver-portal-opening,
-.weaver-portal-state {
-  font-variant-numeric: tabular-nums;
-}
-
-.weaver-portal-strip[data-phase="available"] .weaver-portal-state {
-  color: var(--text-normal);
-}
-
-.weaver-portal-strip button {
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 7px;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--interactive-normal);
-  color: var(--text-normal);
-  font-size: 0.95em;
-  cursor: pointer;
-}
-
-.weaver-portal-strip button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-/* Writing keeps the neutral background: the rainbow says "now", the button says
- * "do", and a second colour would make both harder to read. */
-.weaver-portal-strip .weaver-portal-weave:not(:disabled) {
-  border-color: var(--text-faint);
-  color: var(--text-normal);
-  font-weight: 600;
-}
-
-.weaver-portal-strip button:hover:not(:disabled) {
-  background: var(--interactive-hover);
-}
-
-.weaver-portal-strip button:focus-visible,
 .weaver-composer button:focus-visible,
-.weaver-composer-input:focus-visible,
-.weaver-composer-selected:focus-visible {
-  outline: 2px solid var(--interactive-accent);
+.weaver-composer-input:focus-visible {
+  outline: 2px solid var(--weaver-dcolor, var(--interactive-accent));
   outline-offset: 2px;
 }
 
-@keyframes weaver-portal-orbit {
-  to {
-    --weaver-portal-angle: 360deg;
-  }
-}
-
-/* The motion setting, as one duration. `off` pins the angle: the rainbow stays,
- * and nothing moves. */
-body[data-weaver-motion="off"] .weaver-portal-strip::before {
-  --weaver-portal-angle: 0deg;
-  animation: none;
-}
-
-body[data-weaver-motion="slow"] .weaver-portal-strip::before {
-  --weaver-portal-motion: 24s;
-}
-
-body[data-weaver-motion="normal"] .weaver-portal-strip::before {
-  --weaver-portal-motion: 12s;
-}
-
-body[data-weaver-motion="fast"] .weaver-portal-strip::before {
-  --weaver-portal-motion: 6s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .weaver-portal-strip::before {
-    --weaver-portal-angle: 0deg;
-    animation: none;
-  }
-}
 
 /* ── The composer's own surface ────────────────────────────────────────── */
 
@@ -766,7 +628,6 @@ body[data-weaver-motion="fast"] .weaver-portal-strip::before {
   flex-direction: column;
   gap: 8px;
   font-family: var(--font-interface);
-  font-size: 0.85em;
   color: var(--text-normal);
 }
 
@@ -779,11 +640,11 @@ body[data-weaver-motion="fast"] .weaver-portal-strip::before {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-height: 0;
   max-height: var(--weaver-composer-max-height, 45vh);
-  overflow-y: auto;
-  padding: 10px 14px 12px;
+  overflow: hidden;
+  padding: 16px;
   /* The same radius as an entry's own frame: one box, one geometry. */
   border-radius: 10px;
   border: 1px solid color-mix(in oklab, var(--weaver-dcolor, var(--text-faint)) 55%, transparent);
@@ -791,27 +652,6 @@ body[data-weaver-motion="fast"] .weaver-portal-strip::before {
   box-shadow: 0 12px 40px rgb(0 0 0 / 22%);
 }
 
-/* The rails: a label row whose own background cuts the border behind it, so the
- * box reads as running into its own text rather than enclosing it. */
-.weaver-composer-rail {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.92em;
-  color: var(--text-muted);
-}
-
-.weaver-composer-rail-top {
-  margin-bottom: 2px;
-  color: var(--text-muted);
-}
-
-.weaver-composer-rail-bottom {
-  margin-top: 2px;
-}
 
 .weaver-composer-duration {
   color: var(--text-muted);
@@ -820,156 +660,18 @@ body[data-weaver-motion="fast"] .weaver-portal-strip::before {
 .weaver-composer-moment {
   color: var(--text-faint);
 }
-
-.weaver-composer-rail.weaver-frame-label,
-.weaver-composer-duration.weaver-frame-label,
+.weaver-composer-duration.weaver-frame-label, 
 .weaver-composer-moment.weaver-frame-label {
   display: inline-flex;
   padding: 0 6px;
 }
 
-.weaver-composer-realm {
-  align-self: flex-start;
-  min-height: 26px;
-  padding: 0 8px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.95em;
-  cursor: pointer;
-}
-
-.weaver-composer-realm:hover {
-  border-color: var(--background-modifier-border);
-  background: var(--interactive-normal);
-  color: var(--text-normal);
-}
-
-/* The one quiet line, shown only when writing and viewing disagree. */
-.weaver-composer-viewing-note {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 0.86em;
-}
-
-.weaver-composer-parent {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 5px 8px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-  color: var(--text-muted);
-  font-size: 0.88em;
-}
-
-.weaver-composer-parent-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-.weaver-composer-parent-label {
-  color: var(--text-faint);
-  font-size: 0.9em;
-  letter-spacing: 0.02em;
-}
-
-.weaver-composer-parent-address {
-  font-variant-numeric: tabular-nums;
-  color: var(--weaver-dcolor, var(--text-muted));
-}
-
-.weaver-composer-parent-excerpt {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.weaver-composer-outline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.86em;
-}
-
-.weaver-composer-ancestor {
-  border: 0;
-  background: transparent;
-  padding: 2px 4px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-}
-
-.weaver-composer-ancestor:hover {
-  color: var(--text-normal);
-}
-
-.weaver-composer-hint {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 0.9em;
-}
-
-/* The selected thought is the thing the structural motions move, so it is the
- * focusable target — with an outline as well as a colour, because colour alone
- * is not a selection cue. */
-.weaver-composer-selected {
-  padding: 4px 6px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  color: var(--weaver-dcolor, var(--text-normal));
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size, 1em);
-  line-height: var(--weaver-entry-line-height, 1.35);
-}
-
-.weaver-composer-selected:focus-visible,
-.weaver-composer[data-phase="resting"] .weaver-composer-selected {
-  border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
-}
-
-.weaver-composer-prose {
-  white-space: pre-wrap;
-}
-
-.weaver-composer-prose a {
-  color: var(--link-color, var(--text-accent));
-}
-
-.weaver-composer-input {
-  margin: 0;
-  padding: 6px 8px;
-  min-height: 3.2em;
-  resize: none;
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-  color: var(--weaver-dcolor, var(--text-normal));
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size, 1em);
-  line-height: var(--weaver-entry-line-height, 1.35);
-}
-
-.weaver-composer-input[readonly] {
-  background: var(--background-secondary);
-}
-
-.weaver-composer-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-height: 1.4em;
-  color: var(--text-muted);
-  font-size: 0.9em;
-  font-variant-numeric: tabular-nums;
+/* The reference and the chooser take focus as containers so the Loom's keys keep
+ * working when they replace the prose field; their boxes are not the target, so
+ * they draw no ring of their own. */
+.weaver-composer-reference:focus,
+.weaver-composer-chooser:focus {
+  outline: none;
 }
 
 .weaver-composer-status {
@@ -981,128 +683,130 @@ body[data-weaver-motion="fast"] .weaver-portal-strip::before {
   color: var(--text-error);
 }
 
-.weaver-composer-through {
-  color: var(--text-muted);
+/* ── An opening, while a draft is open ─────────────────────────────────── */
+
+/* The same strip that fills the whole surface when nothing is written, moved
+ * into the draft's status row instead of sitting beside it. It takes its own
+ * line; the rainbow is drawn only for a minute that can still be entered, and
+ * `portalMotion` remains the only thing that animates it. */
+@property --weaver-composer-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
-.weaver-composer-portal-slot {
-  min-width: 0;
-}
-
-.weaver-composer-actions {
+.weaver-composer-portal {
+  --weaver-portal-stops: var(--weaver-anchor-1), var(--weaver-anchor-2),
+    var(--weaver-anchor-3), var(--weaver-anchor-4), var(--weaver-anchor-5),
+    var(--weaver-anchor-6), var(--weaver-anchor-1);
+  position: relative;
+  flex: 1 0 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 
-.weaver-composer-actions button {
-  min-height: 30px;
-  padding: 0 11px;
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
+.weaver-composer-portal[data-phase="approaching"]::before,
+.weaver-composer-portal[data-phase="available"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--weaver-composer-angle), var(--weaver-portal-stops));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: weaver-composer-orbit var(--weaver-composer-motion, 12s) linear infinite;
+}
+
+.weaver-composer-portal-realm {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.weaver-composer-portal[data-phase="available"] .weaver-composer-portal-state {
+  color: var(--text-normal);
+}
+
+.weaver-composer-portal-open {
+  min-height: 28px;
+  margin-left: auto;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--text-faint);
   background: var(--interactive-normal);
   color: var(--text-normal);
+  font-size: 0.95em;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.weaver-composer-actions button:hover:not(:disabled) {
+.weaver-composer-portal-open:hover {
   background: var(--interactive-hover);
 }
 
-.weaver-composer-actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
+@keyframes weaver-composer-orbit {
+  to {
+    --weaver-composer-angle: 360deg;
+  }
 }
 
-/* Saving is the draft's own colour, not a second product's purple: the button
+/* `off` pins the angle: the six colours stay, and nothing moves. */
+body[data-weaver-motion="off"] .weaver-composer-portal::before {
+  --weaver-composer-angle: 0deg;
+  animation: none;
+}
+
+body[data-weaver-motion="slow"] .weaver-composer-portal::before {
+  --weaver-composer-motion: 24s;
+}
+
+body[data-weaver-motion="normal"] .weaver-composer-portal::before {
+  --weaver-composer-motion: 12s;
+}
+
+body[data-weaver-motion="fast"] .weaver-composer-portal::before {
+  --weaver-composer-motion: 6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weaver-composer-portal::before {
+    --weaver-composer-angle: 0deg;
+    animation: none;
+  }
+}
+
+/* Saving is the draft's own colour,  not a second product's purple: the button
  * belongs to the frame it sits in. */
-.weaver-composer .weaver-composer-save,
-.weaver-composer .weaver-composer-confirm {
+.weaver-composer .weaver-composer-save{
   border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
   background: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 18%, var(--background-primary));
   color: var(--text-normal);
   font-weight: 600;
 }
 
-/* Closing is a quiet act, not the loudest thing on the surface. */
-.weaver-composer .weaver-composer-close,
+/* Closing is a quiet act, not a second accent. */
 .weaver-composer .weaver-composer-hide,
 .weaver-composer .weaver-composer-more {
   background: transparent;
   color: var(--text-muted);
 }
 
-.weaver-composer-more-panel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 8px;
-  background: var(--background-secondary);
-}
-
-.weaver-composer-confirm-discard {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-error, var(--text-error));
-  font-size: 0.9em;
-}
-
-.weaver-composer-confirm-text {
-  color: var(--text-normal);
-}
-
-/* A hidden draft leaves one strip: the whole surface, reduced to resuming it. */
-.weaver-composer-resume {
-  display: flex;
-}
-
-.weaver-composer-resume-button {
-  flex: 1 1 auto;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 12px;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-  color: var(--text-normal);
-  text-align: left;
-  font-size: 0.85em;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
-}
-
-.weaver-composer-resume[data-kind="error"] .weaver-composer-resume-button {
-  border-color: var(--text-error);
-  color: var(--text-error);
-}
-
-.weaver-composer-strip {
-  display: flex;
-}
-
 /* Phones: a sheet at the bottom edge, and every target a finger's. */
 body.weaver-phone .weaver-composer-card {
   border-radius: 14px 14px 0 0;
-}
-
-body.weaver-phone .weaver-composer-actions button,
-body.weaver-phone .weaver-composer-realm,
-body.weaver-phone .weaver-portal-strip button {
-  min-height: 44px;
-}
-
-body.weaver-phone .weaver-portal-strip {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
 }
 
 
@@ -1126,297 +830,422 @@ body.weaver-phone .weaver-portal-strip {
  * component, the same rows, the same three gestures. The phone's differences are
  * geometry and row height, never behaviour. */
 
-.weaver-navigator {
-  position: fixed;
-  inset: 0;
-  z-index: var(--layer-modal, 40);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 25%);
-}
 
-.weaver-navigator-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-2);
-  width: min(460px, 100vw - 32px);
-  max-height: 70vh;
-  padding: var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-l, 12px);
-  background: var(--background-primary);
-  box-shadow: var(--shadow-l, 0 8px 24px rgb(0 0 0 / 25%));
-  /* The card is outside `.markdown-rendered`, so it names the note's font
-   * instead of inheriting the interface one: one typeface, every surface. */
-  font-family: var(--font-text);
-  outline: none;
-}
 
 /* Tabs, filter and day: one row of controls, and only the History tab has all
  * three. The arrows move between tabs; the picker keeps its own keys. */
-.weaver-navigator-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-2-2);
-}
 
-.weaver-navigator-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--background-secondary);
-}
 
-.weaver-navigator-tab {
-  min-height: 26px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
 
-.weaver-navigator-tab.is-active {
-  background: var(--background-primary);
-  color: var(--text-normal);
-}
 
-.weaver-navigator-filter,
-.weaver-navigator-day {
-  min-height: 26px;
-  padding: 0 8px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 6px);
-  background: var(--background-primary);
-  color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-}
 
-.weaver-navigator-day {
-  margin-left: auto;
-}
 
-.weaver-navigator-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-1);
-  min-height: 0;
-  overflow-y: auto;
-}
 
 /* Rows carry the selection, the focus and the action together: one row, one
  * meaning. The selected row is the roving tabindex holder. */
-.weaver-navigator-row {
-  display: flex;
-  gap: var(--size-2-2);
-  align-items: baseline;
-  min-height: 32px;
-  padding: 4px var(--size-2-2);
-  border: 0;
-  border-radius: var(--radius-s, 4px);
-  background: transparent;
-  text-align: left;
-  box-shadow: none;
-  outline: none;
-}
 
-.weaver-navigator-row.is-selected {
-  background: var(--background-modifier-hover);
-  box-shadow: inset 2px 0 0 var(--weaver-dcolor, var(--text-accent));
-}
 
-.weaver-navigator-row:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: 1px;
-}
 
-.weaver-navigator-open {
-  display: flex;
-  flex: 1;
-  gap: var(--size-2-2);
-  align-items: baseline;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: inherit;
-  text-align: left;
-  font-family: inherit;
-}
 
-.weaver-navigator-realm-body,
-.weaver-navigator-offer-body {
-  display: flex;
-  flex: 1;
-  gap: var(--size-2-2);
-  align-items: baseline;
-  min-width: 0;
-}
 
-.weaver-navigator-realm-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.weaver-navigator-travel,
-.weaver-navigator-weave {
-  flex: 0 0 auto;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 4px);
-  background: transparent;
-  color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-}
 
 /* Writing keeps the neutral background here too: one accent per surface is
  * enough, and the accent belongs to selection. */
-.weaver-navigator-weave {
-  border-color: var(--text-faint);
-  font-weight: 600;
-}
 
-.weaver-navigator-context-tag {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-}
 
-.weaver-navigator-dcn {
-  font-variant-numeric: tabular-nums;
-}
 
-.weaver-navigator-time {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-variant-numeric: tabular-nums;
-}
 
-.weaver-navigator-title {
-  overflow: hidden;
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* Openings: the opening once, its Realm, and what is left of it. */
-.weaver-navigator-offer-opening {
-  color: var(--text-normal);
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  font-variant-numeric: tabular-nums;
-}
 
-.weaver-navigator-offer-state {
-  flex: 1;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-variant-numeric: tabular-nums;
-}
 
-.weaver-navigator-offer[data-phase="available"] .weaver-navigator-offer-state {
-  color: var(--text-normal);
-}
 
-.weaver-navigator-row.weaver-navigator-closed {
-  color: var(--text-faint);
-}
 
-.weaver-navigator-portal-label {
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-}
 
-.weaver-navigator-portal-moment {
-  color: var(--text-faint);
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  font-variant-numeric: tabular-nums;
-}
 
 /* The selected row's acts, and none other: a list of buttons per row would be a
  * second keyboard model to keep in step. */
-.weaver-navigator-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: var(--size-2-2);
-}
 
-.weaver-navigator-action {
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s, 4px);
-  background: var(--interactive-normal);
-  color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-}
 
-.weaver-navigator-action.quiet {
-  background: transparent;
-  color: var(--text-muted);
-}
 
-.weaver-navigator-notice {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  white-space: normal;
-}
 
-.weaver-navigator-hint {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-}
 
-body.weaver-phone .weaver-navigator {
-  align-items: stretch;
-}
 
-body.weaver-phone .weaver-navigator-card {
-  width: 100vw;
-  max-width: none;
-  height: 100dvh;
-  max-height: none;
-  border: 0;
-  border-radius: 0;
-  padding: max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
-}
 
-body.weaver-phone .weaver-navigator-row {
-  min-height: 44px;
-}
 
-body.weaver-phone .weaver-navigator-open,
-body.weaver-phone .weaver-navigator-travel,
-body.weaver-phone .weaver-navigator-weave,
-body.weaver-phone .weaver-navigator-action {
-  min-height: 44px;
-}
 
-body.weaver-phone .weaver-navigator-hint-keys {
-  display: none;
-}
 
-body:not(.weaver-phone) .weaver-navigator-hint-touch {
-  display: none;
-}
 
 /* ── Settings tab ──────────────────────────────────────────────────────── */
 
 .weaver-settings h3 {
   margin-top: var(--size-4-5);
+}
+
+/* The upper reference panel: one thought, its position, and its authored text. */
+.weaver-composer-reference {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.weaver-composer-reference-head {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.weaver-composer-reference-body {
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  line-height: var(--weaver-entry-line-height, 1.35);
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.weaver-composer-reference-search {
+  width: 100%;
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  color: var(--text-normal);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 2px 0;
+}
+
+.weaver-composer-reference-search:focus-visible {
+  outline: none;
+  border-bottom-color: var(--interactive-accent);
+}
+
+/* Held-modifier hints: above the chrome, never over prose, never interactive. */
+.weaver-hint-layer {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  pointer-events: none;
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weaver-hint-layer {
+    transition: none;
+  }
+}
+
+/* The compact Loom: one header, dominant prose, one footer. */
+.weaver-composer-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.weaver-composer-dest {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.weaver-composer-dest:hover,
+.weaver-composer-ref-toggle[aria-expanded="true"] {
+  color: var(--text-normal);
+}
+
+.weaver-composer-viewing {
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  color: var(--text-faint);
+}
+
+.weaver-composer-ref-toggle,
+.weaver-composer-hide,
+.weaver-composer-more {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+.weaver-composer-menu {
+  position: absolute;
+  /* Anchored to the Loom's own box, to the right of the header's ⋯: the card
+   * clips its children, and a menu that lives inside it would be cut off. */
+  top: 48px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+}
+
+.weaver-composer-menu-item {
+  min-height: 44px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.weaver-composer-menu-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.weaver-composer-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.weaver-composer-context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+}
+
+.weaver-composer-context details > p {
+  margin: 4px 0 0;
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+}
+
+.weaver-composer-input {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  min-height: 3.2em;
+  overflow-y: auto;
+  resize: none;
+  border: none;
+  background: transparent;
+  /* The prose wears the draft's own dimension colour: the surface says, before
+   * anything is written, which entry it is about to become. */
+  color: var(--weaver-dcolor, var(--text-normal));
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  line-height: var(--weaver-entry-line-height, 1.35);
+}
+
+.weaver-composer-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+}
+
+.weaver-composer-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.weaver-composer-chooser-title {
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+}
+
+.weaver-composer-chooser-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+}
+
+.weaver-composer-chooser-write,
+.weaver-composer-chooser-travel {
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+/* Where the draft already is: a statement, not a control. */
+.weaver-composer-chooser-here {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+}
+
+.weaver-composer-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weaver-composer-saved-address {
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-saved-prose {
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--weaver-entry-size, 1em);
+  line-height: var(--weaver-entry-line-height, 1.35);
+}
+
+.weaver-composer-saved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.weaver-composer-branch,
+.weaver-composer-new {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+.weaver-composer-quiet-close {
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+.weaver-composer-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.weaver-composer-save {
+  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+.weaver-composer-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.weaver-composer-resume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weaver-composer-resume-open {
+  flex: 1 1 auto;
+  min-height: 44px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.weaver-composer-resume-dismiss {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-small, 14px);
+  cursor: pointer;
+}
+
+/* A wide pane may put an explicitly opened reference beside the writing; extra
+ * width never reveals controls on its own. */
+.weaver-composer-body[data-layout="split"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  column-gap: 16px;
+}
+
+.weaver-composer-body[data-layout="split"] > .weaver-composer-context,
+.weaver-composer-body[data-layout="split"] > .weaver-composer-status {
+  grid-column: 1 / -1;
 }

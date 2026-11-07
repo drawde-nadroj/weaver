@@ -5,6 +5,8 @@ import {
   frameBox,
   frameColumn,
   frameSpan,
+  loomLayout,
+  loomWidth,
   type FrameColumn,
   type FrameSpan
 } from "../src/core/frame";
@@ -286,5 +288,75 @@ describe("the bottom-anchored surface", () => {
 
     expect(result.maxHeight).toBe(0);
     expect(result.top).toBe(12);
+  });
+});
+
+describe("the Loom's geometry", () => {
+  const VIEWPORT = { left: 0, right: 1200, top: 0, bottom: 800 };
+  const layout = (overrides: Partial<Parameters<typeof loomLayout>[0]> = {}) =>
+    loomLayout({
+      viewport: VIEWPORT,
+      safeArea: 0,
+      expanded: false,
+      reduced: false,
+      activeArea: "lower",
+      fontPx: 16,
+      controlRows: 0,
+      ...overrides
+    });
+
+  it("fixes the width at 720 and centres it, never the note's column", () => {
+    expect(loomWidth(1200)).toEqual({ width: 720, padding: 16, inset: 16 });
+    const box = layout();
+    expect(box.width).toBe(720);
+    expect(box.left).toBe(Math.round((1200 - 720) / 2));
+  });
+
+  it("uses the viewport less 16px on a narrow screen", () => {
+    expect(loomWidth(500)).toEqual({ width: 484, padding: 12, inset: 8 });
+    const box = layout({ viewport: { left: 0, right: 500, top: 0, bottom: 400 } });
+    expect(box.width).toBe(484);
+    expect(box.left).toBe(8);
+  });
+
+  it("takes a 320px lower-only surface, a 44px reduced row, and clamps to the viewport", () => {
+    expect(layout().height).toBe(320);
+    expect(layout({ reduced: true }).height).toBe(44);
+    expect(layout({ viewport: { ...VIEWPORT, bottom: 200 } }).height).toBe(200 - 16);
+  });
+
+  it("anchors the bottom edge and reserves the safe area", () => {
+    const box = layout({ safeArea: 48 });
+    expect(box.top + box.height).toBe(800 - 16 - 48);
+  });
+
+  it("splits an expanded surface only when both regions fit two prose lines", () => {
+    const split = layout({ expanded: true, controlRows: 1 });
+    expect(split.mode).toBe("split");
+    expect(split.height).toBe(640);
+
+    // A short viewport, or too many control rows, keeps one region whole.
+    const short = layout({ expanded: true, viewport: { ...VIEWPORT, bottom: 400 } });
+    expect(short.mode).toBe("lower");
+
+    const crowded = layout({ expanded: true, controlRows: 20 });
+    expect(crowded.mode).toBe("lower");
+  });
+
+  it("keeps the active upper region whole when the fit fails", () => {
+    const upper = layout({ expanded: true, activeArea: "upper", viewport: { ...VIEWPORT, bottom: 420 } });
+    expect(upper.mode).toBe("upper");
+  });
+
+  it("carries the fixed chrome metrics", () => {
+    const wide = layout();
+    expect(wide.header).toBe(40);
+    expect(wide.footer).toBe(44);
+    expect(wide.padding).toBe(16);
+    expect(wide.gap).toBe(8);
+
+    const narrow = layout({ viewport: { left: 0, right: 500, top: 0, bottom: 700 } });
+    expect(narrow.header).toBe(44);
+    expect(narrow.padding).toBe(12);
   });
 });

@@ -32,7 +32,7 @@ import { formatAddress, type Entry, type EntryIndex } from "./entries";
 import type { PortalInstant } from "./portals";
 
 /** The first committed input of a thread root, frozen at the instant it arrived. */
-export interface CaptureBeginning {
+export interface CaptureInstant {
   /** Epoch milliseconds of that input. */
   at: number;
   /** The day the thought began, canonical `YYYY-MM-DD`. */
@@ -112,7 +112,7 @@ export interface CaptureRequest {
   /** The submitted prose, exactly as typed, newlines included. */
   text: string;
   /** The frozen first-input facts of the root. */
-  beginning: CaptureBeginning;
+  beginning: CaptureInstant;
   /** The duration to record, in milliseconds. */
   durationMs: number;
   /** The invitation this root was written into, when one applies. */
@@ -123,6 +123,15 @@ export interface CaptureRequest {
 export type CaptureResult =
   | { ok: true; thought: ThoughtRef; root: ThoughtRef }
   | { ok: false; error: string };
+
+/**
+ * A written thought, and the Thread root it belongs to.
+ *
+ * The root is a distinct fact about the saved result, not an alias for whatever
+ * reference an upper surface happens to be showing: a branch's saved root is the
+ * depth-1 thought it lands under.
+ */
+export type SavedThought = { thought: ThoughtRef; root: ThoughtRef };
 
 /** What the composer is doing, as one of five states. */
 export type CapturePhase = "closed" | "editing" | "submitting" | "uncertain" | "resting";
@@ -153,7 +162,7 @@ export interface DraftRecord {
   text: string;
   selection: { from: number; to: number };
   /** The frozen beginning, or null before the first committed character. */
-  beginning: CaptureBeginning | null;
+  beginning: CaptureInstant | null;
   /** Whole milliseconds already counted, at the moment it was stored. */
   durationMs: number;
   /** Whether the composer was folded when it was stored. */
@@ -200,8 +209,8 @@ export function wholeSeconds(ms: number): number {
   return Math.max(0, Math.floor(ms / 1000) * 1000);
 }
 
-/** A fresh identity for one receipt, unique for this device's session. */
-export function freshReceiptId(): string {
+/** A fresh identity for one capture, or one attempt at writing it. */
+export function freshCaptureId(): string {
   const source = globalThis.crypto as { randomUUID?: () => string } | undefined;
   if (typeof source?.randomUUID === "function") return source.randomUUID();
   return `receipt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -214,7 +223,7 @@ export function freshReceiptId(): string {
  * timestamp can never describe different instants — including on the two sides of
  * a daylight-saving fold, which differ by their offset alone.
  */
-export function captureBeginningAt(at: number): CaptureBeginning {
+export function captureInstantAt(at: number): CaptureInstant {
   const date = new Date(at);
   return {
     at,

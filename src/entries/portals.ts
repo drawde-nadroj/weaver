@@ -62,8 +62,14 @@ export interface PortalHost {
   schedules(): readonly PortalSchedule[];
   /** The stored record, read fresh when the controller starts. */
   state(): LocalStateRecord;
-  /** Persists schedule runtime, so an answer survives a reload. */
-  persist(record: LocalStateRecord): void;
+  /**
+   * Applies one synchronous update to the latest stored record.
+   *
+   * The controller writes through this, not from a cached envelope: a workspace
+   * travel that finishes during a reconcile must keep the fields it wrote, and a
+   * whole-envelope save would overwrite them with this controller's stale copy.
+   */
+  persist(update: (current: LocalStateRecord) => LocalStateRecord): LocalStateRecord;
   /** Whether the app is visible enough to speak about an invitation. */
   visible(): boolean;
   /** Announces one invitation that has just become available, once. */
@@ -97,8 +103,6 @@ export class PortalController {
   private timer: number | null = null;
   private lastShape = "";
   private destroyed = false;
-  /** The stored record, updated in place so one write carries every change. */
-  private record: LocalStateRecord | null = null;
 
   constructor(private readonly host: PortalHost) {}
 
@@ -111,7 +115,6 @@ export class PortalController {
   start(): void {
     if (this.destroyed) return;
     const record = this.host.state();
-    this.record = record;
     for (const [id, runtime] of Object.entries(record.schedules)) this.runtime.set(id, runtime);
     this.reconcile();
   }
@@ -280,56 +283,76 @@ export class PortalController {
   }
 
   /**
-   * Records that one invitation was answered, and by what.
+   * Records that one invitation was answered, and reports what happened.
    *
-   * Only the occurrence named is acknowledged, and only through its own opening:
-   * a later occurrence that arrived meanwhile keeps its own invitation. An answer
-   * from an older generation never clears a newer one.
+   * The candidate runtime is persisted *before* it is adopted or announced, so a
+   * store that cannot hold the answer leaves this device asking again rather than
+   * silently forgetting. Only the named occurrence is acknowledged, and only
+   * through its own generation: a newer occurrence keeps its own invitation, and
+   * an answer from a replaced activation is obsolete.
    */
-  acknowledge(occurrence: PortalOccurrence, generation: number): void {
-    if (this.destroyed) return;
+  acknowledge(
+    occurrence: PortalOccurrence,
+    generation: number
+  ): "acknowledged" | "obsolete" | "retry" {
+    if (this.destroyed) return "retry";
     const source = this.sources().find((candidate) => candidate.id === occurrence.scheduleId);
-    if (source === undefined) return;
+    if (source === undefined) return "obsolete";
 
     const runtime = this.runtimeFor(source, this.host.now());
-    if (runtime.generation !== generation) return;
+    if (runtime.generation !== generation) return "obsolete";
 
-    runtime.acknowledgedThrough = Math.max(
-      runtime.acknowledgedThrough ?? 0,
-      occurrence.portal.opensAt
-    );
-
-    const outstanding = this.pending.get(source.id);
-    if (outstanding !== undefined && outstanding.portal.opensAt <= (runtime.acknowledgedThrough ?? 0)) {
-      this.pending.delete(source.id);
+    const acknowledgedThrough = Math.max(runtime.acknowledgedThrough ?? 0, occurrence.portal.opensAt);
+    const candidate: ScheduleRuntime = { ...runtime, acknowledgedThrough };
+    try {
+      this.persistRuntime(source.id, candidate);
+    } catch {
+      return "retry";
     }
 
-    this.commit();
+    this.runtime.set(source.id, candidate);
+    const outstanding = this.pending.get(source.id);
+    if (outstanding !== undefined && outstanding.portal.opensAt <= acknowledgedThrough) {
+      this.pending.delete(source.id);
+    }
+    this.notifyLifecycle();
     this.schedule();
+    return "acknowledged";
   }
 
   /**
-   * Dismisses exactly the occurrence named.
+   * Dismisses exactly the current occurrence named, approaching or available.
    *
-   * Dismissing an approaching opening acknowledges that opening, so it does not
-   * come back — and nothing else changes: the next occurrence is still offered.
+   * The occurrence is looked up in `outstanding()` rather than only in the
+   * available set, so a notice that has not opened yet can be put away too. The
+   * acknowledgement is persisted before it is adopted, and answered through the
+   * occurrence's own generation; nothing is remembered outside the runtime.
    */
-  dismiss(occurrenceId: string): void {
-    if (this.destroyed) return;
+  dismiss(occurrenceId: string): "acknowledged" | "obsolete" | "retry" {
+    if (this.destroyed) return "retry";
+    const offered = this.outstanding().find((candidate) => candidate.occurrence.id === occurrenceId);
+    if (offered === undefined) return "obsolete";
 
-    for (const source of this.sources()) {
-      const occurrence = this.pending.get(source.id);
-      if (occurrence === undefined || occurrence.id !== occurrenceId) continue;
-      const runtime = this.runtimeFor(source, this.host.now());
-      runtime.acknowledgedThrough = Math.max(
-        runtime.acknowledgedThrough ?? 0,
-        occurrence.portal.opensAt
-      );
-      this.pending.delete(source.id);
-      this.commit();
-      this.schedule();
-      return;
+    const source = this.sources().find((candidate) => candidate.id === offered.occurrence.scheduleId);
+    if (source === undefined) return "obsolete";
+
+    const runtime = this.runtimeFor(source, this.host.now());
+    const acknowledgedThrough = Math.max(runtime.acknowledgedThrough ?? 0, offered.occurrence.portal.opensAt);
+    const candidate: ScheduleRuntime = { ...runtime, acknowledgedThrough };
+    try {
+      this.persistRuntime(source.id, candidate);
+    } catch {
+      return "retry";
     }
+
+    this.runtime.set(source.id, candidate);
+    const outstanding = this.pending.get(source.id);
+    if (outstanding !== undefined && outstanding.portal.opensAt <= acknowledgedThrough) {
+      this.pending.delete(source.id);
+    }
+    this.notifyLifecycle();
+    this.schedule();
+    return "acknowledged";
   }
 
   /** Notifies on lifecycle changes only — never on elapsed seconds. */
@@ -463,34 +486,51 @@ export class PortalController {
     return this.occurrenceOf(source, next);
   }
 
+  /** Persists one schedule's runtime, throwing when the store cannot hold it. */
+  private persistRuntime(id: string, runtime: ScheduleRuntime): void {
+    this.host.persist((current) => ({
+      ...current,
+      schedules: { ...current.schedules, [id]: runtime }
+    }));
+  }
+
   /** Emits once when the observable lifecycle state differs from the last time. */
   private commit(): void {
     if (this.destroyed) return;
-    if (this.record !== null) {
-      const schedules: LocalStateRecord["schedules"] = { ...this.record.schedules };
-      for (const [id, runtime] of this.runtime) schedules[id] = runtime;
-      this.record = { ...this.record, schedules };
-      try {
-        this.host.persist(this.record);
-      } catch {
-        // Losing a runtime write costs an acknowledgement after a reload, never
-        // the writer's words; the invitation is still derived from the instant.
-      }
+    try {
+      // Only the schedule slice is this controller's: the rest of the envelope
+      // (workspaces, and the Loom's own fields) is read from the current record
+      // at write time, so a concurrent owner's change is never clobbered.
+      this.host.persist((current) => {
+        const schedules: LocalStateRecord["schedules"] = { ...current.schedules };
+        for (const [id, runtime] of this.runtime) schedules[id] = runtime;
+        return { ...current, schedules };
+      });
+    } catch {
+      // Losing a runtime write costs an acknowledgement after a reload, never
+      // the writer's words; the invitation is still derived from the instant.
     }
 
+    this.notifyLifecycle();
+  }
+
+  /** Notifies subscribers when offered identity or phase changes, never per second. */
+  private notifyLifecycle(): void {
+    if (this.destroyed) return;
     const shape = this.shape();
     if (shape === this.lastShape) return;
     this.lastShape = shape;
     for (const listener of [...this.listeners]) listener();
   }
 
-  /** Availability and identity change lifecycle; elapsed seconds do not. */
+  /**
+   * Availability, identity and phase change lifecycle; elapsed seconds do not.
+   *
+   * Both offering kinds are named, so an approaching minute becoming the next
+   * approaching minute notifies even though neither is stored as available.
+   */
   private shape(): string {
-    const parts = this.sources().map((source) => {
-      const pending = this.pending.get(source.id);
-      const runtime = this.runtime.get(source.id);
-      return `${source.id}:${pending?.id ?? "-"}:${runtime?.generation ?? 0}`;
-    });
+    const parts = this.outstanding().map((offered) => `${offered.occurrence.id}:${offered.phase}`);
     return `${this.host.enabled()}|${parts.join(",")}`;
   }
 

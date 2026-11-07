@@ -29,18 +29,25 @@ function advance(ms: number): void {
   }
 }
 
-function widget(overrides: Partial<DurationWidgetInput> = {}): DurationWidget {
+function widget(overrides: Partial<DurationWidgetInput> & { mode?: "fixed" | "awaiting" | "running" } = {}): DurationWidget {
+  const { mode, ...rest } = overrides;
+  const axes =
+    mode === "running"
+      ? { durationMode: "session" as const, momentMode: "fixed" as const }
+      : mode === "awaiting"
+        ? { durationMode: "fixed" as const, momentMode: "wall" as const }
+        : { durationMode: "fixed" as const, momentMode: "fixed" as const };
   return new DurationWidget({
     n: 1,
     time: "09:14:22",
     sigil: "-",
     ms: 0,
-    mode: "fixed",
     path: PATH,
     clock: clockFor(),
     color: "#f97316",
     d: 1,
-    ...overrides
+    ...axes,
+    ...rest
   });
 }
 

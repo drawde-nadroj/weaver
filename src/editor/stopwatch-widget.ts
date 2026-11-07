@@ -48,8 +48,11 @@ import type { EntryClock } from "../entries/clock";
 import { appendClockRuns } from "../ui/dcn";
 import { writeClockText, writeDigits } from "./duration-ticker";
 
-/** What the row's two halves are showing: the file, a draft's wall clock, a live session. */
-export type ClockMode = "fixed" | "awaiting" | "running";
+/** Whether the duration half is the file's own (fixed) or the live session's. */
+export type DurationMode = "fixed" | "session";
+
+/** Whether the moment half is absent, the file's recorded moment, or the wall clock. */
+export type MomentMode = "absent" | "fixed" | "wall";
 
 /** Everything the widget renders from; none of it changes while the clock ticks. */
 export interface DurationWidgetInput {
@@ -61,8 +64,10 @@ export interface DurationWidgetInput {
   sigil: DurationSigil | null;
   /** The duration the file holds, or the session's snapshot while running. */
   ms: number;
-  /** What the two corners are showing; a fixed row never ticks. */
-  mode: ClockMode;
+  /** The left corner's source: the file's duration, or the live session's second. */
+  durationMode: DurationMode;
+  /** The right corner's source: nothing, the recorded moment, or the wall clock. */
+  momentMode: MomentMode;
   /** The note this row lives in, so identity survives a redraw. */
   path: string;
   /** The one shared clock; the widget never owns a timer of its own. */
@@ -102,7 +107,8 @@ export class DurationWidget extends WidgetType {
       other.input.n === this.input.n &&
       other.input.time === this.input.time &&
       other.input.sigil === this.input.sigil &&
-      other.input.mode === this.input.mode &&
+      other.input.durationMode === this.input.durationMode &&
+      other.input.momentMode === this.input.momentMode &&
       other.input.path === this.input.path &&
       other.input.color === this.input.color &&
       other.input.d === this.input.d
@@ -215,12 +221,12 @@ export class DurationWidget extends WidgetType {
     // switching between the two changes which characters exist, not just values.
     half.textContent = "";
     this.momentDigits = [];
-    if (this.input.mode === "awaiting") {
+    if (this.input.momentMode === "wall") {
       this.momentDigits = appendClockRuns(
         half,
         formatTimeOfDay(new Date(this.input.clock.snapshot().now))
       );
-    } else if (this.input.time !== null) {
+    } else if (this.input.momentMode === "fixed" && this.input.time !== null) {
       appendClockRuns(half, this.input.time);
     }
   }
@@ -233,14 +239,13 @@ export class DurationWidget extends WidgetType {
     owners.get(root)?.();
     owners.delete(root);
 
-    if (this.input.mode === "fixed") return;
+    const durationLive = this.input.durationMode === "session";
+    const momentLive = this.input.momentMode === "wall";
+    if (!durationLive && !momentLive) return;
 
     const unsubscribe = this.input.clock.subscribe((now, durationMs) => {
-      if (this.input.mode === "awaiting") {
-        writeClockText(this.momentDigits, formatTimeOfDay(new Date(now)));
-      } else {
-        writeDigits(this.digits, durationMs);
-      }
+      if (momentLive) writeClockText(this.momentDigits, formatTimeOfDay(new Date(now)));
+      if (durationLive) writeDigits(this.digits, durationMs);
     });
 
     this.unsubscribe = unsubscribe;

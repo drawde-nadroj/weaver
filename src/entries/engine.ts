@@ -19,7 +19,7 @@ import { Transaction, type StateEffect } from "@codemirror/state";
 import { dayKey, dayKeyFromName } from "../core/day";
 import { contextDayForPath, MAIN_CONTEXT_ID } from "../core/contexts";
 import {
-  freshReceiptId,
+  freshCaptureId,
   proseOf,
   resolveThought,
   rootEntryOf,
@@ -46,7 +46,7 @@ import {
   planChildEntry,
   planDeleteEntry,
   planDuration,
-  planEntryBeginning,
+  planSettleEntry,
   planThread,
   planWhisper,
   type InsertPlan,
@@ -68,7 +68,6 @@ import { WHISPER_FAILURE_LIMIT } from "../model/whisper-runner";
 import type { NoteStop } from "../core/navigation";
 import { editorPathOf } from "../editor/editor-path";
 import {
-  capturedInput,
   entryIndexField,
   programmaticWrite,
   refreshEntriesEffect,
@@ -96,8 +95,8 @@ import {
 } from "../notices";
 import type WeaverPlugin from "../main";
 import { ensureDayNote, resolveContextDay } from "./day-note";
-import { EntrySession } from "./session";
-import { planRewrite, rewriteDay, RewriteRefused, type RewriteResult } from "./writer";
+import { EntrySession, type NativeStopResult } from "./session";
+import { planRewrite, registerWrite, rewriteDay, waitForWrite, RewriteRefused, type RewriteResult } from "./writer";
 
 /**
  * A draft that has not recorded its beginning yet: a clock row with a duration
@@ -106,12 +105,32 @@ import { planRewrite, rewriteDay, RewriteRefused, type RewriteResult } from "./w
  * that genuinely lacks a moment is awaiting too; an entry with a moment keeps
  * it, whatever day it was written on.
  */
-function awaitingBeginning(index: EntryIndex, entry: Entry): boolean {
-  if (entry.state !== "draft" || entry.clockLine === null) return false;
-  if (entry.time !== null || entry.day !== null) return false;
-  const line = index.lines[entry.clockLine] ?? "";
-  return line.trim() !== "";
+
+/**
+ * A retry's guard: the operation it re-attempts, and the exact bytes its target
+ * note must still hold before a replacement may be planned.
+ */
+export interface RetryGuard {
+  /** The operation id of the attempt being retried. */
+  operationId: string;
+  /** The note the old attempt targeted. */
+  path: string;
+  /** The bytes that note held before that attempt. */
+  before: string;
 }
+
+/** What one write actually did, so a caller never guesses success. */
+export type WriteOutcome =
+  | { readonly kind: "confirmed"; readonly receipt: CaptureReceipt }
+  | {
+      readonly kind: "refused";
+      readonly reason: "invalid" | "retry-source-changed" | "receipt-storage" | "native-stop";
+      readonly message: string;
+    }
+  | { readonly kind: "unconfirmed"; readonly receipt: CaptureReceipt; readonly message: string };
+
+/** Thrown inside a plan when a retry's source bytes no longer match its guard. */
+class RetrySourceChanged extends Error {}
 
 /** The only writer of entry text: every surface changes an entry through one of its methods. */
 export class EntryEngine {
@@ -126,37 +145,36 @@ export class EntryEngine {
   }
 
   /**
-   * Writes one settled thought into its note, and reports what it became.
+   * Writes one settled thought through the write protocol, and reports the truth.
    *
-   * The destination is resolved here, inside the same call that writes: a thought
-   * belongs to the day it began, so the note is resolved from the request's own
-   * day rather than from the clock at save time, and a missing note is created
-   * only at this explicit act. A branch is written into its parent's file and
-   * never creates one — a deleted parent is a refusal, not a new note.
-   *
-   * The plan is built from the text the writer is about to replace, through
-   * `rewriteDay`, so a hand edit that landed while the composer was open cannot
-   * be overwritten by a plan made from a stale read. A refusal returns
-   * `ok: false` and nothing was written; an unconfirmable write throws, because
-   * "the note may hold this" is a different answer from "it does not".
+   * The destination is resolved here, inside the call that writes: a root belongs
+   * to the day it was published in, a branch stays in its parent's file. The
+   * receipt is persisted before the note is touched, so a receipt store that
+   * cannot hold it refuses the whole write. A retry is guarded by the exact bytes
+   * its target note must still hold: a same-file retry compares those bytes inside
+   * the plan, while a retry that now routes to another day is reconciled against
+   * the old path before planning against the new one — two different files' bytes
+   * are never compared.
    */
-  async capture(
+  async writeCapture(
     request: CaptureRequest,
-    onReceipt?: (receipt: CaptureReceipt) => void,
+    retry: RetryGuard | null,
+    beforeCommit: (receipt: CaptureReceipt) => void,
     invitations: readonly CaptureInvitation[] = []
-  ): Promise<CaptureResult> {
+  ): Promise<WriteOutcome> {
+    const operationId = retry?.operationId ?? freshCaptureId();
     const destination =
       request.parent === null
         ? resolveContextDay(this.app, this.plugin.settings, request.contextId, request.beginning.day)
         : { ok: true as const, path: request.parent.path };
 
-    if (!destination.ok) return { ok: false, error: destination.error };
+    if (!destination.ok) return { kind: "refused", reason: "invalid", message: destination.error };
 
     const existing = this.app.vault.getAbstractFileByPath(destination.path);
     let file: TFile | null = existing instanceof TFile ? existing : null;
 
     if (file === null && request.parent !== null) {
-      return { ok: false, error: "the note that holds this branch is gone; pick a parent again" };
+      return { kind: "refused", reason: "invalid", message: "the note that holds this branch is gone; pick a parent again" };
     }
 
     if (file === null) {
@@ -164,79 +182,174 @@ export class EntryEngine {
         file = await ensureDayNote(this.app, destination.path, request.beginning.day);
       } catch (error) {
         return {
-          ok: false,
-          error: `the note for ${request.beginning.day} could not be created (${
+          kind: "refused",
+          reason: "invalid",
+          message: `the note for ${request.beginning.day} could not be created (${
             error instanceof Error ? error.message : String(error)
           })`
         };
       }
     }
 
-    let result: RewriteResult | null;
+    // A retry whose destination moved to another day is reconciled against the
+    // note the old attempt targeted, never by comparing the two files' bytes.
+    if (retry !== null && retry.path !== destination.path) {
+      await waitForWrite(this.app, retry.operationId);
+      const oldBytes = await this.readPersisted(retry.path);
+      if (oldBytes !== retry.before) {
+        return {
+          kind: "refused",
+          reason: "retry-source-changed",
+          message: "the original note changed; the retry was not written"
+        };
+      }
+    }
+
+    const box: { receipt: CaptureReceipt | null } = { receipt: null };
+    let storageFailed = false;
+    let flightDone: () => void = () => {};
+    const flight = new Promise<void>((resolve) => {
+      flightDone = resolve;
+    });
+    const release = registerWrite(operationId, flight);
+
     try {
-      result = await rewriteDay(
-        this.app,
-        file,
-        planRewrite((source) => planCaptureEntry(source, parseEntries(source), request)),
-        true,
-        {
-          // The receipt is written before the note is touched, so a crash in the
-          // middle of the write leaves evidence a later session can check. A
-          // store that cannot hold it refuses the submission outright.
-          beforeCommit: (before, planned) => {
-            if (onReceipt === undefined) return;
-            const written = parseEntries(planned.source);
-            const allocated = this.allocated(written, planned.caret, destination.path);
-            onReceipt({
-              id: freshReceiptId(),
-              request,
-              path: destination.path,
-              thought: allocated.thought,
-              root: allocated.root,
-              before,
-              expected: planned.source,
-              invitations: [...invitations]
-            });
-          },
-          confirmPersistence: true
+      let result: RewriteResult | null;
+      try {
+        result = await rewriteDay(
+          this.app,
+          file,
+          planRewrite((source) => {
+            if (retry !== null && retry.path === destination.path && source !== retry.before) {
+              throw new RetrySourceChanged();
+            }
+            return planCaptureEntry(source, parseEntries(source), request);
+          }),
+          true,
+          {
+            // The receipt is written before the note is touched, so a crash in the
+            // middle of the write leaves evidence a later session can check. A
+            // store that cannot hold it refuses the submission outright.
+            beforeCommit: (before, planned) => {
+              const written = parseEntries(planned.source);
+              const allocated = this.allocated(written, planned.caret, destination.path);
+              const receipt: CaptureReceipt = {
+                id: operationId,
+                request,
+                path: destination.path,
+                thought: allocated.thought,
+                root: allocated.root,
+                before,
+                expected: planned.source,
+                invitations: [...invitations]
+              };
+              box.receipt = receipt;
+              try {
+                beforeCommit(receipt);
+              } catch (error) {
+                storageFailed = true;
+                throw error;
+              }
+            },
+            confirmPersistence: true
+          }
+        );
+      } catch (error) {
+        if (error instanceof RetrySourceChanged) {
+          return {
+            kind: "refused",
+            reason: "retry-source-changed",
+            message: "the original note changed; the retry was not written"
+          };
         }
-      );
-    } catch (error) {
-      if (error instanceof RewriteRefused) return { ok: false, error: error.message };
-      // The document was touched and the answer is unknown: never claim a failure
-      // the writer would answer by writing the same words twice.
-      throw error;
+        if (error instanceof RewriteRefused) {
+          return {
+            kind: "refused",
+            reason: storageFailed ? "receipt-storage" : "invalid",
+            message: error.message
+          };
+        }
+        // A failure after the receipt was persisted may have reached the note:
+        // that is unknown, never a failure the writer may answer by writing twice.
+        if (box.receipt !== null) {
+          return {
+            kind: "unconfirmed",
+            receipt: box.receipt,
+            message: error instanceof Error ? error.message : String(error)
+          };
+        }
+        return {
+          kind: "refused",
+          reason: "invalid",
+          message: error instanceof Error ? error.message : String(error)
+        };
+      }
+
+      if (result === null) {
+        const index = parseEntries(await this.app.vault.cachedRead(file));
+        const message = index.legacyFormat
+          ? noticeLegacyFormat("writing this thought")
+          : index.unclosedFrontmatter
+            ? noticeCloseFrontmatter("writing this thought")
+            : index.unclosedFence
+              ? noticeCloseCodeBlock("writing this thought")
+              : request.parent === null
+                ? "this note could not take a new thought"
+                : "that thought is no longer in its note; pick a parent again";
+        return { kind: "refused", reason: "invalid", message };
+      }
+
+      const receipt = box.receipt;
+      if (receipt === null) throw new Error("the written thought had no receipt");
+
+      const written = parseEntries(result.source);
+      const allocated = this.allocated(written, result.caret, destination.path, request.text);
+
+      // A whisper is asked for only now: the text is a record, and the model reads
+      // records. Nothing was asked while the draft was still being written.
+      const input = this.whisperInput(written, allocated.entry);
+      if (input !== null) this.plugin.whisper.request(destination.path, allocated.entry.n, input);
+
+      return { kind: "confirmed", receipt };
+    } finally {
+      flightDone();
+      release();
     }
+  }
 
-    if (result === null) {
-      const index = parseEntries(await this.app.vault.cachedRead(file));
-      if (index.legacyFormat) {
-        return { ok: false, error: noticeLegacyFormat("writing this thought") };
-      }
-      if (index.unclosedFrontmatter) {
-        return { ok: false, error: noticeCloseFrontmatter("writing this thought") };
-      }
-      if (index.unclosedFence) {
-        return { ok: false, error: noticeCloseCodeBlock("writing this thought") };
-      }
-      return {
-        ok: false,
-        error:
-          request.parent === null
-            ? "this note could not take a new thought"
-            : "that thought is no longer in its note; pick a parent again"
-      };
+  /**
+   * The pre-protocol entry point, kept for callers that do not retry or check.
+   *
+   * An unconfirmed write throws rather than claiming failure, because the note
+   * may hold the words and a second write would duplicate them.
+   */
+  async capture(
+    request: CaptureRequest,
+    onReceipt?: (receipt: CaptureReceipt) => void,
+    invitations: readonly CaptureInvitation[] = []
+  ): Promise<CaptureResult> {
+    const outcome = await this.writeCapture(
+      request,
+      null,
+      (receipt) => onReceipt?.(receipt),
+      invitations
+    );
+    if (outcome.kind === "confirmed") {
+      return { ok: true, thought: outcome.receipt.thought, root: outcome.receipt.root };
     }
+    if (outcome.kind === "refused") return { ok: false, error: outcome.message };
+    throw new Error(outcome.message);
+  }
 
-    const written = parseEntries(result.source);
-    const allocated = this.allocated(written, result.caret, destination.path, request.text);
-
-    // A whisper is asked for only now: the text is a record, and the model reads
-    // records. Nothing was asked while the draft was still being written.
-    const input = this.whisperInput(written, allocated.entry);
-    if (input !== null) this.plugin.whisper.request(destination.path, allocated.entry.n, input);
-
-    return { ok: true, thought: allocated.thought, root: allocated.root };
+  /** One note's persisted bytes, the only source a retry guard may be checked against. */
+  private async readPersisted(path: string): Promise<string | null> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return null;
+    try {
+      return await this.app.vault.read(file);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -357,7 +470,7 @@ export class EntryEngine {
     const live = this.session.activeFor(path, current.n);
     const ms = live ? this.session.displayed() : (current.duration?.ms ?? 0);
 
-    const plan = planDuration(source, index, current, "+", ms);
+    const plan = planSettleEntry(source, index, current, ms, new Date());
     // Nothing can be written for this entry, so this is not a stop at all: the
     // session is kept rather than dropped, and no clock is silently discarded.
     if (plan === null) return;
@@ -427,9 +540,12 @@ export class EntryEngine {
    * failed write leaves the clock stopped exactly where it stopped — a retry
    * writes the same digits, and only fresh input starts counting again.
    */
-  pause(): Promise<void> {
+  pause(): Promise<NativeStopResult> {
     const active = this.session.active();
-    if (active === null) return Promise.resolve();
+    if (active === null) return Promise.resolve({ kind: "idle" });
+
+    const owner = this.session;
+    const sessionId = active.id;
 
     // Held before the write: the stop's number is the second that was on
     // screen, and no tick may advance it while the write is in flight — nor
@@ -438,29 +554,26 @@ export class EntryEngine {
     const ms = this.session.displayed();
 
     return this.publish(active.path, active.seq, "=", ms, false).then((accepted) => {
-      // The session that stopped must be the one still running: a new entry may
-      // have been started while this write settled, and it is not this stop's
-      // to clear.
-      const current = this.session.active();
-      if (
-        current === null ||
-        current.path !== active.path ||
-        current.seq !== active.seq ||
-        current.resumedAt !== active.resumedAt
-      ) {
-        return;
-      }
-
-      if (accepted) {
-        this.session.clear();
+      // Clearing and repainting depend on this exact session still being the one
+      // that stopped: a replacement that shares the path and N keeps its clock.
+      if (accepted && this.session.clearIf(sessionId)) {
         this.repaintStoppedClocks(active.path);
-        return;
+      } else if (!accepted) {
+        // A failed write is not a stop, but it is not a resume either: the
+        // stopwatch stays held at the second it stopped on, so a retry writes the
+        // same digits, and only fresh input starts counting again.
+        new Notice(NOTICE_STOP_FAILED, NOTICE_PARTIAL_MS);
       }
 
-      // A failed write is not a stop, but it is not a resume either: the
-      // stopwatch stays held at the second it stopped on, so a retry writes the
-      // same digits, and only fresh input starts counting again.
-      new Notice(NOTICE_STOP_FAILED, NOTICE_PARTIAL_MS);
+      // The answer is the captured publish result, even if the session was
+      // replaced while the write was in flight.
+      return {
+        kind: accepted ? ("stopped" as const) : ("failed" as const),
+        owner,
+        sessionId,
+        path: active.path,
+        n: active.seq
+      };
     });
   }
 
@@ -482,75 +595,15 @@ export class EntryEngine {
    * stays a paste and a committed composition stays a composition for history.
    */
   captureInput(
-    view: EditorView,
-    from: number,
-    to: number,
-    text: string,
-    beganAt: number,
-    userEvent = "input.type"
+    _view: EditorView,
+    _from: number,
+    _to: number,
+    _text: string,
+    _beganAt: number,
+    _userEvent = "input.type"
   ): boolean {
-    if (text === "") return false;
-
-    const path = editorPathOf(view);
-    if (path === null) return false;
-
-    const source = view.state.doc.toString();
-    const index = this.indexOf(view, source);
-    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return false;
-
-    const entry = findEntryAtOffset(index, from);
-    if (entry === null || !awaitingBeginning(index, entry)) return false;
-
-    // Text written from inside the clock row would be inserted where the
-    // metadata is about to be appended. That is not the entry's first prose,
-    // and the two changes would overlap, so this input stays native.
-    const clockStart = index.lineStarts[entry.clockLine ?? entry.line] ?? entry.clockFrom;
-    if (from >= clockStart || to > clockStart) return false;
-
-    // Build the beginning against the text the input will produce, resolved
-    // through that same parse: the plan refuses an entry whose identity moved,
-    // so a first keystroke that breaks the block is left to the editor.
-    const inserted = source.slice(0, from) + text + source.slice(to);
-    const delta = text.length - (to - from);
-    const nextIndex = parseEntries(inserted);
-    const next = entryBySeq(nextIndex, entry.n);
-    if (next === null || !awaitingBeginning(nextIndex, next)) return false;
-    // The row the metadata is appended to must still be the row this entry had:
-    // a paste that put a clock-looking line above it must not have its own text
-    // rewritten, so that input stays native.
-    if (
-      (nextIndex.lines[next.clockLine ?? -1] ?? "") !== (index.lines[entry.clockLine ?? -1] ?? "")
-    ) {
-      return false;
-    }
-
-    const beginning = planEntryBeginning(inserted, nextIndex, next, new Date(beganAt));
-    if (beginning === null) return false;
-
-    const changes = [{ from, to, insert: text }];
-    // The beginning plan is built against the text this input produces, so its
-    // offsets are in *post-input* coordinates. The transaction below is applied
-    // to the pre-input document, where the replaced range `[from, to)` opens a
-    // gap of `delta`: every later offset moves back by it. A change inside the
-    // inserted text has no pre-input position, so such an input stays native.
-    const insertedEnd = from + text.length;
-    for (const change of beginning.changes) {
-      if (change.from < insertedEnd) return false;
-      changes.push({ from: change.from - delta, to: change.to - delta, insert: change.text });
-    }
-
-    try {
-      view.dispatch({
-        changes,
-        selection: { anchor: from + text.length },
-        userEvent,
-        scrollIntoView: true,
-        annotations: capturedInput.of({ path, seq: entry.n, at: beganAt })
-      });
-    } catch {
-      return false;
-    }
-    return true;
+    // The beginning is recorded at settle, never at first input.
+    return false;
   }
 
   /**
@@ -576,44 +629,9 @@ export class EntryEngine {
    * `true` when the commit was taken as input into a draft — with or without a
    * metadata write — and `false` when there was nothing safe to do with it.
    */
-  captureComposition(view: EditorView, input: InputObservation): boolean {
-    const path = editorPathOf(view);
-    if (path === null || input.path !== path) return false;
-
-    const source = view.state.doc.toString();
-    const index = this.indexOf(view, source);
-    if (index.unclosedFrontmatter || index.unclosedFence || index.legacyFormat) return false;
-
-    const entry = entryBySeq(index, input.seq);
-    if (entry === null) return false;
-
-    if (!awaitingBeginning(index, entry)) {
-      // Only a draft is being written; a settled entry is edited, not timed.
-      if (entry.state !== "draft" || entry.time === null) return false;
-      // The writer may have moved on before this commit was observed: a caret
-      // now in another entry means the pause that move caused stands, and this
-      // old commit must not restart a clock behind them.
-      const caret = view.state.selection.main.head;
-      if (caret < entry.from || caret > entry.proseTo) return false;
-      this.afterEdit(view, input);
-      return true;
-    }
-
-    const beginning = planEntryBeginning(source, index, entry, new Date(input.at));
-    if (beginning === null) return false;
-
-    try {
-      view.dispatch({
-        changes: cmChanges(beginning.changes),
-        // The name is the undo group: history joins this with the composition
-        // it completes, so one undo takes the text and the beginning back.
-        userEvent: "input.type.compose",
-        annotations: capturedInput.of(input)
-      });
-    } catch {
-      return false;
-    }
-    return true;
+  captureComposition(_view: EditorView, _input: InputObservation): boolean {
+    // Timing is read from the document's input observation, not the IME commit.
+    return false;
   }
 
   /**
@@ -651,9 +669,7 @@ export class EntryEngine {
       const measured = entryBySeq(index, before.seq);
       if (
         measured !== null &&
-        (measured.state === "settled" ||
-          measured.clockLine === null ||
-          awaitingBeginning(index, measured))
+        (measured.state === "settled" || measured.clockLine === null)
       ) {
         this.session.clear();
       }
@@ -683,11 +699,6 @@ export class EntryEngine {
     // removes the text and the recorded moment, and the capture's callback may
     // still arrive afterwards. An entry without a beginning is awaiting, not
     // being written, so no clock starts on it.
-    if (target.time === null) {
-      this.refreshSoon(view);
-      return;
-    }
-
     if (this.session.frozen() && this.session.activeFor(path, target.n)) {
       // Fresh input releases a held stop: counting resumes from the second the
       // clock was held on, never from the time that passed while held.

@@ -120,7 +120,7 @@ describe("normalizeData", () => {
   it("wraps a bare v2 settings object and keeps its values under the current names", () => {
     const data = normalizeData({ headingSize: "18px", equalizeHeadingSizes: false, debug: true });
 
-    expect(data.version).toBe(3);
+    expect(data.version).toBe(4);
     expect(data.settings.entrySize).toBe("18px");
     expect(data.settings.equalizeEntrySizes).toBe(false);
     expect(data.settings.debug).toBe(true);
@@ -153,7 +153,7 @@ describe("normalizeData", () => {
       shuttle: [{ kind: "note", path: "a.md", label: "a" }]
     });
 
-    expect(data.version).toBe(3);
+    expect(data.version).toBe(4);
     expect(data.settings.writeDayCounters).toBe(false);
     expect("lastVaultMaxLevel" in data).toBe(false);
     expect("shuttle" in data).toBe(false);

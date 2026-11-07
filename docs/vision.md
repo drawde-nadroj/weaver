@@ -12,18 +12,21 @@ decoration around a note; it is the first dimension of a new branch, and it is w
 being the first because returning is the point. Anything that cannot be returned to
 is a thought the note will lose.
 
-Since 0.5.0 the loop is **start → write → stop → settle → deeper**: writing has its
-own beginning and its own end, and neither is a keystroke away from the other. It
-happens in one place — the note. A day note is a linear list of entries, each one a
-address line, its prose, and its duration. Nothing else writes: every write of a day
-note goes through one writer, which is the open editor when there is one and the
+Since 0.5.0 the loop is **start → write → save → return → branch**: writing has
+its own beginning and its own end. A day note is a linear list of entries, each one
+an address line, its prose, and its duration. Nothing else writes: every write of a
+day note goes through one writer, which is the open editor when there is one and the
 vault otherwise, never both.
 
 The promise is unchanged: *begin where you are, and never leave the note to record
-what you are writing in it.* A capture surface that opens a dialog over the note it
-captures from has already failed the promise, because the dialog is a second place
-to be. The navigator exists only to show the day and move the caret — choose a
-destination, descend, jump — and never to write prose.
+what you are writing in it.* The Loom is a compact, non-modal capture surface over
+the note: the note stays visible and directly editable behind it, and the note
+remains the only durable record. An earlier rejection of a separate capture surface
+— because it made a second place to be — is superseded: the Loom does not replace
+the note or hold a second copy of it. It holds one unsaved draft and writes it once,
+on Save. The note's own editor is still where an entry is begun in place; the Loom
+is for capture from anywhere. The Loom's reference is the only navigation that
+replaces the outline — one thought at a time, walked and searched without writing.
 
 ## Vocabulary
 
@@ -39,12 +42,12 @@ destination, descend, jump — and never to write prose.
 | **Open** | An entry whose duration half reads `-` (being written) or `=` (paused): still resumable. | An unfinished note, a block in another store. |
 | **Thread** | A depth-1 entry and everything under it. `Thread` is capitalised in product copy; the stored `B`/`D`/`N` never change with it. | A file, a tag, a separate store. |
 | **Branch** | A thought below a Thread's root: one dimension deeper than its parent, inside the same Thread and the same note. | A new Thread, a second root. |
-| **Save** | `⏎` in the composer: one transaction writes address, prose and a finished `+` row, once. The stored entry's own `Settle` is the same act inside a note. | Saving, syncing, submitting. |
+| **Save** | The Loom's Save action (`⌘⏎` on desktop): one transaction writes address, prose and a finished `+` row, once. The stored entry's own `Settle` is the same act inside a note. | Saving, syncing, submitting. |
 | **Realm** | A folder, a writing history and a remembered workspace: one place a thought can be written. `Main` is the one the Daily Notes plugin defines. | A tag, a vault, a filter. |
 | **Opening** | A minute a schedule offers, `[04:33:00, 04:34:00)`. Writing that *begins* inside it was written through it; a minute nobody entered is gone. | A lock, a permission, a gate. |
-| **Composer** | The one bottom surface a thought is written in from anywhere. It holds one unsaved draft, speaks the note's own frame and colour, and writes nothing until it is saved. | A modal, a second editor, a note. |
+| **Loom** | The one compact, non-modal surface a thought is written in from anywhere: a destination control, a dominant prose field, and one explicit Save. Its reference is optional and starts collapsed. It holds one unsaved draft and writes nothing until Save. | A modal, a second editor, a note. |
 | **Invitation** | A schedule's call to action, one strip in the same surface. It never writes and never takes focus; whether writing counts is decided by the beginning, not by a click. | A locked window, a prepared slot, an obligation. |
-| **Navigator** | The card with three tabs: the day's chronology across every Realm, the Realms themselves, and the openings still live — and it jumps, travels, branches or deletes from there. | Search, a second editor, an outline, a dialog to write in. |
+| **Reference** | The Loom's optional upper panel: one thought at a time, its position and authored text, searched and walked without writing. | A second editor, the outline, a modal. |
 | **Stop** | The place a move left: a thought, a caret and a scroll offset — or a whole workspace — remembered in the history. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
 | **Whisper** | The model's reading of an entry: one to three `~` rows above its prose — a name, then at most one each of `learn:`, `next:`, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |
@@ -58,14 +61,14 @@ appears in copy — depth reads `1D`…`nD`.
 
 | Loop | Trigger | What moves | Lives in |
 | --- | --- | --- | --- |
-| Weave | `⌘⇧⏎` — *Weave a Thread* | One composer, above the workspace, holding one draft. No note changes. Works inside an editor, in Reading view, or from nowhere. | Session |
-| Write | The first committed character in the composer, or the first text in an awaiting draft | The draft's beginning — its day, its moment — once, and a clock that counts only writing time; inside a note, the beginning is written into the row in the same transaction. | Evidence and session |
+| Weave | `⌘⇧⏎` — *Weave a Thread* | One Loom, above the workspace, holding one draft. No note changes. Works inside an editor, in Reading view, or from nowhere. | Session |
+| Write | The first committed character in the Loom, or the first text in an awaiting draft | The draft's beginning — its day, its moment — once, and a clock that counts only writing time; inside a note, the moment is recorded at settle. | Evidence and session |
 | Settle | `⏎` on an open entry | `-` or `=` becomes `+`, once, and the clock stops. Nothing else moves. | Evidence |
-| Settle a Thread | `⏎` in the composer | Address, prose and a `+` row with the draft's own day, moment and duration, in one transaction; the composer then rests on what it wrote. | Evidence |
-| Branch | `N` in the composer, or `⇧⏎` in the navigator | A child one dimension deeper, in its parent's note, with the caret in its prose. | Evidence |
+| Save | The Save action, or `⌘⏎` on desktop | Address, prose and a `+` row with the draft's own day, moment and duration, in one transaction; the Loom then keeps the saved thought visible. | Evidence |
+| Branch | The Branch action on the saved thought, or *Branch from this thought* in the note | A child one dimension deeper, in its parent's note, with the caret in its prose. | Evidence |
 | Descend | `⏎` again, on a settled entry, or *Branch from this thought* from the palette or toolbar | A child opens one dimension deeper with the caret in its prose. | Evidence |
-| Delete | `x` in the navigator | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
-| Jump | `⏎` in the navigator | The caret, and the note on screen. Nothing is written. | Session |
+| Delete | The note's own guarded deletion | One subtree, and the branch renumbering its deletion causes, in one edit. | Evidence |
+| Jump | *Open in note* / an explicit reference action | The caret, and the note on screen. Nothing is written. | Session |
 | Travel | `Travel` on a Realm row | That Realm's last-used workspace, and every pane's own position. The draft is untouched, and its destination does not follow. | Session |
 | Return | `⌘[` and `⌘]`, or the *Back* and *Forward* commands | The recorded stop — the exact screen or caret, not the Realm's latest one. Nothing is written. | Session |
 | Pause | Leaving the note, hiding the app, opening the card | The draft's elapsed time, written back as `= `. | Evidence |

@@ -237,9 +237,9 @@ whole blast radius, and the list stays open on what is left.
 
 1. `⌘⇧P`, or a tap on the toolbar's list icon. No note is revealed and none is
    created: the card reads the vault as it is.
-2. `History` is one chronology for the selected day across every Realm, with an
+2. The reference is one chronology for the selected day across every Realm, with an
    `All Realms` filter; `Realms` lists each Realm with `Travel` and `Write here`;
-   `Portals` lists the openings that can still be entered, the one that just closed,
+   `Invitations` lists the openings that can still be entered, the one that just closed,
    and the captures the notes really recorded.
 3. `j`/`k` or `↑`/`↓` move the selection; `⏎` opens a row at its own note and
    thought; `⇧⏎` or `n` branches under it into a draft; `t` starts a new Thread; `c`
@@ -255,8 +255,8 @@ Undo: one step each.
 
 Opening pauses the stopwatch, which may write a `= ` duration — that is the only
 write, and it is the pause you would get by leaving the note anyway. `⌘,` and every
-other Obsidian chord still reach the app while the card is open: it never takes a
-`Scope`.
+other Obsidian chord still reach the app while the card is open: it never takes an
+Obsidian key scope.
 
 Empty: `No Threads for this day`, with a `Weave a Thread` row. A row reading *Entry
 unavailable* is a recorded beginning that no longer matches its entry — deletion, a

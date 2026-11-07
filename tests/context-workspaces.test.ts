@@ -71,10 +71,12 @@ function harness(options: { layout?: FakeLayout | null } = {}): Harness {
     layout: () => (options.layout === null ? null : layout),
     contexts: () => CONTEXTS,
     state: () => state,
-    save: (record) => {
-      state.workspaces = record.workspaces;
-      state.schedules = record.schedules;
-      saved.push(record);
+    save: (update) => {
+      const next = update(state);
+      state.workspaces = next.workspaces;
+      state.schedules = next.schedules;
+      saved.push(next);
+      return next;
     },
     freezeDraft: () => {
       h.freezes += 1;

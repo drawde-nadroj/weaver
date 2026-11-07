@@ -61,7 +61,7 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
   let pauses = 0;
   const host: EntryKeyHost = {
     session,
-    openComposer: () => {
+    openLoom: () => {
       starts += 1;
     },
     entries: {
@@ -76,7 +76,7 @@ function harness(anchor: number, active = false, doc = DOC): Harness {
       },
       pause: () => {
         pauses += 1;
-        return Promise.resolve();
+        return Promise.resolve({ kind: "idle" as const });
       }
     }
   };
@@ -235,7 +235,7 @@ function editHarness(
 
   const host = {
     session: new EntrySession(),
-    openComposer: () => undefined,
+    openLoom: () => undefined,
     entries: {
       settle: () => undefined,
       descend: () => undefined,

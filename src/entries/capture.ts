@@ -32,7 +32,7 @@
  */
 
 import {
-  captureBeginningAt,
+  captureInstantAt,
   commitShown,
   elapsedOf,
   idleClock,
@@ -43,7 +43,7 @@ import {
   shownOf,
   thoughtRefOf,
   wholeSeconds,
-  type CaptureBeginning,
+  type CaptureInstant,
   type CaptureInvitation,
   type CapturePhase,
   type CaptureReceipt,
@@ -52,6 +52,7 @@ import {
   type DraftClock,
   type DraftRecord,
   type DraftTarget,
+  type SavedThought,
   type ThoughtRef
 } from "../core/capture";
 import { contextDayForPath, MAIN_CONTEXT_ID, type WeavingContext } from "../core/contexts";
@@ -94,6 +95,13 @@ export interface CaptureHost {
   ): Promise<CaptureResult>;
   /** The note's current bytes, or null when it cannot be read. */
   read(path: string): Promise<string | null>;
+  /**
+   * Asks an owning editor to save only if it holds `expected`, then verifies disk.
+   *
+   * This is how Check note confirms a submission the live editor already holds
+   * without replaying the insert. False means no editor holds exactly `expected`.
+   */
+  confirmPersisted(path: string, expected: string): Promise<boolean>;
   /** Opens one saved thought at its own prose, from its note. */
   editInNote(target: ThoughtRef): Promise<boolean>;
   /** The note's clock holds the second on screen, synchronously. */
@@ -108,15 +116,12 @@ export interface CaptureHost {
    */
   invitationsAt(contextId: string, at: number): CaptureInvitation[];
   /** One submission's invitation is spent, through its own opening. */
-  acknowledge(invitation: CaptureInvitation, saved: SavedThought, beginning: CaptureBeginning): void;
+  acknowledge(invitation: CaptureInvitation, saved: SavedThought, beginning: CaptureInstant): void;
   /** The persisted draft and receipt. */
   store: CaptureStore;
   /** Something a surface draws has changed; never called for elapsed seconds. */
   onChange(): void;
 }
-
-/** A written thought and the Thread root it belongs to. */
-export type SavedThought = { thought: ThoughtRef; root: ThoughtRef };
 
 /** Why a request to open a second thread was not taken. */
 export const CAPTURE_BUSY = "A draft is already open; it was kept.";
@@ -151,7 +156,7 @@ export class CaptureController {
 
   private text = "";
   private selection = { from: 0, to: 0 };
-  private beginning: CaptureBeginning | null = null;
+  private beginning: CaptureInstant | null = null;
   private clock: DraftClock = idleClock();
   /** The openings this draft's first committed input qualified for. */
   private invitations: CaptureInvitation[] = [];
@@ -180,7 +185,7 @@ export class CaptureController {
     parent: ThoughtRef | null;
     text: string;
     selection: { from: number; to: number };
-    beginning: CaptureBeginning | null;
+    beginning: CaptureInstant | null;
     durationMs: number;
     invitations: CaptureInvitation[];
     pendingTarget: DraftTarget | null;
@@ -347,7 +352,7 @@ export class CaptureController {
       this.invitations = [];
     } else if (wasEmpty || this.beginning === null) {
       const at = this.host.now();
-      this.beginning = captureBeginningAt(at);
+      this.beginning = captureInstantAt(at);
       this.clock = resumeClock(idleClock(), at);
       this.invitations = this.parent === null ? this.host.invitationsAt(this.contextId, at) : [];
     } else {
@@ -535,7 +540,7 @@ export class CaptureController {
 
     const at = this.host.now();
     this.clock = pauseClock(this.clock);
-    const beginning = this.beginning ?? captureBeginningAt(at);
+    const beginning = this.beginning ?? captureInstantAt(at);
     this.beginning = beginning;
 
     const request: CaptureRequest = {
@@ -610,6 +615,23 @@ export class CaptureController {
     if (source === receipt.expected) {
       this.complete({ thought: receipt.thought, root: receipt.root }, receipt.request.beginning);
       return;
+    }
+
+    // The live editor may hold the expected bytes while the file does not. Let it
+    // save, then ask the file again; this never replays the insert or replaces
+    // newer editor text.
+    let confirmed = false;
+    try {
+      confirmed = await this.host.confirmPersisted(receipt.path, receipt.expected);
+    } catch {
+      confirmed = false;
+    }
+    if (confirmed) {
+      const persisted = await this.host.read(receipt.path);
+      if (persisted === receipt.expected) {
+        this.complete({ thought: receipt.thought, root: receipt.root }, receipt.request.beginning);
+        return;
+      }
     }
 
     if (source === receipt.before) {
@@ -924,7 +946,7 @@ export class CaptureController {
   }
 
   /** A successful submission, from the write or from a confirmed receipt. */
-  private complete(saved: SavedThought, beginning: CaptureBeginning): void {
+  private complete(saved: SavedThought, beginning: CaptureInstant): void {
     const invitations = this.invitations;
     const done = this.dismissAfterSuccess;
 

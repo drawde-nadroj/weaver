@@ -16,12 +16,43 @@
 export interface ActiveEntry {
   path: string;
   seq: number;
+  /**
+   * A monotonically increasing identity, assigned on every `start`.
+   *
+   * Two sessions may share a path, an `N` and even a resume instant; only this id
+   * distinguishes "the session that stopped" from "a replacement that happens to
+   * look the same", which is what stops a late pause from clearing new work.
+   */
+  id: number;
   baselineMs: number;
   /** Wall-clock milliseconds when writing resumed. */
   resumedAt: number;
   /** The last painted duration, in whole seconds; authoritative when stopping. */
   shownMs: number;
 }
+
+/** Whether a native entry is running, held for a stop, or idle. */
+export type NativeSessionState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "running"; readonly entry: ActiveEntry }
+  | { readonly kind: "held"; readonly entry: ActiveEntry };
+
+/**
+ * What stopping a native entry actually did.
+ *
+ * `stopped` and `failed` both name the captured owner and session id, so a caller
+ * learns the truth even if the session was replaced while the write was in flight.
+ * `idle` means there was nothing to stop.
+ */
+export type NativeStopResult =
+  | { readonly kind: "idle" }
+  | {
+      readonly kind: "stopped" | "failed";
+      readonly owner: EntrySession;
+      readonly sessionId: number;
+      readonly path: string;
+      readonly n: number;
+    };
 
 /** Whole seconds, never negative, and never a fraction the screen cannot show. */
 function wholeSeconds(ms: number): number {
@@ -33,15 +64,31 @@ export class EntrySession {
   private current: ActiveEntry | null = null;
   /** A stop has claimed the painted second; no tick may move it. */
   private held = false;
+  /** The next session identity; never reused within one plugin lifetime. */
+  private nextId = 1;
 
   start(path: string, seq: number, baselineMs: number, now: number): void {
     const baseline = Math.max(0, baselineMs);
-    this.current = { path, seq, baselineMs: baseline, resumedAt: now, shownMs: wholeSeconds(baseline) };
+    this.current = {
+      path,
+      seq,
+      id: this.nextId,
+      baselineMs: baseline,
+      resumedAt: now,
+      shownMs: wholeSeconds(baseline)
+    };
+    this.nextId += 1;
     this.held = false;
   }
 
   active(): ActiveEntry | null {
     return this.current;
+  }
+
+  /** The current session as a tagged state, so a caller never guesses from fields. */
+  state(): NativeSessionState {
+    if (this.current === null) return { kind: "idle" };
+    return { kind: this.held ? "held" : "running", entry: this.current };
   }
 
   /** True only for this exact entry: an entry elsewhere is not the session. */
@@ -100,5 +147,18 @@ export class EntrySession {
   clear(): void {
     this.current = null;
     this.held = false;
+  }
+
+  /**
+   * Clears only when `id` is still the current session's identity.
+   *
+   * A pause that finishes after the writer started a fresh session must not clear
+   * the replacement, even if it shares the old one's path and `N`. Returns whether
+   * it cleared.
+   */
+  clearIf(id: number): boolean {
+    if (this.current === null || this.current.id !== id) return false;
+    this.clear();
+    return true;
   }
 }

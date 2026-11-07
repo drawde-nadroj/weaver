@@ -15,10 +15,11 @@ import {
   planDuration,
   planEntryBeginning,
   planCaptureEntry,
+  planSettleEntry,
   planWhisper,
   type InsertPlan
 } from "../src/core/insert";
-import { captureBeginningAt, thoughtRefOf, type CaptureRequest } from "../src/core/capture";
+import { captureInstantAt, thoughtRefOf, type CaptureRequest } from "../src/core/capture";
 import { portalAt, type PortalInstant } from "../src/core/portals";
 
 const AT_1337 = new Date(2026, 9, 27, 13, 27, 43);
@@ -700,7 +701,7 @@ function rootRequest(text: string, began: Date, portal: PortalInstant | null = n
     contextId: "main",
     parent: null,
     text,
-    beginning: captureBeginningAt(began.getTime()),
+    beginning: captureInstantAt(began.getTime()),
     durationMs: 4200,
     portal
   };
@@ -1040,5 +1041,24 @@ describe("planCaptureEntry and an unwritable record", () => {
     const records = readAlignments(written);
     if (!records.ok) throw new Error(records.error);
     expect(records.records).toHaveLength(0);
+  });
+});
+
+describe("planSettleEntry", () => {
+  it("adds the day and moment at settle when the row has neither", () => {
+    const source = ["{ 1.1.1 }", "", "prose", "- 00:00:05"].join("\n");
+    const index = parseEntries(source);
+    const plan = planSettleEntry(source, index, index.entries[0]!, 5000, new Date(2026, 10, 5, 9, 0, 0));
+    expect(plan).not.toBeNull();
+    const next = applyPlanToSource(source, plan!).source;
+    expect(next).toContain("+ 00:00:05 2026-11-05 09:00:00");
+  });
+
+  it("keeps a moment the row already recorded", () => {
+    const source = ["{ 1.1.1 }", "", "prose", "- 00:00:05 2026-01-01 10:00:00"].join("\n");
+    const index = parseEntries(source);
+    const plan = planSettleEntry(source, index, index.entries[0]!, 5000, new Date(2026, 10, 5, 9, 0, 0));
+    const next = applyPlanToSource(source, plan!).source;
+    expect(next).toContain("+ 00:00:05 2026-01-01 10:00:00");
   });
 });

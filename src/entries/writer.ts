@@ -166,3 +166,71 @@ export function minimalChange(before: string, after: string): TextChange[] {
 
   return [{ from: start, to: before.length - end, text: after.slice(start, after.length - end) }];
 }
+
+/**
+ * Confirms an already-written submission without writing it again.
+ *
+ * When the live editor holds the expected bytes but the file does not, the
+ * editor is the truth and the recovery is to let it save — then read the file.
+ * It never dispatches an old plan and never replaces newer text: if no editor
+ * holds exactly `expected`, it does nothing and reports false.
+ */
+export async function confirmExistingWrite(
+  app: App,
+  file: TFile,
+  expected: string
+): Promise<boolean> {
+  const editor = findEditorViewForFile(file);
+  if (editor === null) return false;
+  if (editor.state.doc.toString() !== expected) return false;
+
+  const owner = markdownViewFor(app, file);
+  if (owner === null || typeof owner.save !== "function") return false;
+
+  try {
+    await owner.save();
+    return (await app.vault.read(file)) === expected;
+  } catch {
+    return false;
+  }
+}
+
+/** The in-flight write registry, shared across an ordinary plugin reload. */
+const IN_FLIGHT = Symbol.for("weaver.write.inflight");
+
+/** One registered write, as a promise a reader may await. */
+interface Flight {
+  promise: Promise<void>;
+}
+
+/** The process-wide registry, keyed by operation id. */
+function registry(): Map<string, Flight> {
+  const host = globalThis as unknown as Record<symbol, Map<string, Flight> | undefined>;
+  let map = host[IN_FLIGHT];
+  if (map === undefined) {
+    map = new Map<string, Flight>();
+    host[IN_FLIGHT] = map;
+  }
+  return map;
+}
+
+/**
+ * Registers one in-flight Loom write so a Check or Retry can await it.
+ *
+ * A check that read the note while an old attempt could still commit would draw
+ * the wrong conclusion; registering before the write and removing in `finally`
+ * is the IO-lifetime guard, not stored product state. Returns a release function.
+ */
+export function registerWrite(operationId: string, promise: Promise<unknown>): () => void {
+  const map = registry();
+  map.set(operationId, { promise: promise.then(() => undefined, () => undefined) });
+  return () => {
+    map.delete(operationId);
+  };
+}
+
+/** Awaits one registered write, if it is still running; a no-op once gone. */
+export async function waitForWrite(_app: App, operationId: string): Promise<void> {
+  const flight = registry().get(operationId);
+  if (flight !== undefined) await flight.promise;
+}

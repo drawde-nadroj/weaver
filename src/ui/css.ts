@@ -17,13 +17,19 @@ import { isValidEntrySize, type WeaverSettings } from "../settings";
 /** The id of the one `<style>` element the settings are injected into. */
 export const STYLE_ID = "weaver-style";
 
+/** Resolves an `em` entry size once against the host note's font, never a parent em. */
+function resolvedEntrySize(size: string): string {
+  const match = /^(\d+(?:\.\d+)?)em$/.exec(size);
+  return match === null ? size : `calc(${match[1]} * var(--font-text-size, 16px))`;
+}
+
 /** The whole generated stylesheet for these settings. */
 export function buildCss(settings: WeaverSettings): string {
   const size = isValidEntrySize(settings.entrySize) ? settings.entrySize.trim() : "1em";
   const indentMax = Math.max(1, Math.round(settings.indentMaxLevel));
 
   const variables = [
-    `--weaver-entry-size: ${size};`,
+    `--weaver-entry-size: ${resolvedEntrySize(size)};`,
     "--weaver-entry-line-height: 1.35;",
     `--weaver-indent-step: ${Math.max(0, Math.round(settings.indentStep))}px;`,
     `--weaver-indent-step-mobile: ${Math.max(0, Math.round(settings.mobileIndentStep))}px;`,

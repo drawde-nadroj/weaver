@@ -13,6 +13,7 @@
  */
 
 import { isPlainObject } from "./core/value";
+import { readReviewMap, type ReviewMap } from "./core/reviews";
 
 /** Every setting Weaver has, in the groups the tab shows them in. */
 export interface WeaverSettings {
@@ -110,10 +111,12 @@ export interface WeaverSettings {
   debug: boolean;
 }
 
-/** What is on disk: a version and one settings object. */
+/** What is on disk: a version, one settings object, and the shared Reviews. */
 export interface WeaverData {
-  version: 3;
+  version: 4;
   settings: WeaverSettings;
+  /** Reviews travel in `data.json` so a configured vault sync shares them. */
+  reviews: ReviewMap;
 }
 
 /** Every field's value before a vault says otherwise. */
@@ -298,20 +301,24 @@ function looksLikeBareSettings(value: Record<string, unknown>): boolean {
 /**
  * Normalizes persisted plugin data. A bare settings object written by an earlier
  * build is wrapped instead of being discarded, and every payload is reported as
- * the current version — the migration is the normalization.
+ * the current version — the migration is the normalization. Shared Reviews are
+ * decoded leniently here; a store that must refuse to overwrite unreadable data
+ * checks the raw envelope itself.
  */
 export function normalizeData(data: unknown): WeaverData {
   if (!isPlainObject(data)) {
-    return { version: 3, settings: { ...DEFAULT_SETTINGS } };
+    return { version: 4, settings: { ...DEFAULT_SETTINGS }, reviews: {} };
   }
 
+  const reviews = readReviewMap(isPlainObject(data.reviews) ? data.reviews : undefined).reviews;
+
   if (isPlainObject(data.settings)) {
-    return { version: 3, settings: normalizeSettings(data.settings) };
+    return { version: 4, settings: normalizeSettings(data.settings), reviews };
   }
 
   if (looksLikeBareSettings(data)) {
-    return { version: 3, settings: normalizeSettings(data) };
+    return { version: 4, settings: normalizeSettings(data), reviews };
   }
 
-  return { version: 3, settings: { ...DEFAULT_SETTINGS } };
+  return { version: 4, settings: { ...DEFAULT_SETTINGS }, reviews };
 }

@@ -220,7 +220,7 @@ describe("the entry decorations", () => {
 
     // Writing is always a draft, whatever sigil the file holds, and the left
     // corner is the session's last painted second — not a sample taken here.
-    expect(widget?.input.mode).toBe("running");
+    expect(widget?.input.durationMode).toBe("session");
     expect(widget?.input.sigil).toBe("-");
     expect(widget?.input.ms).toBe(65_000);
     expect(widget?.input.time).toBe("10:00:00");
@@ -247,7 +247,7 @@ describe("the entry decorations", () => {
 
     // The row holds a duration and nothing else: no recorded moment to paint and
     // no day to link, because the first input is what records both.
-    expect(widget?.input.mode).toBe("awaiting");
+    expect(widget?.input.momentMode).toBe("wall");
     expect(widget?.input.time).toBeNull();
     expect(widget?.input.sigil).toBe("-");
     expect(widget?.input.ms).toBe(0);
@@ -262,7 +262,7 @@ describe("the entry decorations", () => {
     const doc = ["{ 1.1.1 }", "prose here", "= 00:04:12"].join("\n");
     const widget = clockWidget(collect(stateAt(doc.indexOf("prose"), doc)));
 
-    expect(widget?.input.mode).toBe("awaiting");
+    expect(widget?.input.momentMode).toBe("wall");
     expect(widget?.input.sigil).toBe("=");
     expect(widget?.input.ms).toBe(252_000);
     expect(widget?.input.time).toBeNull();
@@ -274,7 +274,7 @@ describe("the entry decorations", () => {
     const widget = clockWidget(collect(stateAt(settled.indexOf("prose"), settled)));
 
     expect(widget?.input.sigil).toBe("=");
-    expect(widget?.input.mode).toBe("fixed");
+    expect(widget?.input.durationMode).toBe("fixed");
     widget?.destroy();
   });
 
@@ -284,7 +284,8 @@ describe("the entry decorations", () => {
       time: "10:00:00",
       sigil: "-",
       ms: 66_000,
-      mode: "fixed",
+      durationMode: "fixed",
+      momentMode: "fixed",
       path: PATH,
       clock: new EntryClock(new EntrySession(), () => NOW),
       color: "#f97316",

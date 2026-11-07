@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WeaverPlugin from "../src/main";
 import { parseEntries } from "../src/core/entries";
+import { captureInstantAt, type CaptureRequest } from "../src/core/capture";
 import { readAlignments } from "../src/core/alignments";
 import { createApp, fileContent, instantiatePlugin } from "../test-support/harness";
 import type { TFile } from "obsidian";
@@ -47,7 +48,7 @@ describe("a thought begun before midnight", () => {
   it("is filed in its own day's note, with the moment it began", async () => {
     const instance = await plugin();
 
-    instance.openComposer();
+    instance.openLoom();
     instance.controller.setText("begun at the last second");
 
     // The save happens half a minute after midnight.
@@ -74,7 +75,7 @@ describe("a thought begun before midnight", () => {
   it("writes exactly one entry, however many times Enter is pressed", async () => {
     const instance = await plugin();
 
-    instance.openComposer();
+    instance.openLoom();
     instance.controller.setText("one thought");
     const saving = instance.controller.settle();
     // A distinct second Enter during the save dismisses, and writes nothing more.
@@ -95,7 +96,7 @@ describe("a branch written the next day", () => {
     const instance = await plugin();
 
     // Yesterday's thought, written yesterday.
-    instance.openComposer();
+    instance.openLoom();
     instance.controller.setText("the first thought");
     await instance.controller.settle();
 
@@ -158,7 +159,7 @@ describe("an invitation that was really answered", () => {
     const offered = instance.portals.outstanding()[0];
     if (offered === undefined) throw new Error("expected an invitation");
 
-    instance.openComposer({ contextId: offered.occurrence.contextId });
+    instance.openLoom({ contextId: offered.occurrence.contextId });
     expect(instance.controller.state.contextId).toBe("main");
     instance.controller.setText("woven into the opening");
     await instance.controller.settle();
@@ -193,7 +194,7 @@ describe("an invitation that was really answered", () => {
     const offered = instance.portals.outstanding()[0];
     if (offered === undefined) throw new Error("expected an invitation");
 
-    instance.openComposer({ contextId: offered.occurrence.contextId });
+    instance.openLoom({ contextId: offered.occurrence.contextId });
     instance.controller.setText("not finished");
     instance.controller.collapse();
     instance.portals.reconcile();
@@ -209,7 +210,7 @@ describe("an invitation that was really answered", () => {
 describe("the one draft", () => {
   it("survives a reload, folded and paused, and was never written", async () => {
     const instance = await plugin();
-    instance.openComposer();
+    instance.openLoom();
     instance.controller.setText("half a thought");
     instance.controller.commitDuration(12_000);
     instance.controller.collapse();
@@ -236,12 +237,56 @@ describe("two destinations", () => {
       { id: "ctx-spanish", name: "Spanish", folder: "Spanish/Daily", format: "YYYY.MM.DD" }
     ];
 
-    instance.openComposer({ contextId: "ctx-spanish" });
+    instance.openLoom({ contextId: "ctx-spanish" });
     instance.controller.setText("una idea");
     await instance.controller.settle();
 
     expect(noteOf(instance, "Spanish/Daily/2026.11.05.md")).toContain("una idea");
     expect(noteOf(instance, mainPath("2026-11-05"))).toBe("");
+
+    instance.onunload();
+  });
+});
+
+describe("the write protocol", () => {
+  const request = (text: string): CaptureRequest => ({
+    contextId: "main",
+    parent: null,
+    text,
+    beginning: captureInstantAt(AT_2359.getTime()),
+    durationMs: 1000,
+    portal: null
+  });
+
+  it("confirms a normal write and reports its receipt", async () => {
+    const instance = await plugin();
+    const out = await instance.entries.writeCapture(request("a protocol thought"), null, () => {});
+
+    expect(out.kind).toBe("confirmed");
+    if (out.kind === "confirmed") {
+      expect(out.receipt.path).toBe(mainPath("2026-11-05"));
+      expect(out.receipt.expected).toContain("a protocol thought");
+    }
+    expect(noteOf(instance, mainPath("2026-11-05"))).toContain("a protocol thought");
+
+    instance.onunload();
+  });
+
+  it("refuses a retry whose target bytes changed, without writing", async () => {
+    const instance = await plugin();
+    const out = await instance.entries.writeCapture(
+      request("should not land"),
+      {
+        operationId: "old-operation",
+        path: mainPath("2026-11-05"),
+        before: "bytes that are not in the note"
+      },
+      () => {}
+    );
+
+    expect(out.kind).toBe("refused");
+    if (out.kind === "refused") expect(out.reason).toBe("retry-source-changed");
+    expect(noteOf(instance, mainPath("2026-11-05"))).not.toContain("should not land");
 
     instance.onunload();
   });

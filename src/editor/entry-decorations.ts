@@ -38,7 +38,7 @@ import type { EntrySession } from "../entries/session";
 import { INK_CLASS, addressSlices, NUM_CLASS } from "../ui/dcn";
 import { dayLinkElement, type OpenDayLink } from "../ui/day-link";
 import { entryIndexField, refreshEntriesEffect } from "./entry-field";
-import { DurationWidget, type ClockMode } from "./stopwatch-widget";
+import { DurationWidget } from "./stopwatch-widget";
 
 const RUNS: Record<string, Decoration> = {
   [NUM_CLASS]: Decoration.mark({ class: NUM_CLASS }),
@@ -241,21 +241,15 @@ export function entryDecorationSet(
       continue;
     }
 
-    const mode: ClockMode = session.activeFor(path, entry.n)
-      ? "running"
-      : isAwaitingDraft(entry)
-        ? "awaiting"
-        : "fixed";
-    // While writing, the row is a live draft whatever the file holds, and its left
-    // corner is the session's last painted snapshot — never a fresh sample taken
-    // here, which is what used to make a stop write a second the writer never saw.
-    // A draft awaiting its first input shows the duration the row holds, which is
-    // zero until it has been written into, beside the wall clock; a draft paused
-    // before its first input keeps the time it had already accumulated. Once
-    // settled the row shows the duration the file kept — its sigil, which may be
-    // absent when the row carries only a moment.
-    const sigil = mode === "running" ? "-" : (entry.duration?.sigil ?? null);
-    const ms = mode === "running" ? session.displayed() : (entry.duration?.ms ?? 0);
+    const active = session.activeFor(path, entry.n);
+    const awaiting = isAwaitingDraft(entry);
+    // Two independent facts: the left corner is the file's duration or the live
+    // session's second; the right corner is nothing, the recorded moment, or the
+    // wall clock a draft's first input will record.
+    const durationMode = active ? "session" : "fixed";
+    const momentMode = awaiting ? "wall" : entry.time !== null ? "fixed" : "absent";
+    const sigil = active ? "-" : (entry.duration?.sigil ?? null);
+    const ms = active ? session.displayed() : (entry.duration?.ms ?? 0);
     const to = row.to < state.doc.length ? row.to + 1 : row.to;
 
     ranges.push({
@@ -268,7 +262,8 @@ export function entryDecorationSet(
           time: entry.time,
           sigil,
           ms,
-          mode,
+          durationMode,
+          momentMode,
           path,
           clock,
           color: dimensionColor(entry.d),

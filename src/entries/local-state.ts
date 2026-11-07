@@ -31,6 +31,9 @@ export const WORKSPACE_STORAGE_KEY = "weaver:local-state:v1";
 /** The key the one draft and its receipt live under. */
 export const CAPTURE_STORAGE_KEY = "weaver:capture:v1";
 
+/** The key this device's stable id lives under, never synced with the vault. */
+export const DEVICE_STORAGE_KEY = "weaver:device:v1";
+
 /** The storage a record is kept in: Obsidian's vault-local storage, injected. */
 export interface LocalStorageIo {
   /** The stored value, or null when nothing was ever stored under this key. */
@@ -409,7 +412,13 @@ export function readWorkspaceRecord(value: unknown): LocalStateRecord {
 export class LocalState implements CaptureStore {
   constructor(private readonly io: LocalStorageIo) {}
 
-  /** The workspace-side record, with anything unreadable dropped. */
+  /**
+   * The workspace-side record, with anything unreadable dropped.
+   *
+   * This is the forgiving read a label is drawn from: a store that cannot be
+   * read yields an empty record so the surface still renders, because a display
+   * that fails is worse than one that forgets.
+   */
   workspace(): LocalStateRecord {
     try {
       return readWorkspaceRecord(this.io.load(WORKSPACE_STORAGE_KEY));
@@ -418,9 +427,21 @@ export class LocalState implements CaptureStore {
     }
   }
 
-  /** Replaces the workspace-side record. */
-  saveWorkspace(record: LocalStateRecord): void {
-    this.io.save(WORKSPACE_STORAGE_KEY, record);
+  /**
+   * Reads the latest record, applies one synchronous update, stores the result.
+   *
+   * Unlike {@link workspace}, a read that throws is propagated: an update is a
+   * mutation, and building the written envelope from an unreadable store would
+   * erase the fields another owner just wrote. The updater runs exactly once
+   * against the freshly-read record, so two owners — a portal acknowledgement and
+   * a delayed workspace travel, say — never write from the same snapshot and
+   * cannot undo each other's fields.
+   */
+  updateWorkspace(update: (current: LocalStateRecord) => LocalStateRecord): LocalStateRecord {
+    const current = readWorkspaceRecord(this.io.load(WORKSPACE_STORAGE_KEY));
+    const next = update(current);
+    this.io.save(WORKSPACE_STORAGE_KEY, next);
+    return next;
   }
 
   /** The one draft and its receipt, or null. Throws when it cannot be read. */
@@ -431,6 +452,35 @@ export class LocalState implements CaptureStore {
   /** Writes the draft and the receipt as one value, so they cannot disagree. */
   save(record: CaptureRecord): void {
     this.io.save(CAPTURE_STORAGE_KEY, record);
+  }
+
+  /**
+   * This device's stable id, created on first use and kept device-local.
+   *
+   * It names which device advanced a Review stamp, so it must never sync with the
+   * vault: two machines would share an identity and defeat the hybrid clock. A
+   * store that cannot persist the new id still returns it for this session.
+   */
+  deviceId(): string {
+    let stored: unknown = null;
+    try {
+      stored = this.io.load(DEVICE_STORAGE_KEY);
+    } catch {
+      stored = null;
+    }
+    if (typeof stored === "string" && stored !== "") return stored;
+
+    const source = globalThis.crypto as { randomUUID?: () => string } | undefined;
+    const id =
+      typeof source?.randomUUID === "function"
+        ? source.randomUUID()
+        : `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      this.io.save(DEVICE_STORAGE_KEY, id);
+    } catch {
+      // A device that cannot remember its id still has one for this session.
+    }
+    return id;
   }
 
   /** Forgets the draft and the receipt together. */

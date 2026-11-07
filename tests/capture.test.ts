@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   branchLabel,
-  captureBeginningAt,
+  captureInstantAt,
   resolveThought,
   type CaptureInvitation,
   thoughtRefOf,
@@ -135,6 +135,10 @@ interface Harness {
   answer(result: CaptureResult): void;
   hold(): { release(result: CaptureResult): void; fail(error: Error): void };
   setNote(path: string, text: string): void;
+  /** Holds text in the live editor, which the file does not have yet. */
+  setLive(path: string, text: string): void;
+  /** Paths whose owning editor was asked to save during Check note. */
+  confirmations: string[];
 }
 
 function harness(
@@ -146,6 +150,8 @@ function harness(
   const acknowledged: CaptureInvitation[] = [];
   const edits: ThoughtRef[] = [];
   const notes = new Map<string, string>(Object.entries(options.notes ?? { [NOTE]: SOURCE }));
+  const live = new Map<string, string>();
+  const confirmations: string[] = [];
 
   const sentInvitations: CaptureInvitation[][] = [];
   let answer: Answer = { kind: "result", result: { ok: false, error: "not configured" } };
@@ -160,6 +166,7 @@ function harness(
     edits,
     pauses: 0,
     frozen: 0,
+    confirmations,
     at(ms) {
       now = ms;
     },
@@ -181,6 +188,9 @@ function harness(
     },
     setNote(path, text) {
       notes.set(path, text);
+    },
+    setLive(path, text) {
+      live.set(path, text);
     }
   };
 
@@ -195,6 +205,12 @@ function harness(
       return Promise.resolve(answer.kind === "result" ? answer.result : { ok: false, error: "no answer" });
     },
     read: (path) => Promise.resolve(notes.get(path) ?? null),
+    confirmPersisted: async (path, expected) => {
+      confirmations.push(path);
+      if (live.get(path) !== expected) return false;
+      notes.set(path, expected);
+      return true;
+    },
     editInNote: (target) => {
       edits.push(target);
       return Promise.resolve(true);
@@ -263,7 +279,7 @@ function fixtureReceipt(id: string): CaptureReceipt {
       contextId: "main",
       parent: null,
       text: "typed",
-      beginning: captureBeginningAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
+      beginning: captureInstantAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
       durationMs: 0,
       portal: null
     },
@@ -443,6 +459,16 @@ describe("an unconfirmed save", () => {
     expect(test.controller.state.selected?.n).toBe(3);
   });
 
+  it("confirms a save the live editor already holds, without replaying it", async () => {
+    const { test } = recovered({ [NOTE]: SOURCE });
+    test.setLive(NOTE, `${SOURCE}typed\n`);
+
+    await test.controller.checkSave();
+
+    expect(test.controller.state.phase).toBe("resting");
+    expect(test.confirmations).toEqual([NOTE]);
+  });
+
   it("may be submitted again only when the note is byte-for-byte unchanged", async () => {
     const { test } = recovered({ [NOTE]: SOURCE });
 
@@ -609,7 +635,7 @@ describe("recovery", () => {
         root: null,
         text: "half a thought",
         selection: { from: 13, to: 13 },
-        beginning: captureBeginningAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
+        beginning: captureInstantAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
         durationMs: 12_000,
         collapsed: false,
         invitations: []
@@ -816,7 +842,7 @@ describe("the openings a draft counts for", () => {
         root: null,
         text: "half a thought",
         selection: { from: 13, to: 13 },
-        beginning: captureBeginningAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
+        beginning: captureInstantAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
         durationMs: 0,
         collapsed: false,
         invitations: [
@@ -858,7 +884,7 @@ describe("the openings a draft counts for", () => {
         root: null,
         text: "half a thought",
         selection: { from: 0, to: 0 },
-        beginning: captureBeginningAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
+        beginning: captureInstantAt(new Date(2026, 10, 5, 9, 0, 0).getTime()),
         durationMs: 0,
         collapsed: false,
         // The opening is an hour away from the beginning it was stored beside.

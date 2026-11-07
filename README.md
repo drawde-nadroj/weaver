@@ -23,43 +23,44 @@ the duration half is the only mutable field. Colour is a pure function of `D`, s
 nothing is recalculated when a deeper entry appears: depth 7 looks the same before
 and after.
 
-The note and one navigator are the whole surface. Writing happens in the note;
+The note and one Loom are the whole surface. Writing happens in the note, or in the Loom over it;
 nothing is written until a command or a keystroke says so, and every write of a day
 note goes through one writer.
 
 ## Status
 
 The version is `manifest.json`'s. The sigils are `DurationSigil`'s — open, paused
-and settled — with one navigator, a clock in seconds, and a frame around every
+and settled — with one Loom, a clock in seconds, and a frame around every
 entry. The suite's size is whatever `npm test` prints; what it covers, and what it
 cannot, is the gate table in `SYSTEM-DESIGN.md`. The duration algebra is a Bend
 module, `src/core/duration.bend`, compiled to `src/core/bend/duration.mjs`;
 `LAWS.bend` states its laws and `bend PROOF.bend` proves them.
 
-The frame, the navigator and the writer have no automated layout check: their
+The frame, the Loom and the writer have no automated layout check: their
 behaviour is unit-tested and their geometry is not, because no test can see a
 pixel. The manual checks they need are at the end of this file.
 
 ## The loop
 
 1. **Weave** a Thread with `⌘⇧⏎` from anywhere — a note, Reading view, an empty
-   workspace. One composer opens above the workspace, holding one thought; the
-   note you were in does not move, and nothing is written yet.
+   workspace. One compact Loom opens above the workspace, holding one thought; the
+   note you were in stays visible and editable, and nothing is written yet.
 2. **Write.** The first committed character freezes the thought's beginning: the
    day and moment it was written, and a duration that counts only while you are
-   writing in the composer. Letters inside it are prose — `n` and `t` are only
-   shortcuts once the thought has been saved.
-3. **Save** with `⏎`. One transaction writes the address, the prose and a
-   finished clock row into the daily note for the day the thought *began* — which
-   may be yesterday if you started before midnight — and `Saving…` becomes
-   `Saved`. A distinct second `⏎` closes, but only after the note has confirmed
-   the write.
-4. **Rest.** The composer now shows what you wrote, read from its note, in its own
-   dimension colour. `N` branches under it, `T` starts a new Thread in the same
-   Realm, `More` holds `Edit in note`, and `⏎`/`Esc` close.
-5. **Navigate** with `⌘⇧P`: Realms, the day's thoughts across all of them,
-   and the invitations still waiting, in one card.
-6. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
+   writing. The prose area grows with its content; `⇧⏎` inserts a newline and `⏎`
+   commits on every platform, including a phone's soft Return.
+3. **Save** with `⏎` (the footer's Save, or `⌘⏎` / `Ctrl⏎`, do the same). One
+   transaction writes the address, the prose and a finished clock row into the
+   daily note for the day the thought *began* — which may be yesterday if you
+   started before midnight — and `Saving…` becomes the saved thought.
+4. **Return.** The Loom keeps the saved thought visible, read from its note, and
+   offers **Branch**, **New Thread**, and a quiet **Close**. One more `⏎` or `Esc`
+   puts it away. It does not travel or create another entry by itself.
+5. **Branch.** Branching shows one compact parent excerpt, which expands only when
+   asked; reference context is optional and starts collapsed.
+6. **Browse** with `⌘⇧P`: the Loom's reference opens on the day's thoughts, with
+   Tapestries and Invitations in the same surface.
+7. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
 Writing inside a note is unchanged, and it is where an entry is still begun in
 place: the first text of an awaiting entry writes its own local date and moment
@@ -79,12 +80,12 @@ name, a folder such as `Spanish/Daily`, and a format written in `YYYY`, `MM` and
 its notes.
 
 A Realm is a folder, a writing history and a remembered workspace. A thought is
-written into the Realm the composer names; *viewing* is what the workspace is
-showing, and the navigator travels there without touching the draft. A branch always
-lands in its parent's note, whatever the composer says, and a saved Thread stays
+written into the Realm the Loom names; *viewing* is what the workspace is
+showing, and the Loom's chooser travels there without touching the draft. A branch
+always lands in its parent's note, whatever the Loom says, and a saved Thread stays
 where it is.
 
-## Openings and the composer
+## Openings and the Loom
 
 The built-in rhythm offers the local minutes :00, :11, :22, :33, :44 and :55 plus
 the mirror of each hour (:12:12, :22:22), with eleven minutes of notice, and any
@@ -123,7 +124,12 @@ history.
 | `weaver:descend` | Branch from this thought | — | `arrow-down-right` |
 | `weaver:back` | Back | — | `arrow-left` |
 | `weaver:forward` | Forward | — | `arrow-right` |
-| `weaver:navigate` | Navigator | `Mod+Shift+P` | `list` |
+| `weaver:navigate` | Browse the Loom | `Mod+Shift+P` | `list` |
+| `weaver:view-today` | View Today | `Mod+Alt+T` | `calendar` |
+| `weaver:loom-previous-tapestry` | Previous Tapestry | `Mod+Alt+ArrowLeft` | `chevron-left` |
+| `weaver:loom-next-tapestry` | Next Tapestry | `Mod+Alt+ArrowRight` | `chevron-right` |
+| `weaver:loom-reference` | Show the Loom reference | `Mod+Alt+ArrowUp` | `book-open` |
+| `weaver:loom-write` | Return to writing | `Mod+Alt+ArrowDown` | `pencil` |
 | `weaver:whisper-day` | Whisper the day | — | `sparkles` |
 | `weaver:close-day` | Close the day | — | `check-circle` |
 
@@ -132,7 +138,7 @@ shadow the writer's own Vim motions and Obsidian chords. Bind them to whatever y
 already reach for; `⌘[` and `⌘]` also work while a Weaver surface has focus.
 
 Every command carries an icon. Obsidian has no API that places a command on the
-mobile toolbar; add *Weave a Thread* and *Navigator* under *Manage toolbar
+mobile toolbar; add *Weave a Thread* and *Browse the Loom* under *Manage toolbar
 options*.
 
 `⌘⇧⏎`, not `⌘⏎`: Obsidian's core *Open link under cursor in new tab* owns `⌘⏎`,
@@ -143,7 +149,7 @@ collision rather than silently replaced.
 
 `⌘⇧⏎` is bound twice on purpose: the command covers the caret that is not in an
 editor, and CodeMirror's keymap handles the same chord inside the editor. Both open
-the one composer; neither writes a byte.
+the one Loom; neither writes a byte.
 
 `⏎` is not a command, and it is two-way and stateless. The caret is in an entry, so
 `⏎` looks at that entry's own sigil: an **open** entry — `-` being written or `=`
@@ -158,52 +164,31 @@ paragraph there, and multi-line prose is written on a desk or pasted. In
 Vim normal mode `⏎` is Vim's, as is every other key Vim owns: the entry keys live
 in the editor keymap, and Vim's own normal-mode map runs before it.
 
-## The navigator
+## The Loom and its reference
 
-`⌘⇧P` opens one card over the workspace. On a phone the same card is a
-full-height sheet. It is the only navigation, and it changes nothing until you act:
-it does not reveal today's note, does not create one, and writes no file while you
-browse.
+`⌘⇧P` opens the Loom's reference over the workspace. It is one non-modal dialog:
+the note stays visible and editable behind it. The reference starts collapsed;
+expand it from the header's Reference control or the More menu. On a wide pane it
+may sit beside the prose; on a narrow pane it stacks above it.
 
-Three tabs, in order:
-
-- **History** — one chronology for the selected day, read from every recognised day
-  note at once. A row carries its address (`B.D.N`), its recorded time, its Realm
-  (only when the filter is *All Realms*), and the model's reading or the first
-  words you wrote. Entries with no recorded moment stay in their own group rather
-  than at an invented midnight. The Realm filter and the day field keep their
-  native keys.
-- **Realms** — every Realm, with `Travel` (a deliberate visit, which keeps your
-  draft) and `Write here` (the composer, there, without travelling).
-- **Portals** — the openings that can still be entered, the one that just closed,
-  and the captures the notes really recorded.
+The reference shows one thought at a time — its position `x of y`, its address, and
+its authored text — read live-editor-first from the recognised notes. Browsing
+never travels the workspace, opens a note or moves the caret.
 
 | Key | Effect |
 | --- | --- |
-| `j` `k` / `↑` `↓` | move the selection (clamped, no wrap) |
-| `⏎` | open the selected row at its own note and thought |
-| `⇧⏎` `n` | branch under the selected thought, into an empty draft |
-| `t` | start a new Thread in the workspace's destination |
-| `c` | continue the selected thought's Thread in the composer, without travelling |
-| `x` | delete the selection's whole subtree |
-| `⌘[` / `⌘]` | back / forward through the visit history |
-| `Esc` | close |
+| `↑` / `↓` | previous / next thought in the sequence |
+| `/` | start a scoped search |
+| `⏎` | accept a search match, or edit the selected original |
+| `Esc` | cancel the search, then collapse the reference, then hide the Loom |
+| `⌘⌥←` / `⌘⌥→` | previous / next Tapestry |
+| `⌘⌥↑` / `⌘⌥↓` | show the reference / return to writing |
 
-On touch: a row taps to open, a destination's `Go` and `Weave` are separate
-buttons, and `✕` arms on the first tap and deletes on the second. The footer names
-the gestures the platform can make. `t` and `c` close the card *before* opening the
-composer, so focus never jumps back to the note behind it.
-
-`x` asks for no confirmation: the whole subtree goes in one undoable transaction,
-the surviving branches' `B` values are repaired in that same transaction, and one
-undo brings both back. The card never takes a `Scope`, so `⌘,` and every other
-Obsidian chord reach the app while it is open.
-
-The history is a cursor over up to sixty-four visits, so `⌘[` and `⌘]` walk the same
-path and a new navigation truncates only what `⌘]` could still have reached. A
-failed navigation changes neither the history nor the screen. A notes list reading
-*Entry unavailable* means a recorded beginning no longer matches the entry it named
-— a deletion, a reused number, or a hand edit — and it is never a jump target.
+The header's destination control opens the chooser in place of the content area —
+it never adds a row above the words. `Write here` retargets the draft without
+travelling; `Open workspace` is the separate travel action. The invitation list and
+the Tapestry chooser use the same area. The Loom never takes an Obsidian key scope,
+so `⌘,` and every other chord reach the app while it is open.
 
 ## Record formats
 
@@ -259,7 +244,7 @@ Obsidian's native Properties editor is not a nested-record editor.
 beginning `~ `: a bare name (up to ten words, the subject you would search for), then
 at most one each of `learn: <what it has not settled>` (twelve words), `next: <an
 imperative>` (twelve), and `ask: <a question, ending in "?">` (fourteen). The name is
-the anchor — it is what the navigator shows — and the other rows carry the reading.
+the anchor — it is what the reference shows — and the other rows carry the reading.
 A question mark belongs to `ask:` alone, and the first person's own negations ("i
 need not fear", "the data doesn't lie") are allowed: what the register refuses is the
 antithesis, `X, not Y`. The
@@ -270,7 +255,7 @@ after the glyph, and its text may not contain a second one), and a `~` line insi
 fenced block is text. Whisper rows are not prose: the title is still the first line
 the writer typed, and the caret, the duration row and the title all refer to the
 writer's own words. The rows take the note's own text colour — the one row that does
-not take the dimension's — and the navigator labels an entry with its whisper name
+not take the dimension's — and the reference labels an entry with its whisper name
 before its title.
 
 ## Settings
