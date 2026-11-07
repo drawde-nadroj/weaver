@@ -143,11 +143,11 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
-The fileless composer also sends its document changes through
-`src/entries/writer.ts#dispatchDraftChange`. Its only caller supplies the pane's
-own newly created editor, not a file-bound Obsidian view; no file or vault is
-passed and no evidence is published. Input and synchronization keep their own
-history annotations. Saving still goes through the capture plan and note writer.
+The fileless composer sends source synchronization and explicit input through
+`src/entries/writer.ts#dispatchDraftChange`. Its caller owns a native Markdown
+editor whose view is never bound to a file; no vault or note is passed. Native
+input retains its own history, and a new draft clears that history through the
+host view. Publishing still uses a capture plan through the note writer.
 
 Reading view may retain a CodeMirror buffer without saving it.
 `src/editor/view-registry.ts#findEditorViewForFile` excludes that dormant buffer,
@@ -398,11 +398,12 @@ Nothing reflows. The text decides where the box is, never the reverse.
   inline prose in Live Preview uses `.weaver-entry-inline` to put its date above
   the row, beside the raised rail. Its background halo extends only sideways,
   rather than adding vertical clearance over adjacent rows.
-- `src/core/frame.ts#loomAnchor` places the Loom from visual-viewport bounds and
-  only intersecting toolbar bounds. `src/ui/loom.ts#Loom` anchors its bottom edge
-  there and grows upward, so a resized window height cannot confuse a fixed
-  containing block's coordinates. Only the body scrolls; the editor survives
-  keyboard resize and panning with its selection intact.
+- `src/core/frame.ts#loomKeyboardViewport` intersects browser bounds with the host's
+  native keyboard boundary, including keyboards that do not resize the browser.
+  `src/core/frame.ts#loomAnchor` then reserves an intersecting toolbar. The Loom
+  spans mobile width and grows upward without bottom air or duplicated safe-area
+  padding; its absolute anchor is converted to the body's coordinates. Native
+  keyboard events, root keyboard-height changes and toolbar changes trigger layout.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
 <!-- claim: src/core/frame.ts#frameSpan @324739146a -->
@@ -476,21 +477,22 @@ before a historical jump. `src/core/navigation.ts#record` keeps a cursor, so bac
 and forward walk the same path, and the cursor moves only after a navigation
 succeeds.
 
-`src/ui/markdown-pane.ts#MarkdownPane` owns a persistent fileless CodeMirror
-editor for formatting while typing and Obsidian-rendered HTML for read-only
-content. It never mounts a private native file editor and never writes a note.
-Mode changes retain the editor's source, selection and undo history; a genuinely
-new empty draft resets history, while a path change or the user's own deletion
-does not. Native rendering is tied to a generation and source path, so a late
-result cannot replace a newer reading. Internal links use the public workspace
-router with that source path and Obsidian's modifier-key disposition. Editing
-decorates Markdown source; it does not claim native Live Preview parity.
+`src/ui/markdown-pane.ts#MarkdownPane` owns a native, fileless Obsidian Markdown
+view for editing and Obsidian-rendered HTML for read-only content. The native
+view never receives a file, so its autosave cannot write a note. Its command
+context owns focus only while the draft does; blur, save and destruction release
+that ownership without replacing a newer editor. Native formatting, suggestions
+and undo target the draft, not the reference note.
+Mode changes retain source, selection and history; a genuinely new empty draft
+clears history through the host. Render generations and source paths prevent
+stale readings, and internal links use the public workspace router.
 
-`src/ui/loom.ts#Loom` keeps header, identity, prose, action and timing rails in the
-same order across browsing, drafting and saved states. `src/ui/loom-timing.ts#LoomTiming`
+`src/ui/loom.ts#Loom` retains the same editor across browsing, drafting and saved
+states. Mobile omits the identity row and places circular actions beside the prose;
+desktop retains the identity and action rails. `src/ui/loom-timing.ts#LoomTiming`
 owns the shared icon-and-digit grammar: clock for beginning, stopwatch for writing
 duration, normal-text digits and dimension-coloured colons. An empty draft previews
-the shared wall clock and zero duration, marked Now. First input freezes its
+the shared wall clock and zero duration, without a preview word. First input freezes its
 beginning; `src/entries/capture-model-controller.ts#CaptureView` exposes whether
 its clock is running so a paused draft is explicit without guessing from digits.
 Changed shared-clock ticks commit their painted duration; incidental renders never
@@ -510,26 +512,28 @@ shows a reading without beginning a draft.
 open, restores the writing pane and its selection, and focuses it without starting
 another Thread. `src/ui/loom.ts#rememberFocus` retains the last outside focus
 target across repeated retrievals so Escape can return there.
-The draft's dashed frame and the prose-focus outline are independent signals;
-the drawn CodeMirror caret has an explicit normal-text-colour stroke. A saved
-reading has a solid frame and persistent Saved status. Enter saves a draft or
-branches from a saved or browsed thought; modified Enter saves a draft or starts
-a new Thread in the displayed thought's destination. Search Enter only accepts
-the match. A retained draft is resumed, never replaced or silently re-parented.
+Desktop draft framing and prose-focus outlines are independent; mobile uses a
+solid compact edge. The drawn CodeMirror caret has a normal-text-colour stroke.
+A saved reading has persistent Threaded status; submission says Threading….
+Desktop Enter threads a draft; mobile Return inserts a newline.
+Enter branches from a saved or browsed thought; modified Enter threads a draft or
+starts a new Thread in the displayed thought's destination. Search Enter only
+accepts the match. A retained draft is resumed, never replaced or re-parented.
 Pending saves and held-key repeats cannot queue a continuation. Escape cancels
-search, returns from the chooser, or hides without discarding. There is no Hide
-button or duplicate shortcut paragraph; action labels prefix shortcuts with a dot.
-The quiet bottom rail places clock, stopwatch, status and Escape beneath the action
-buttons. Destination headers share a thread emoji and the Realm's name. An empty
-saved-state label contributes no margin, keeping the address aligned with its prose.
-The entry actions share Save's tinted fill and border. Branch previews the saved
-thought's next dimension through `src/core/color.ts#dimensionColorVars`; New Thread
+search, returns from the chooser, or hides without discarding. Mobile offers
+Hide / Done and omits desktop shortcut prefixes and the beginning clock.
+Desktop destination headers carry a thread emoji; mobile shows just the name.
+The Loom adds no formatting toolbar. Its fileless native editor supplies the
+focused command context Obsidian needs to keep its own toolbar visible.
+Neither a permanent Escape hint nor a preview word occupies the timing rail.
+Entry actions share Thread's tinted fill and border.
+Branch previews the saved thought's next dimension through `src/core/color.ts#dimensionColorVars`; New Thread
 always uses the red first dimension, independent of the current reading.
 The contextual copy action reads the draft, saved prose or reference-only
 snapshot. Destructive confirmation defaults to Keep writing; cancelling it or
 finishing a destination proposal returns focus to the retained editor.
-The writing slot retains its identity and at least one full prose line even with
-reference and keyboard open together. `src/core/frame.ts#revealScrollDelta`
+The desktop writing slot retains its identity and one full prose line; mobile
+reserves no identity height. `src/core/frame.ts#revealScrollDelta`
 reveals the prose viewport in the body, then the editing caret inside that prose
 scroller, without panning the window or changing the selection.
 The viewport pass in `src/ui/loom.ts#Loom` also chooses the stacked or split
@@ -635,7 +639,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-63 files, 496 exported symbols, 53 test files.
+63 files, 497 exported symbols, 53 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -651,7 +655,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 157 | 6 | no |
 | `src/core/entries.ts` | core | 426 | 15 | no |
-| `src/core/frame.ts` | core | 369 | 22 | no |
+| `src/core/frame.ts` | core | 384 | 23 | no |
 | `src/core/insert.ts` | core | 681 | 14 | no |
 | `src/core/loom.ts` | core | 379 | 12 | no |
 | `src/core/navigation.ts` | core | 150 | 12 | no |
@@ -699,8 +703,8 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
 | `src/ui/loom-timing.ts` | ui | 151 | 3 | yes |
-| `src/ui/loom.ts` | ui | 2116 | 4 | yes |
-| `src/ui/markdown-pane.ts` | ui | 879 | 3 | yes |
+| `src/ui/loom.ts` | ui | 2164 | 4 | yes |
+| `src/ui/markdown-pane.ts` | ui | 372 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
 ### Commands
@@ -731,7 +735,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `portalMotion` | `"normal"` | `main.ts`<br>`settings-tab.ts` |
 | `dayNoteFolder` | `"Chronomancer"` | `entries/day-note.ts`<br>`settings-tab.ts` |
 | `dayNoteFormat` | `"YYYY.MM.DD"` | `entries/day-note.ts`<br>`settings-tab.ts` |
-| `contexts` | `[]` | `core/contexts.ts`<br>`core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/loom.ts` |
+| `contexts` | `[]` | `core/contexts.ts`<br>`core/reference.ts`<br>`editor/entry-decorations.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`reading/entry-processor.ts`<br>`settings-tab.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` |
 | `equalizeEntrySizes` | `true` | `main.ts`<br>`settings-tab.ts` |
 | `entrySize` | `"1em"` | `settings-tab.ts`<br>`ui/css.ts` |
 | `indentStep` | `18` | `settings-tab.ts`<br>`ui/css.ts` |
@@ -774,16 +778,16 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-chooser-travel` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-write` | styled | `ui/loom.ts` |
 | `weaver-composer-context` | styled | `ui/loom.ts` |
-| `weaver-composer-context-label` | hook | `ui/loom.ts` |
+| `weaver-composer-context-label` | styled | `ui/loom.ts` |
 | `weaver-composer-controls` | styled | `ui/loom.ts` |
 | `weaver-composer-dest` | styled | `ui/loom.ts` |
 | `weaver-composer-editor` | styled | `ui/loom.ts` |
 | `weaver-composer-footer` | styled | `ui/loom.ts` |
 | `weaver-composer-header` | styled | `ui/loom.ts` |
+| `weaver-composer-hide` | styled | `ui/loom.ts` |
 | `weaver-composer-identity` | styled | `ui/loom.ts` |
 | `weaver-composer-identity-address` | styled | `ui/loom.ts` |
 | `weaver-composer-identity-label` | styled | `ui/loom.ts` |
-| `weaver-composer-keyhint` | styled | `ui/loom.ts` |
 | `weaver-composer-menu` | styled | `ui/loom.ts` |
 | `weaver-composer-menu-item` | styled | `ui/loom.ts` |
 | `weaver-composer-more` | styled | `ui/loom.ts` |
@@ -844,31 +848,13 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/day-link.ts` |
 | `weaver-frame-layer` | styled | `editor/entry-frame.ts` |
 | `weaver-markdown` | styled | `ui/markdown-pane.ts` |
-| `weaver-markdown-content` | hook | `ui/loom.ts`<br>`ui/markdown-pane.ts` |
-| `weaver-markdown-editor` | styled | `ui/markdown-pane.ts` |
-| `weaver-markdown-editor-host` | hook | `ui/markdown-pane.ts` |
+| `weaver-markdown-content` | hook | `ui/loom.ts` |
+| `weaver-markdown-editor-host` | styled | `ui/markdown-pane.ts` |
 | `weaver-markdown-error` | styled | `ui/markdown-pane.ts` |
 | `weaver-markdown-reading` | styled | `ui/loom.ts`<br>`ui/markdown-pane.ts` |
-| `weaver-md-codeblock` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h1` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h2` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h3` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h4` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h5` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-h6` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-hr` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-image` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-list-item` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-mark` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-quote` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-table-cell` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-table-delimiter` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-table-pipe` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-table-row` | styled | `ui/markdown-pane.ts` |
-| `weaver-md-wikilink` | styled | `ui/markdown-pane.ts` |
 | `weaver-no-emphasis` | styled | `main.ts`<br>`ui/css.ts` |
 | `weaver-phone` | styled | `main.ts` |
-| `weaver-platform-mobile` | body state | `main.ts` |
+| `weaver-platform-mobile` | styled | `main.ts`<br>`ui/loom.ts` |
 | `weaver-settings` | styled | `settings-tab.ts` |
 | `weaver-style` | hook | `ui/css.ts` |
 | `weaver-tablet` | body state | `main.ts` |
@@ -1178,13 +1164,14 @@ The frame around one entry: a box, and nothing else.
 | `FrameSpan` | interface | 206 | `export interface FrameSpan` | — | `tests/frame.test.ts` |
 | `frameSpan` | function | 227 | `export function frameSpan(input: FrameSpanInput): FrameSpan` | `editor/entry-frame.ts` | `tests/frame.test.ts` |
 | `LoomViewport` | interface | 235 | `export interface LoomViewport` | `ui/loom.ts` | — |
-| `LoomBoxInput` | interface | 243 | `export interface LoomBoxInput` | — | — |
-| `LoomBox` | interface | 263 | `export interface LoomBox` | — | — |
-| `loomWidth` | function | 276 | `export function loomWidth(viewportWidth: number):` | — | `tests/frame.test.ts` |
-| `LoomAnchor` | interface | 285 | `export interface LoomAnchor` | `ui/loom.ts` | — |
-| `loomAnchor` | function | 300 | `export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport \| null ): LoomAnchor` | `ui/loom.ts` | `tests/frame.test.ts` |
-| `loomLayout` | function | 330 | `export function loomLayout(input: LoomBoxInput): LoomBox` | — | `tests/frame.test.ts` |
-| `revealScrollDelta` | function | 364 | `export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number` | `ui/loom.ts` | `tests/frame.test.ts` |
+| `loomKeyboardViewport` | function | 247 | `export function loomKeyboardViewport(viewport: LoomViewport, keyboardTop: number \| null): LoomViewport` | `ui/loom.ts` | `tests/frame.test.ts` |
+| `LoomBoxInput` | interface | 253 | `export interface LoomBoxInput` | — | — |
+| `LoomBox` | interface | 273 | `export interface LoomBox` | — | — |
+| `loomWidth` | function | 286 | `export function loomWidth(viewportWidth: number):` | — | `tests/frame.test.ts` |
+| `LoomAnchor` | interface | 295 | `export interface LoomAnchor` | `ui/loom.ts` | — |
+| `loomAnchor` | function | 311 | `export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport \| null, docked = false ): LoomAnchor` | `ui/loom.ts` | `tests/frame.test.ts` |
+| `loomLayout` | function | 345 | `export function loomLayout(input: LoomBoxInput): LoomBox` | — | `tests/frame.test.ts` |
+| `revealScrollDelta` | function | 379 | `export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number` | `ui/loom.ts` | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -1239,7 +1226,7 @@ Where you have been: a real history, with a cursor, not a stack that eats itself
 | `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
 | `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
 | `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-model-controller.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
-| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `core/capture-state.ts`<br>`entries/loom.ts`<br>`main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/plugin.test.ts` |
 | `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
 | `canGoForward` | function | 129 | `export function canGoForward(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
@@ -1854,13 +1841,13 @@ The Loom: the one compact surface a thought is written in, from anywhere.
 
 #### `src/ui/markdown-pane.ts`
 
-One persistent Markdown surface, rich while editing and natively rendered while
+A persistent, fileless Obsidian Markdown editor and read-only native rendering.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `PaneSelection` | interface | 57 | `export interface PaneSelection` | `ui/loom.ts` | — |
-| `MarkdownPaneOptions` | interface | 65 | `export interface MarkdownPaneOptions` | — | — |
-| `MarkdownPane` | class | 437 | `export class MarkdownPane` | `ui/loom.ts` | — |
+| `PaneSelection` | interface | 21 | `export interface PaneSelection` | `ui/loom.ts` | — |
+| `MarkdownPaneOptions` | interface | 29 | `export interface MarkdownPaneOptions` | — | — |
+| `MarkdownPane` | class | 53 | `export class MarkdownPane` | `ui/loom.ts` | — |
 
 #### `src/ui/platform.ts`
 
@@ -1869,7 +1856,7 @@ Which platform this is, as one answer.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
-| `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts` | `tests/platform-classes.test.ts` |
+| `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts`<br>`ui/loom.ts` | `tests/platform-classes.test.ts` |
 | `isTablet` | function | 28 | `export function isTablet(): boolean` | `entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
 | `canHover` | function | 35 | `export function canHover(): boolean` | — | — |
 

@@ -1,10 +1,10 @@
 /**
  * The Loom: the one compact surface a thought is written in, from anywhere.
  *
- * It is a single non-modal dialog with a small header, one identity line, a
- * persistent rich-Markdown writing pane, and one footer rail that always holds
- * the same two things: what the surface is saying on the left, and the actions
- * it is offering on the right. The destination control opens a chooser in place
+ * It is a single non-modal dialog with a small header and persistent Markdown
+ * writing pane. Desktop retains an identity line and footer actions; mobile
+ * places circular actions beside the content-sized prose, with duration below.
+ * The destination control opens a chooser in place
  * of the prose, so the writer never scrolls past destination machinery to reach
  * the words. Reference context is optional and starts collapsed; it is a second
  * persistent pane, read-only, with its own navigation. A saved thought keeps the
@@ -25,7 +25,7 @@ import { contextDayForPath, contextDayPath, type WeavingContext } from "../core/
 import { dayKey } from "../core/day";
 import { formatClock } from "../core/clock";
 import { formatAddress } from "../core/entries";
-import { loomAnchor, revealScrollDelta, type LoomAnchor, type LoomViewport } from "../core/frame";
+import { loomAnchor, loomKeyboardViewport, revealScrollDelta, type LoomAnchor, type LoomViewport } from "../core/frame";
 import type { ThoughtSnapshotResult } from "../core/reference";
 import type { CaptureView } from "../entries/capture-model-controller";
 import type { EntryClock } from "../entries/clock";
@@ -176,6 +176,7 @@ export class Loom {
   private readonly refButton: HTMLButtonElement;
   private readonly moreButton: HTMLButtonElement;
   private readonly menu: HTMLElement;
+  private readonly hideButton: HTMLButtonElement;
   private readonly shortcuts: HTMLElement;
   private readonly shortcutsClose: HTMLButtonElement;
   private readonly body: HTMLElement;
@@ -199,7 +200,6 @@ export class Loom {
   private readonly statusEl: HTMLElement;
   private readonly timing: LoomTiming;
   private readonly referenceTiming: LoomTiming;
-  private readonly escapeHint: HTMLElement;
   private readonly actionsEl: HTMLElement;
   private readonly saveButton: HTMLButtonElement;
   private readonly newlineButton: HTMLButtonElement;
@@ -330,6 +330,12 @@ export class Loom {
     this.moreButton.type = "button";
     this.moreButton.className = "weaver-composer-more";
     this.moreButton.textContent = "⋯";
+    this.hideButton = doc.createElement("button");
+    this.hideButton.type = "button";
+    this.hideButton.className = "weaver-composer-hide";
+    this.hideButton.textContent = "Hide";
+    this.hideButton.addEventListener("click", () => this.hide());
+    this.header.appendChild(this.hideButton);
     this.moreButton.setAttribute("aria-label", "More");
     this.moreButton.setAttribute("aria-haspopup", "menu");
     this.moreButton.setAttribute("aria-expanded", "false");
@@ -472,10 +478,6 @@ export class Loom {
 
     this.timing = new LoomTiming(this.stateEl);
     this.stateEl.appendChild(this.statusEl);
-    this.escapeHint = doc.createElement("span");
-    this.escapeHint.className = "weaver-composer-keyhint";
-    this.escapeHint.textContent = "Esc · Hide";
-    this.stateEl.appendChild(this.escapeHint);
 
     this.actionsEl = doc.createElement("div");
     this.actionsEl.className = "weaver-composer-actions";
@@ -604,6 +606,28 @@ export class Loom {
     window.addEventListener("resize", onViewport);
     window.visualViewport?.addEventListener("resize", onViewport);
     window.visualViewport?.addEventListener("scroll", onViewport);
+    // Native toolbar visibility changes independently of visualViewport.
+    const toolbarResize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onViewport);
+    let toolbar = owner.querySelector(".mobile-toolbar");
+    if (toolbar !== null) toolbarResize?.observe(toolbar);
+    const toolbarChanges = typeof MutationObserver === "undefined" ? null : new MutationObserver((changes) => {
+      const current = owner.querySelector(".mobile-toolbar");
+      if (current !== toolbar) {
+        toolbarResize?.disconnect();
+        toolbar = current;
+        if (toolbar !== null) toolbarResize?.observe(toolbar);
+        onViewport();
+      } else if (changes.some((change) => change.target === toolbar || change.target === owner.body || change.target === owner.documentElement)) {
+        onViewport();
+      }
+    });
+    toolbarChanges?.observe(owner.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });
+    toolbarChanges?.observe(owner.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    this.root.addEventListener("focusin", onViewport);
+    for (const event of ["keyboardWillShow", "keyboardDidShow", "keyboardWillHide", "keyboardDidHide"]) {
+      window.addEventListener(event, onViewport);
+    }
+    window.addEventListener("scroll", onViewport);
 
     this.mountedIn = {
       document: owner,
@@ -615,6 +639,13 @@ export class Loom {
         window.removeEventListener("resize", onViewport);
         window.visualViewport?.removeEventListener("resize", onViewport);
         window.visualViewport?.removeEventListener("scroll", onViewport);
+        window.removeEventListener("scroll", onViewport);
+        toolbarResize?.disconnect();
+        toolbarChanges?.disconnect();
+        this.root.removeEventListener("focusin", onViewport);
+        for (const event of ["keyboardWillShow", "keyboardDidShow", "keyboardWillHide", "keyboardDidHide"]) {
+          window.removeEventListener(event, onViewport);
+        }
         if (this.unsubscribeClock !== null) {
           this.unsubscribeClock();
           this.unsubscribeClock = null;
@@ -848,7 +879,6 @@ export class Loom {
     }
     this.setVisible(this.chooserEl, false);
     this.renderReference();
-    this.escapeHint.textContent = this.host.reference?.model.search.kind === "editing" ? "Esc · Cancel search" : "Esc · Hide";
   }
 
   private renderCard(state: CaptureView): void {
@@ -886,8 +916,6 @@ export class Loom {
     this.syncComposerPane(state);
     this.renderStatus(state);
     this.renderActions(state);
-    this.escapeHint.textContent = this.view === "chooser" ? "Esc · Back"
-      : this.host.reference?.model.search.kind === "editing" ? "Esc · Cancel search" : "Esc · Hide";
     this.paintElapsed();
     this.setVisible(this.footer, true);
 
@@ -909,7 +937,7 @@ export class Loom {
 
   private destinationLabel(state: CaptureView): string {
     const name = this.host.contexts().find((context) => context.id === state.contextId)?.name ?? state.contextId;
-    return `🧵 ${name}`;
+    return this.isMobile() ? name : `🧵 ${name}`;
   }
 
   private renderContext(state: CaptureView): void {
@@ -1089,7 +1117,7 @@ export class Loom {
     else this.host.controller.setSelection(selection);
   }
 
-  /** Enter saves a draft or continues a saved thought; Escape puts it away. */
+  /** Desktop Enter threads; mobile Return remains a newline. Escape preserves the draft. */
   private onPaneKey(event: KeyboardEvent): boolean {
     if (event.isComposing || this.composing) return false;
     if (event.key === "Escape") {
@@ -1098,6 +1126,7 @@ export class Loom {
       return true;
     }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return false;
+    if (this.isMobile() && !event.metaKey && !event.ctrlKey && !this.composerReadOnly) return false;
     event.preventDefault();
     this.activateEnter(event);
     return true;
@@ -1149,9 +1178,9 @@ export class Loom {
       message = this.feedback.text;
       error = this.feedback.kind === "error";
     } else if (state.phase === "submitting") {
-      message = "Saving…";
+      message = "Threading…";
     } else if (state.phase === "resting") {
-      message = "Saved";
+      message = "Threaded";
     }
 
     this.statusEl.textContent = message ?? "";
@@ -1161,6 +1190,9 @@ export class Loom {
   }
 
   private renderActions(state: CaptureView): void {
+    const mobile = this.isMobile();
+    this.hideButton.textContent = state.phase === "resting" ? "Done" : "Hide";
+    this.freshButton.textContent = mobile ? "New thread" : "⌘↵ · New Thread";
     if (this.browsingOnly(state)) {
       for (const button of [
         this.useButton,
@@ -1177,7 +1209,7 @@ export class Loom {
       const resume = state.phase === "editing";
       const target = this.host.reference?.model.body;
       const thought = target?.kind === "ready" ? target.snapshot.thought : null;
-      this.branchButton.textContent = resume ? "↵ · Resume draft" : "↵ · Branch";
+      this.branchButton.textContent = resume ? (mobile ? "Resume draft" : "↵ · Resume draft") : (mobile ? "Branch" : "↵ · Branch");
       this.branchButton.setAttribute("style", dimensionColorVars(resume ? (state.parent?.d ?? 0) + 1 : (thought?.d ?? 1) + 1));
       this.branchButton.disabled = !resume && (thought === null || this.host.reference?.editable !== true);
       this.setVisible(this.branchButton, true);
@@ -1190,7 +1222,7 @@ export class Loom {
     const blocked = pending || discard || state.phase === "retryable" || state.phase === "uncertain";
     const resting = state.phase === "resting";
     const saved = state.selected ?? state.root;
-    this.branchButton.textContent = "↵ · Branch";
+    this.branchButton.textContent = mobile ? "Branch" : "↵ · Branch";
     this.branchButton.setAttribute("style", dimensionColorVars((saved?.d ?? 1) + 1));
 
     this.setVisible(this.useButton, pending);
@@ -1200,12 +1232,12 @@ export class Loom {
     this.setVisible(this.retryButton, !pending && !discard && state.phase === "retryable");
     this.setVisible(this.checkButton, !pending && !discard && state.phase === "uncertain");
     this.setVisible(this.saveButton, !blocked && !resting);
-    this.setVisible(this.newlineButton, state.phase === "editing" && !blocked);
+    this.setVisible(this.newlineButton, !mobile && state.phase === "editing" && !blocked);
     this.newlineButton.disabled = this.composing;
     this.setVisible(this.branchButton, resting);
     this.setVisible(this.freshButton, resting);
 
-    this.saveButton.textContent = "↵ · Save";
+    this.saveButton.textContent = mobile ? "Thread" : "↵ · Thread";
     this.saveButton.disabled =
       state.phase !== "editing" || pending || this.composing || state.text.trim() === "";
     this.branchButton.disabled = saved === null;
@@ -1985,6 +2017,11 @@ export class Loom {
     this.measuredHeight = height;
     this.layout();
   }
+  /** Platform semantics follow the host, not a narrow desktop window. */
+  private isMobile(): boolean {
+    return this.doc().body.classList.contains("is-mobile") ||
+      this.doc().body.classList.contains("weaver-platform-mobile");
+  }
 
   private layout(): void {
     if (this.mountedIn === null) return;
@@ -2027,6 +2064,8 @@ export class Loom {
   private applyBox(): void {
     if (this.mountedIn === null) return;
     const box = this.viewportBox();
+    const mobile = this.isMobile();
+    const origin = mobile ? this.mountedIn.document.body.getBoundingClientRect() : null;
     const dimension = this.dimensionOf(this.host.controller.state);
     // Viewport changes choose the arrangement too; waiting for another edit
     // would leave a phone stack on a wide screen (or two cramped columns).
@@ -2042,9 +2081,9 @@ export class Loom {
     this.root.setAttribute(
       "style",
       [
-        "position: fixed",
-        `left: ${box.left}px`,
-        `top: ${box.bottom}px`,
+        mobile ? "position: absolute" : "position: fixed",
+        `left: ${box.left - (origin?.left ?? 0)}px`,
+        `top: ${box.bottom - (origin?.top ?? 0)}px`,
         "transform: translateY(-100%)",
         `width: ${box.width}px`,
         `max-height: ${box.maxHeight}px`,
@@ -2079,17 +2118,26 @@ export class Loom {
     const visual = view.visualViewport;
     const left = visual?.offsetLeft ?? 0;
     const top = visual?.offsetTop ?? 0;
-    const viewport: LoomViewport = {
+    const visualBounds: LoomViewport = {
       left,
       right: left + (visual?.width ?? view.innerWidth),
       top,
       bottom: top + (visual?.height ?? view.innerHeight)
     };
+    const owner = this.doc();
+    const keyboardHeight = this.isMobile()
+      ? Number.parseFloat(view.getComputedStyle(owner.documentElement).getPropertyValue("--keyboard-height")) || 0
+      : 0;
+    const viewport = loomKeyboardViewport(
+      visualBounds, keyboardHeight > 0 ? owner.body.getBoundingClientRect().bottom - keyboardHeight : null
+    );
     const toolbar = this.mountedIn?.document.querySelector(".mobile-toolbar");
     const rect = toolbar?.getBoundingClientRect();
     const visible = toolbar !== null && toolbar !== undefined &&
-      view.getComputedStyle(toolbar).visibility !== "hidden";
-    return loomAnchor(viewport, visible && rect !== undefined ? rect : null);
+      view.getComputedStyle(toolbar).visibility !== "hidden" &&
+      view.getComputedStyle(toolbar).display !== "none" &&
+      rect !== undefined && rect.width > 0 && rect.height > 0;
+    return loomAnchor(viewport, visible && rect !== undefined ? rect : null, this.isMobile());
   }
 
   /** The document the surface is mounted in, or the ambient one before mount. */

@@ -266,14 +266,14 @@ refused rather than silently snapped. Evidence never costs the words: a record
 that cannot be added is dropped while the thought is still written. Unreadable
 existing evidence is refused rather than overwritten.
 
-`src/ui/loom.ts` owns one compact non-modal surface. The header, identity slot,
-prose pane and action rail keep the same order through drafting, saving, reading
-and branching. The identity uses the frame's digit grammar: normal-text digits,
-dimension-coloured punctuation. A draft names its kind and dimension, never an
-invented address. `src/ui/loom-timing.ts` draws the same beginning clock and writing
-stopwatch for browsing, drafting and saved reading. Icons distinguish the values;
-both use full clock strings, normal-text digits and dimension-coloured colons.
-An empty draft previews the shared wall clock beside zero duration, marked Now;
+`src/ui/loom.ts` owns one compact non-modal surface. Desktop keeps header, identity,
+prose and action rails through drafting, saving, reading and branching. The identity
+uses normal-text digits and dimension-coloured punctuation; a draft names its kind
+and dimension, never an invented address. Mobile omits that identity and places
+actions beside the prose. `src/ui/loom-timing.ts` draws beginning and duration
+clocks; mobile shows duration alone. Both use normal-text digits and
+dimension-coloured colons, distinguished by icons.
+An empty draft previews the shared wall clock beside zero duration, without a label;
 the first committed input freezes the beginning and starts the stopwatch. A
 paused draft says Paused and holds its displayed second. Saved or browsed timing
 comes from the note; missing values remain unknown, never invented zero.
@@ -283,33 +283,34 @@ When a reference and draft are visible together, each has its own timing group.
   More. The writing control opens the chooser; browsing shares the emoji and name
   with a sequence position. There is no repeated branch label in the header;
   when viewing differs from writing, one quiet line names the viewing Realm.
-- Editing: one persistent rich Markdown editor grows with its content rather
-  than reserving an empty field. Formatting appears during composition; reading
-  uses Obsidian's Markdown rendering. This is not a private native Live Preview
-  editor. `⇧⏎` inserts a newline and `⏎` saves, including soft Return. A phone also
-  has a visible New line action. `⌘⏎` / `Ctrl⏎` are captured inside the Loom before
-  Obsidian's own scope can claim them; IME candidate confirmation never saves.
-  A draft keeps a quiet dashed frame; focusing its prose adds a separate solid
-  focus outline without changing layout. The drawn CodeMirror caret uses an
-  explicit normal-text-colour stroke, not the native contenteditable caret.
+- Editing: one persistent native Obsidian Markdown editor grows with its content
+  rather than reserving an empty field. It is a fileless native view: no note is
+  bound, so native autosave cannot publish it. Native formatting and toolbar
+  commands target that draft. Desktop `⇧⏎` inserts a newline and `⏎` threads.
+  Mobile Return inserts a newline; the visible Thread action commits.
+  `⌘⏎` / `Ctrl⏎` are captured inside
+  the Loom before Obsidian's scope can claim them; IME confirmation never saves.
+  Desktop drafts keep a dashed frame and separate prose-focus outline; mobile
+  uses a compact solid top edge. The drawn CodeMirror caret uses an explicit
+  normal-text-colour stroke, not the native contenteditable caret.
   `⌘⇧⏎` retrieves and focuses the existing draft or saved reading, including
   after clicking elsewhere or hiding a draft; it never toggles or starts a new
   Thread while one is open. Draft text and selection survive retrieval.
-- Saving: the prose is read-only and the status says `Saving…`. A failed or
+- Saving: the prose is read-only and the status says `Threading…`. A failed or
   unconfirmed save keeps the text, timing and reason. `Check save` reads without
   writing; only a proven-absent write offers `Retry save`, guarded against a note
   that changed since the attempt. Reading view writes through the vault, never
   into its dormant editor buffer.
 - Saved: the same prose pane becomes read-only and its frame becomes solid.
-  `↵ · Branch` and `⌘↵ · New Thread` occupy the action slot that held `↵ · Save`;
-  the status persistently says Saved. The real address replaces the draft identity
-  without adding a new row or repeating the status. Enter branches from the saved
-  thought; modified Enter starts a new Thread. Escape puts the reading away without
-  another write; there is no Hide button. Pending saves and held-key repeats never
-  queue a continuation: branching requires a fresh press after saving completes.
-  Timing, status and Escape sit below the action controls in a quiet bottom rail.
-  Branch uses the next dimension's colour; New Thread always uses first-dimension
-  red. Both share Save's tinted fill, border and text treatment. Branch restores
+  Branch and New Thread occupy the action slot that held Thread;
+  the status persistently says Threaded. On desktop the real address replaces
+  the draft identity without adding a row; mobile omits the identity row.
+  Enter branches from the saved thought; modified Enter starts a new Thread.
+  Escape puts the reading away without another write; mobile has Hide / Done.
+  Pending saves and held-key repeats never queue a continuation.
+  Timing and status sit below the action controls, without an Escape hint.
+  Branch uses the next dimension's colour; New Thread uses first-dimension red.
+  Both share Thread's tinted fill, border and text treatment. Branch restores
   focus to the new draft after its parent has been validated.
   A saved address starts at the prose's left edge; an empty state label adds no indent.
   Changes to the note's clock row refresh the saved timing; if the thought no
@@ -337,16 +338,22 @@ When a reference and draft are visible together, each has its own timing group.
   unsaved draft. The menu supports arrows, Home/End and Escape. Destructive
   confirmation defaults to Keep writing and restores editor focus on cancellation.
 - The chooser has a visible Back action and preserves the mounted editor,
-  selection, undo history and scroll position. The timing rail's Escape hint names
-  the current exit: cancel search, go back, or hide without discarding.
+  selection, undo history and scroll position. Escape still cancels search,
+  returns from the chooser or hides without discarding; its hint is not displayed.
 
-Its box follows the content up to the usable visual viewport. `loomAnchor` in
-`src/core/frame.ts` returns that viewport's bottom edge and the extent above it;
-the renderer grows upward from that edge rather than deriving a CSS bottom inset
-from the window height. Keyboard resize and panning preserve the editor node and
-selection. Only an intersecting mobile toolbar reserves space; a toolbar behind
-the keyboard does not. The writing slot always retains its identity and one full
-line; excess reference content scrolls instead of compressing the caret away.
+Its box follows the content up to the usable viewport. `loomKeyboardViewport`
+in `src/core/frame.ts` intersects browser bounds with the native keyboard boundary;
+`loomAnchor` reserves any intersecting toolbar. This handles keyboards that
+overlay the webview without resizing it, without subtracting the keyboard twice.
+The mobile renderer converts that boundary into body-relative coordinates and
+grows upward, flush to the controls below, without duplicated safe-area padding.
+The body and circular actions share one content-sized row; identity, beginning
+clock and desktop hints are hidden. Native editor chrome and note-sized padding
+are removed; only the prose itself contributes writing height.
+There is no plugin formatting toolbar. While editing, the native fileless editor
+owns Obsidian's active command context; leaving it restores the previous owner
+unless another editor has already taken focus. Native keyboard events, the host's
+keyboard-height style and toolbar geometry all trigger layout.
 Long prose and the body scroll independently while the header and footer remain
 fixed. Resizing reveals the caret inside the prose viewport, not the entire
 unbounded editor document.
@@ -354,8 +361,8 @@ The current usable width chooses the stacked or split arrangement on viewport
 updates, without requiring another keystroke.
 Opening the Loom freezes the note's own clock first. Desktop controls are 32px
 high, with no native button shadows; mobile and coarse-pointer targets are 44px,
-without filling every target's background. Action labels put shortcut characters
-before the name, separated by a middle dot.
+without filling every target's background. Mobile Thread, Branch and New thread
+are labeled 44px circles on the right. Only desktop actions prefix shortcuts.
 
 Reading view draws no opening at all: a note is a record, and the surface floats
 above every leaf regardless of which one is showing.

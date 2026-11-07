@@ -34,7 +34,7 @@ const LABELS: Record<
   LoomTimingMode,
   { begin: string; beginTitle: string; duration: string; durationTitle: string; state: string }
 > = {
-  preview: { begin: "Current time preview", beginTitle: "Current time preview — no input recorded yet", duration: "Writing duration", durationTitle: "Writing duration — nothing written yet", state: "Now" },
+  preview: { begin: "Current time preview", beginTitle: "Current time preview — no input recorded yet", duration: "Writing duration", durationTitle: "Writing duration — nothing written yet", state: "" },
   running: { begin: "Beginning time", beginTitle: "The moment writing began", duration: "Writing duration", durationTitle: "Writing duration so far", state: "" },
   paused: { begin: "Beginning time", beginTitle: "The moment writing began", duration: "Writing duration", durationTitle: "Writing duration, paused", state: "Paused" },
   recorded: { begin: "Beginning time", beginTitle: "Beginning time recorded in the note", duration: "Recorded writing duration", durationTitle: "Writing duration recorded in the note", state: "" },

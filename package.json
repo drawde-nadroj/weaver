@@ -26,6 +26,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/commands": "6.10.0",
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "6.38.6",
     "@types/node": "26.1.2",
@@ -33,9 +34,5 @@
     "obsidian": "1.13.1",
     "typescript": "7.0.2",
     "vitest": "4.1.0"
-  },
-  "dependencies": {
-    "@codemirror/commands": "6.10.0",
-    "@lezer/markdown": "1.8.1"
   }
 }

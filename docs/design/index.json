@@ -3,8 +3,8 @@
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
     "modules": 63,
-    "exports": 496,
-    "classes": 117,
+    "exports": 497,
+    "classes": 99,
     "testFiles": 53
   },
   "modules": [
@@ -2416,7 +2416,7 @@
     {
       "file": "src/core/frame.ts",
       "layer": "core",
-      "lines": 369,
+      "lines": 384,
       "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the address line — is the box's top-left\nlabel, and its own clock row is the bottom edge, labelling the bottom-left\ncorner with the duration and the bottom-right with the moment. Every label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the address's ink to the right edge of the text column: a box that hugged\nits text could not put the duration at one bottom corner and the moment at the\nother without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
       "obsidian": false,
       "imports": [],
@@ -2624,9 +2624,25 @@
           "testedBy": []
         },
         {
+          "name": "loomKeyboardViewport",
+          "kind": "function",
+          "line": 247,
+          "signature": "export function loomKeyboardViewport(viewport: LoomViewport, keyboardTop: number | null): LoomViewport",
+          "doc": "Intersects the browser viewport with Obsidian's native keyboard boundary.\niOS may overlay the keyboard without shrinking visualViewport; taking the\nsmaller bottom also avoids subtracting the keyboard twice when it does shrink.",
+          "hash": "77b867c52c",
+          "bytes": 256,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 2,
+          "testedBy": [
+            "tests/frame.test.ts"
+          ]
+        },
+        {
           "name": "LoomBoxInput",
           "kind": "interface",
-          "line": 243,
+          "line": 253,
           "signature": "export interface LoomBoxInput",
           "doc": "Everything the Loom's placement may read; none of it is the active note's column.",
           "hash": "e94432d0fd",
@@ -2638,7 +2654,7 @@
         {
           "name": "LoomBox",
           "kind": "interface",
-          "line": 263,
+          "line": 273,
           "signature": "export interface LoomBox",
           "doc": "The Loom's rectangle and its internal chrome metrics.",
           "hash": "aeebd8071b",
@@ -2650,7 +2666,7 @@
         {
           "name": "loomWidth",
           "kind": "function",
-          "line": 276,
+          "line": 286,
           "signature": "export function loomWidth(viewportWidth: number):",
           "doc": "The width the Loom takes across a viewport: 720, or the viewport less its inset.",
           "hash": "40761ae787",
@@ -2664,7 +2680,7 @@
         {
           "name": "LoomAnchor",
           "kind": "interface",
-          "line": 285,
+          "line": 295,
           "signature": "export interface LoomAnchor",
           "doc": "A bottom-edge anchor and the surface's maximum extent above it.",
           "hash": "8aca127de5",
@@ -2678,11 +2694,11 @@
         {
           "name": "loomAnchor",
           "kind": "function",
-          "line": 300,
-          "signature": "export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport | null ): LoomAnchor",
-          "doc": "The Loom's bottom anchor in visual-viewport coordinates, not a CSS bottom\ninset derived from `innerHeight`: a mobile webview can resize the latter\nwithout resizing the containing block used by fixed-positioned elements.\nThe renderer translates the surface upward from this edge, so content growth\nand keyboard panning do not need a second measurement or a retained height.\nOnly a toolbar intersecting the visible rectangle reserves space.",
-          "hash": "2bf8b8728d",
-          "bytes": 708,
+          "line": 311,
+          "signature": "export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport | null, docked = false ): LoomAnchor",
+          "doc": "The Loom's bottom anchor in visual-viewport coordinates, not a CSS bottom\ninset derived from `innerHeight`: a mobile webview can resize the latter\nwithout resizing the containing block used by fixed-positioned elements.\nThe renderer translates the surface upward from this edge, so content growth\nand keyboard panning do not need a second measurement or a retained height.\nOnly a toolbar intersecting the visible rectangle reserves space. A mobile\naccessory docks flush to that edge and spans the viewport, without an inset.",
+          "hash": "c8103af434",
+          "bytes": 856,
           "refs": [
             "src/ui/loom.ts"
           ],
@@ -2694,7 +2710,7 @@
         {
           "name": "loomLayout",
           "kind": "function",
-          "line": 330,
+          "line": 345,
           "signature": "export function loomLayout(input: LoomBoxInput): LoomBox",
           "doc": "Where the bottom-anchored Loom sits, independent of the active note's column.\n\nThe width never measures the writing column: it is 720 centred in the viewport,\nclamped to the available width less its inset, and 16px narrower still on a\nnarrow screen. The lower-only surface is 320px, an expanded one 640px, and the\nreduced row 44px, each clamped to the usable height. An expanded surface splits\ninto equal regions only when both fit their controls and two prose lines; below\n480px, or when that fit fails, the active region takes the whole body. Nothing\nhere mutates work, selection or focus — it returns a layout only.",
           "hash": "1f9982b8b4",
@@ -2708,7 +2724,7 @@
         {
           "name": "revealScrollDelta",
           "kind": "function",
-          "line": 364,
+          "line": 379,
           "signature": "export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number",
           "doc": "Scroll movement that brings a clipped caret or content edge back into its viewport.",
           "hash": "e6f2f16a0a",
@@ -3348,10 +3364,9 @@
             "src/model/whisper-runner.ts",
             "src/notices.ts",
             "src/settings.ts",
-            "src/ui/loom.ts",
-            "src/ui/markdown-pane.ts"
+            "src/ui/loom.ts"
           ],
-          "refCount": 76,
+          "refCount": 75,
           "testedBy": [
             "tests/capture-store.test.ts",
             "tests/context-workspaces.test.ts",
@@ -8570,8 +8585,8 @@
     {
       "file": "src/ui/loom.ts",
       "layer": "ui",
-      "lines": 2116,
-      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header, one identity line, a\npersistent rich-Markdown writing pane, and one footer rail that always holds\nthe same two things: what the surface is saying on the left, and the actions\nit is offering on the right. The destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
+      "lines": 2164,
+      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header and persistent Markdown\nwriting pane. Desktop retains an identity line and footer actions; mobile\nplaces circular actions beside the content-sized prose, with duration below.\nThe destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
       "obsidian": true,
       "imports": [
         "src/core/capture",
@@ -8635,8 +8650,8 @@
           "line": 170,
           "signature": "export class Loom",
           "doc": "The one compact Loom surface.",
-          "hash": "8f3ebae119",
-          "bytes": 72151,
+          "hash": "450cdbebfd",
+          "bytes": 74969,
           "refs": [
             "src/core/capture-state.ts",
             "src/core/frame.ts",
@@ -8675,10 +8690,10 @@
         "weaver-composer-editor",
         "weaver-composer-footer",
         "weaver-composer-header",
+        "weaver-composer-hide",
         "weaver-composer-identity",
         "weaver-composer-identity-address",
         "weaver-composer-identity-label",
-        "weaver-composer-keyhint",
         "weaver-composer-menu",
         "weaver-composer-menu-item",
         "weaver-composer-more",
@@ -8715,31 +8730,30 @@
         "weaver-composer-viewing",
         "weaver-composer-writing",
         "weaver-markdown-content",
-        "weaver-markdown-reading"
+        "weaver-markdown-reading",
+        "weaver-platform-mobile"
       ],
       "dataAttrs": []
     },
     {
       "file": "src/ui/markdown-pane.ts",
       "layer": "ui",
-      "lines": 879,
-      "doc": "One persistent Markdown surface, rich while editing and natively rendered while\nreading.\n\nThe pane owns exactly one CodeMirror 6 view for its whole life. Editing shows\nthat view with Markdown formatting applied in place — headings, emphasis,\nstrong text, inline code, links, quotes and lists are styled while their source\nmarks stay honest, and the line the caret is on always reveals its own syntax,\nthe way live preview does. Read-only presentation replaces the visible body\nwith real HTML rendered by Obsidian's `MarkdownRenderer`, so links resolve\nagainst the pane's source path, tables become tables, and text can be selected\nand copied naturally.\n\nThe editor is never thrown away to switch modes. Hiding it keeps its document,\nhistory, selection and DOM identity intact, which is what lets a saved thought\nbecome read-only and then be branched from without losing undo.\n\nThe pane is deliberately a leaf: it never writes a note, never opens an editor\nfor a file and never reaches into Obsidian's file or view machinery. Typing is\nreported to the caller through `onChange`; saving is the caller's decision.",
+      "lines": 372,
+      "doc": "A persistent, fileless Obsidian Markdown editor and read-only native rendering.\n\nThe native editor owns formatting, history, suggestions and toolbar commands.\nIts MarkdownView never receives a file: autosave has no note to write, and\npublishing remains the capture controller's decision. A bound editor context\nregisters the focused draft with Obsidian without activating another leaf.\nRead-only rendering retains the editor, its source, history and selection.",
       "obsidian": true,
       "imports": [
         "src/entries/writer",
-        "@codemirror/commands",
         "@codemirror/state",
         "@codemirror/view",
-        "@lezer/markdown",
         "obsidian"
       ],
       "exports": [
         {
           "name": "PaneSelection",
           "kind": "interface",
-          "line": 57,
+          "line": 21,
           "signature": "export interface PaneSelection",
-          "doc": "A caret or a selected range in the pane's document.",
+          "doc": "A caret or selected range in the pane's Markdown source.",
           "hash": "e1c2f61878",
           "bytes": 70,
           "refs": [
@@ -8751,9 +8765,9 @@
         {
           "name": "MarkdownPaneOptions",
           "kind": "interface",
-          "line": 65,
+          "line": 29,
           "signature": "export interface MarkdownPaneOptions",
-          "doc": "Everything a pane needs to mount and report back.",
+          "doc": "Mounting dependencies and callbacks for a persistent Markdown pane.",
           "hash": "020bdceafe",
           "bytes": 292,
           "refs": [],
@@ -8763,11 +8777,11 @@
         {
           "name": "MarkdownPane",
           "kind": "class",
-          "line": 437,
+          "line": 53,
           "signature": "export class MarkdownPane",
-          "doc": "The persistent rich Markdown editor and read-only renderer.",
-          "hash": "7d70767425",
-          "bytes": 13803,
+          "doc": "A native fileless editor whose lifetime survives saving and hiding.",
+          "hash": "429187c262",
+          "bytes": 13770,
           "refs": [
             "src/ui/loom.ts"
           ],
@@ -8777,28 +8791,9 @@
       ],
       "classes": [
         "weaver-markdown",
-        "weaver-markdown-content",
-        "weaver-markdown-editor",
         "weaver-markdown-editor-host",
         "weaver-markdown-error",
-        "weaver-markdown-reading",
-        "weaver-md-codeblock",
-        "weaver-md-h1",
-        "weaver-md-h2",
-        "weaver-md-h3",
-        "weaver-md-h4",
-        "weaver-md-h5",
-        "weaver-md-h6",
-        "weaver-md-hr",
-        "weaver-md-image",
-        "weaver-md-list-item",
-        "weaver-md-mark",
-        "weaver-md-quote",
-        "weaver-md-table-cell",
-        "weaver-md-table-delimiter",
-        "weaver-md-table-pipe",
-        "weaver-md-table-row",
-        "weaver-md-wikilink"
+        "weaver-markdown-reading"
       ],
       "dataAttrs": []
     },
@@ -8839,9 +8834,10 @@
           "hash": "c15f1d1740",
           "bytes": 233,
           "refs": [
-            "src/main.ts"
+            "src/main.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 3,
+          "refCount": 10,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -8953,7 +8949,8 @@
         "src/main.ts",
         "src/reading/entry-processor.ts",
         "src/settings-tab.ts",
-        "src/ui/loom.ts"
+        "src/ui/loom.ts",
+        "src/ui/markdown-pane.ts"
       ]
     },
     {
@@ -9177,15 +9174,16 @@
       "weaver-composer-chooser-travel",
       "weaver-composer-chooser-write",
       "weaver-composer-context",
+      "weaver-composer-context-label",
       "weaver-composer-controls",
       "weaver-composer-dest",
       "weaver-composer-editor",
       "weaver-composer-footer",
       "weaver-composer-header",
+      "weaver-composer-hide",
       "weaver-composer-identity",
       "weaver-composer-identity-address",
       "weaver-composer-identity-label",
-      "weaver-composer-keyhint",
       "weaver-composer-menu",
       "weaver-composer-menu-item",
       "weaver-composer-more",
@@ -9241,27 +9239,11 @@
       "weaver-frame-label",
       "weaver-frame-layer",
       "weaver-markdown",
-      "weaver-markdown-editor",
+      "weaver-markdown-editor-host",
       "weaver-markdown-error",
       "weaver-markdown-reading",
-      "weaver-md-codeblock",
-      "weaver-md-h1",
-      "weaver-md-h2",
-      "weaver-md-h3",
-      "weaver-md-h4",
-      "weaver-md-h5",
-      "weaver-md-h6",
-      "weaver-md-hr",
-      "weaver-md-image",
-      "weaver-md-list-item",
-      "weaver-md-mark",
-      "weaver-md-quote",
-      "weaver-md-table-cell",
-      "weaver-md-table-delimiter",
-      "weaver-md-table-pipe",
-      "weaver-md-table-row",
-      "weaver-md-wikilink",
       "weaver-phone",
+      "weaver-platform-mobile",
       "weaver-settings",
       "weaver-thread-start"
     ],
@@ -9281,15 +9263,12 @@
     ],
     "unstyled": [
       "weaver-alignments",
-      "weaver-composer-context-label",
       "weaver-composer-newline",
       "weaver-composer-reference-next",
       "weaver-composer-reference-prev",
       "weaver-composer-reference-search-toggle",
       "weaver-duration-clock",
       "weaver-markdown-content",
-      "weaver-markdown-editor-host",
-      "weaver-platform-mobile",
       "weaver-style",
       "weaver-tablet"
     ],

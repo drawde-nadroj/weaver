@@ -239,6 +239,16 @@ export interface LoomViewport {
   bottom: number;
 }
 
+/**
+ * Intersects the browser viewport with Obsidian's native keyboard boundary.
+ * iOS may overlay the keyboard without shrinking visualViewport; taking the
+ * smaller bottom also avoids subtracting the keyboard twice when it does shrink.
+ */
+export function loomKeyboardViewport(viewport: LoomViewport, keyboardTop: number | null): LoomViewport {
+  if (keyboardTop === null || keyboardTop >= viewport.bottom) return viewport;
+  return { ...viewport, bottom: Math.max(viewport.top, keyboardTop) };
+}
+
 /** Everything the Loom's placement may read; none of it is the active note's column. */
 export interface LoomBoxInput {
   /** The visual viewport a phone keyboard shrinks. */
@@ -295,13 +305,18 @@ export interface LoomAnchor {
  * without resizing the containing block used by fixed-positioned elements.
  * The renderer translates the surface upward from this edge, so content growth
  * and keyboard panning do not need a second measurement or a retained height.
- * Only a toolbar intersecting the visible rectangle reserves space.
+ * Only a toolbar intersecting the visible rectangle reserves space. A mobile
+ * accessory docks flush to that edge and spans the viewport, without an inset.
  */
 export function loomAnchor(
   viewport: LoomViewport,
-  toolbar: LoomViewport | null
+  toolbar: LoomViewport | null,
+  docked = false
 ): LoomAnchor {
-  const { width, inset } = loomWidth(Math.max(0, viewport.right - viewport.left));
+  const viewportWidth = Math.max(0, viewport.right - viewport.left);
+  const metrics = loomWidth(viewportWidth);
+  const width = docked ? viewportWidth : metrics.width;
+  const inset = docked ? 0 : metrics.inset;
   const obstructs = toolbar !== null &&
     toolbar.right > viewport.left && toolbar.left < viewport.right &&
     toolbar.bottom > viewport.top && toolbar.top < viewport.bottom;

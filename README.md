@@ -47,14 +47,14 @@ pixel. The manual checks they need are at the end of this file.
    note you were in stays visible and editable, and nothing is written yet.
 2. **Write.** The first committed character freezes the thought's beginning: the
    day and moment it was written, and a duration that counts only while you are
-   writing. The prose area grows with its content; `⇧⏎` inserts a newline and `⏎`
-   commits on every platform, including a phone's soft Return.
-3. **Save** with `⏎` (the footer's Save, or `⌘⏎` / `Ctrl⏎`, do the same). One
-   transaction writes the address, the prose and a finished clock row into the
+   writing. The prose area grows with its content. On desktop, `⇧⏎` inserts a
+   newline and `⏎` commits; on mobile, Return inserts a newline.
+3. **Thread** with the visible action (`⏎` on desktop, or `⌘⏎` / `Ctrl⏎`).
+   One transaction writes the address, prose and finished clock row into the
    daily note for the day the thought *began* — which may be yesterday if you
-   started before midnight — and `Saving…` becomes the saved thought.
+   started before midnight. `Threading…` becomes `Threaded` only on confirmation.
 4. **Return.** The same prose pane becomes a rendered reading. Its draft identity
-   becomes the real address; **Branch** and **New Thread** replace Save in the same
+   becomes the real address on desktop; **Branch** and **New Thread** replace Thread in the same
    action rail. Another `⏎` branches; `⌘⏎` / `Ctrl⏎` starts a new Thread.
    `Esc` puts it away without another write. Pending saves ignore continuation keys.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
@@ -63,6 +63,13 @@ pixel. The manual checks they need are at the end of this file.
    starting a draft. The writing destination stays in the header's chooser;
    invitations remain idle offers, not a tab inside browsing.
 7. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
+
+On mobile the Loom is a content-sized accessory above the keyboard and any visible
+Obsidian mobile toolbar: destination and Hide above, prose beside a circular Thread
+action, duration below. There is no second formatting toolbar, desktop key legend,
+draft identity row or reserved blank editor height. After threading, Done dismisses
+the reading; Branch and New thread deliberately begin the next draft. The fileless
+native editor supplies Obsidian's toolbar with the draft's own command context.
 
 Writing inside a note is unchanged, and it is where an entry is still begun in
 place: the first text of an awaiting entry writes its own local date and moment
@@ -457,11 +464,11 @@ These need a live Obsidian and are not covered by `npm test`:
   thought and press `⏎`: the note for the day the thought *began* gains one entry —
   address, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
   a fresh second `⏎` opens a branch without writing it. `⌘⏎` after saving opens
-  a new Thread; held-key repeats and Enter during Saving do neither.
+  a new Thread; held-key repeats and Enter during Threading do neither.
 - Composer focus: type and select a range, click into the note, then press
   `⌘⇧⏎`. The same draft and selection regain focus, with a visible caret for an
   insertion point and a solid focus outline separate from the dashed draft frame.
-  Escape hides the draft; retrieve it, then save: the frame becomes solid, Saved
+  Escape hides the draft; retrieve it, then thread: the frame becomes solid, Threaded
   remains visible, and timing does not shift. Click away and retrieve the saved
   reading: no new Thread or write occurs. Escape hides it and restores outside focus.
 - Composer structure: a short empty draft is compact. Identity, prose and action
@@ -472,8 +479,14 @@ These need a live Obsidian and are not covered by `npm test`:
   Address digits are normal text, punctuation dimension-coloured.
   Copy text on a saved thought copies its Markdown, not an empty draft.
 - Composer, phone: open the keyboard, select text, rotate, then dismiss it. The
-  same draft and selection remain; Save stays above the keyboard and any visible
-  toolbar. With a long draft or parent excerpt, the body scrolls, not the footer.
+  same draft and selection remain; Thread stays above the keyboard and any visible
+  toolbar, flush to their boundary. Return inserts a newline without submitting.
+  With long prose, the editor scrolls while the header, action and duration remain
+  visible. Hide and resume preserve the text and selection. After threading, Done,
+  Branch and New thread remain usable without reopening the keyboard.
+  The composer has no persistent Escape hint or preview word. Native toolbar
+  formatting and undo affect only the draft; the reference note stays unchanged.
+  Check a keyboard that overlays the browser without shrinking its viewport too.
 - Rich Markdown: compose emphasis, a heading, a list and code; keep typing after
   moving the caret, then undo and redo. Save and read the result. References render
   tables and internal links rather than raw Markdown, in their own dimension colour.
@@ -526,8 +539,9 @@ the card open.
 - `⌘⇧⏎` from a note, from Reading view, and from an empty workspace: one composer
   opens, no blank entry is appended, no note is created, and the chord fires once.
 - Phone: `⏎` settles the open entry and never opens a child, from any line of it.
-  There is no newline gesture inside an entry. Rows ≥ 44 px, the sheet fills
-  the screen, and *Weave a Thread* opens the composer even from Reading view.
+  There is no newline gesture inside an in-note entry (the Loom supports Return).
+  Targets are at least 44 px; the Loom sizes to its content rather than filling the
+  screen, and *Weave a Thread* opens it even from Reading view.
 - Vim: `⏎` in normal mode still moves down outside a draft.
 - Frames, the start column: with *Frame follows the indent* off, every box starts in
   the same place and the addresses and the times run down one column each; only the

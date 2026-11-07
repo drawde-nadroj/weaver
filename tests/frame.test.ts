@@ -6,6 +6,7 @@ import {
   frameColumn,
   frameSpan,
   loomAnchor,
+  loomKeyboardViewport,
   loomLayout,
   loomWidth,
   revealScrollDelta,
@@ -364,6 +365,33 @@ describe("the Loom's geometry", () => {
 });
 
 describe("the Loom's visual viewport anchor", () => {
+  it("reserves the native keyboard even when the browser viewport does not resize", () => {
+    const visual = { left: 0, right: 390, top: 0, bottom: 844 };
+    const usable = loomKeyboardViewport(visual, 524);
+    const toolbar = { left: 0, right: 390, top: 480, bottom: 524 };
+    const box = loomAnchor(usable, toolbar, true);
+    expect(box.bottom).toBe(480);
+    expect(box.maxHeight).toBe(480);
+  });
+
+  it("does not subtract a native keyboard twice from an already shrunken viewport", () => {
+    const visual = { left: 0, right: 390, top: 90, bottom: 440 };
+    expect(loomKeyboardViewport(visual, 524)).toEqual(visual);
+    expect(loomKeyboardViewport(visual, null)).toEqual(visual);
+    expect(loomKeyboardViewport(visual, 30).bottom).toBe(visual.top);
+  });
+  it("docks a mobile accessory flush above the toolbar across keyboard panning", () => {
+    const viewport = { left: 0, right: 390, top: 90, bottom: 440 };
+    const toolbar = { left: 0, right: 390, top: 396, bottom: 440 };
+    const box = loomAnchor(viewport, toolbar, true);
+    expect(box.left).toBe(viewport.left);
+    expect(box.width).toBe(viewport.right - viewport.left);
+    expect(box.bottom).toBe(toolbar.top);
+    expect(box.bottom - box.maxHeight).toBe(viewport.top);
+    const withoutToolbar = loomAnchor(viewport, null, true);
+    expect(withoutToolbar.bottom).toBe(viewport.bottom);
+    expect(withoutToolbar.maxHeight).toBe(viewport.bottom - viewport.top);
+  });
   it("stays inside a panned keyboard viewport without consulting the layout height", () => {
     const box = loomAnchor({ left: 12, right: 402, top: 90, bottom: 440 }, null);
     expect(box.left).toBe(20);

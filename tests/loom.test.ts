@@ -214,6 +214,41 @@ beforeEach(() => {
   resetHarness();
 });
 
+describe("mobile writing", () => {
+  it("leaves Return to the editor and threads only on explicit activation", async () => {
+    document.body.classList.add("is-mobile");
+    const run = harness();
+    type(run, "first line");
+    run.answer(saved());
+    let prevented = false;
+    run.input().dispatch("keydown", { key: "Enter", preventDefault: () => { prevented = true; } });
+    await flush();
+    expect(prevented).toBe(false);
+    expect(run.requests).toEqual([]);
+    expect(run.controller.state.phase).toBe("editing");
+    type(run, "first line\nsecond line");
+    run.button(".weaver-composer-save")?.click();
+    await flush();
+    expect(run.requests[0]?.text).toBe("first line\nsecond line");
+    expect(run.controller.state.phase).toBe("resting");
+    run.destroy();
+  });
+
+  it("preserves the draft and selection when hidden and retrieved", () => {
+    document.body.classList.add("is-mobile");
+    const run = harness();
+    type(run, "keep these words");
+    const selection = { ...run.controller.state.selection };
+    run.button(".weaver-composer-hide")?.click();
+    expect(run.requests).toEqual([]);
+    expect(run.controller.state.text).toBe("keep these words");
+    run.resume().children[0]?.click();
+    expect(run.controller.state.selection).toEqual(selection);
+    expect(run.input().value).toBe("keep these words");
+    run.destroy();
+  });
+});
+
 
 describe("composer timing", () => {
   it("previews the wall clock, freezes the beginning on input and marks a pause", () => {

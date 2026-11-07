@@ -834,12 +834,6 @@ body.weaver-phone .weaver-composer-card {
 }
 
 
-.weaver-composer-keyhint {
-  font-family: var(--font-interface);
-  font-size: var(--font-ui-smaller, 12px);
-  color: var(--text-muted);
-  line-height: 1.4;
-}
 
 .weaver-composer-reference-notice {
   color: var(--text-muted);
@@ -1029,10 +1023,35 @@ body.weaver-phone .weaver-composer-card {
   outline: none;
 }
 
-.weaver-composer-editor .weaver-markdown-editor {
+
+/* Embed the native fileless view, not its workspace chrome or note-sized padding. */
+.weaver-composer .weaver-markdown-editor-host :is(.workspace-leaf-content, .view-content, .markdown-source-view.mod-cm6, .cm-editor) {
+  height: auto;
+  min-height: 0;
+  padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
+}
+
+.weaver-composer .weaver-markdown-editor-host :is(.view-header, .inline-title, .metadata-container, .embedded-backlinks) {
+  display: none;
+}
+
+.weaver-composer .weaver-markdown-editor-host .cm-sizer {
+  min-height: 0 !important;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+}
+
+.weaver-composer .weaver-markdown-editor-host .markdown-source-view.mod-cm6 .cm-scroller {
+  padding: 0;
+  min-height: 0;
+}
+
+.weaver-composer .weaver-markdown-editor-host .cm-content {
+  padding: 0 !important;
 }
 
 .weaver-composer-editor .weaver-markdown-reading {
@@ -1084,63 +1103,6 @@ body.weaver-phone .weaver-composer-card {
   display: none !important;
 }
 
-.weaver-composer-editor .weaver-md-h1 { font-size: var(--h1-size, 1.8em); font-weight: var(--h1-weight, 700); }
-.weaver-composer-editor .weaver-md-h2 { font-size: var(--h2-size, 1.6em); font-weight: var(--h2-weight, 650); }
-.weaver-composer-editor .weaver-md-h3 { font-size: var(--h3-size, 1.4em); font-weight: var(--h3-weight, 600); }
-.weaver-composer-editor .weaver-md-h4 { font-size: var(--h4-size, 1.2em); font-weight: var(--h4-weight, 600); }
-.weaver-composer-editor .weaver-md-h5 { font-size: var(--h5-size, 1.1em); font-weight: var(--h5-weight, 600); }
-.weaver-composer-editor .weaver-md-h6 { font-size: var(--h6-size, 1em); font-weight: var(--h6-weight, 600); }
-.weaver-composer-editor .cm-strong { font-weight: var(--bold-weight, 700); }
-.weaver-composer-editor .cm-em { font-style: italic; }
-.weaver-composer-editor .cm-strikethrough { text-decoration: line-through; }
-
-.weaver-composer-editor .cm-inline-code,
-.weaver-composer-editor .weaver-md-codeblock {
-  font-family: var(--font-monospace);
-  background: var(--background-secondary);
-  border-radius: 3px;
-}
-
-.weaver-composer-editor .weaver-md-codeblock {
-  padding-inline: 8px;
-}
-
-.weaver-composer-editor .weaver-md-quote {
-  border-left: 2px solid color-mix(in oklab, var(--weaver-dcolor) 45%, transparent);
-  padding-left: 10px;
-}
-
-.weaver-composer-editor .weaver-md-list-item {
-  padding-left: 1.2em;
-  text-indent: -1.2em;
-}
-
-.weaver-composer-editor :is(.cm-link, .weaver-md-wikilink) {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.weaver-composer-editor :is(.cm-url, .weaver-md-mark, .weaver-md-table-delimiter, .weaver-md-table-pipe) {
-  color: var(--text-muted);
-}
-
-.weaver-composer-editor .weaver-md-image {
-  color: var(--text-muted);
-}
-
-.weaver-composer-editor .weaver-md-table-row {
-  font-variant-numeric: tabular-nums;
-}
-
-.weaver-composer-editor .weaver-md-table-cell {
-  padding-right: 1em;
-}
-
-.weaver-composer-editor .weaver-md-hr {
-  border: 0;
-  border-top: 1px solid var(--background-modifier-border);
-  margin-block: .6em;
-}
 
 .weaver-composer-editor .weaver-markdown-error {
   color: var(--text-error);
@@ -1219,14 +1181,6 @@ body.weaver-phone .weaver-composer-card {
   margin-left: auto;
 }
 
-.weaver-composer-state > .weaver-composer-keyhint {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.weaver-composer-state > .weaver-composer-status:not([hidden]) + .weaver-composer-keyhint {
-  margin-left: 0;
-}
 
 .weaver-composer-controls {
   display: flex;
@@ -1413,4 +1367,112 @@ body.weaver-phone .weaver-composer-card {
   border-right: 1px solid var(--background-modifier-border);
   padding-bottom: 0;
   padding-right: 16px;
+}
+
+/* The mobile Loom is a content-sized keyboard accessory, not another toolbar.
+ * Its body and right-hand actions share a row; no empty editor height is kept. */
+.weaver-composer button.weaver-composer-hide {
+  display: none;
+}
+
+body.weaver-platform-mobile .weaver-composer,
+body.is-mobile .weaver-composer {
+  padding-bottom: 0;
+  gap: 0;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-card {
+  padding: 0 12px 6px;
+  gap: 2px 8px;
+  border-radius: 0;
+  border-inline: 0;
+  border-bottom: 0;
+  border-style: solid !important;
+  box-shadow: none;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-card:has(:focus-within) {
+  outline: none;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-header {
+  gap: 4px;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer button.weaver-composer-hide {
+  display: inline-flex;
+  order: 4;
+  padding-right: 0;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-identity {
+  display: none;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-writing {
+  min-height: 0;
+  gap: 0;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-context-label {
+  display: none;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-context summary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-height: 44px;
+  align-content: center;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer:not([data-browsing="true"]) .weaver-composer-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-header {
+  grid-column: 1 / -1;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer:not([data-browsing="true"]) .weaver-composer-body {
+  grid-column: 1;
+  grid-row: 2;
+  gap: 2px;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer:not([data-browsing="true"]) .weaver-composer-footer {
+  display: contents;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer:not([data-browsing="true"]) .weaver-composer-controls {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: end;
+  flex-direction: column;
+  gap: 2px;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-state {
+  grid-column: 1 / -1;
+  min-height: 0;
+  gap: 4px;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-actions {
+  gap: 4px;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer button:is(.weaver-composer-save, .weaver-composer-branch, .weaver-composer-new):not(.weaver-composer-save-alt, .weaver-composer-use, .weaver-composer-retry, .weaver-composer-check) {
+  width: 44px;
+  height: 44px;
+  padding: 4px;
+  border-radius: 50%;
+  font-size: 12px;
+  white-space: normal;
+}
+
+body:is(.weaver-platform-mobile, .is-mobile) .weaver-composer-timing-value[data-kind="beginning"] {
+  display: none;
 }
