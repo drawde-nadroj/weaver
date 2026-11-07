@@ -218,13 +218,13 @@ describe("composer timing", () => {
     expect(run.requests[0]?.durationMs).toBe(2000);
   });
 
-  it("does not invent a zero duration when the saved thought cannot be read", async () => {
+  it("shows unknown timing when the saved thought cannot be read", async () => {
     const run = harness();
     type(run, "typed");
     run.answer(saved(2));
     run.input().dispatch("keydown", { key: "Enter" });
     await flush();
-    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("— · 09:00");
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("— · —");
   });
 });
 
@@ -315,6 +315,19 @@ describe("multiline writing", () => {
     await flush();
 
     expect(run.requests).toHaveLength(0);
+  });
+
+  it("leaves the retrieve chord to the app even when a draft already has focus", async () => {
+    const run = harness();
+    type(run, "still writing");
+    run.answer(saved());
+    fireWindowEvent("keydown", {
+      key: "Enter", metaKey: true, shiftKey: true, target: run.input()
+    });
+    await flush();
+    expect(run.controller.state.phase).toBe("editing");
+    expect(run.controller.state.text).toBe("still writing");
+    expect(run.requests).toEqual([]);
   });
 });
 

@@ -271,7 +271,7 @@ export class Loom {
    * footer says without touching the chord anywhere else in the app.
    */
   private readonly onCaptureKey = (event: KeyboardEvent): void => {
-    if (event.key !== "Enter" || event.altKey) return;
+    if (event.key !== "Enter" || event.altKey || event.shiftKey) return;
     if (!event.metaKey && !event.ctrlKey) return;
     if (event.isComposing || this.composing) return;
     if (this.view !== "write" || this.mountedIn === null) return;
@@ -538,6 +538,7 @@ export class Loom {
     this.checkButton = this.button(doc, "Check save", "weaver-composer-save weaver-composer-check");
     this.branchButton = this.button(doc, "Branch", "weaver-composer-branch");
     this.freshButton = this.button(doc, "New Thread", "weaver-composer-new");
+    this.freshButton.setAttribute("style", dimensionColorVars(1));
 
     // The primary Save stays first in the rail so a generic `.weaver-composer-save`
     // selector always means Save; each conditional decision has its own class,
@@ -666,22 +667,36 @@ export class Loom {
     if (this.measuredHeight === 0) this.measure();
   }
 
-  /** Remembers what had focus, so Hide can put it back. */
+  /** Remembers the last outside focus target; repeated retrieval never replaces it. */
   rememberFocus(): void {
-    const active = this.mountedIn?.document.activeElement;
-    this.returnFocus = active instanceof HTMLElement ? active : null;
+    const active = (this.mountedIn?.document ?? document).activeElement;
+    if (active instanceof HTMLElement && !this.root.contains(active)) this.returnFocus = active;
   }
 
-  /** Focuses the prose, after making the surface visible. */
+  /** Reveals the prose before restoring its caret, or focusing the saved reading. */
   focusInput(): void {
     const state = this.host.controller.state;
     if (state.phase === "closed") return;
+    if (this.view !== "write" || this.menuOpen || this.shortcutsOpen) {
+      this.view = "write";
+      this.menuOpen = false;
+      this.shortcutsOpen = false;
+      this.render();
+      this.body.scrollTop = this.bodyScroll;
+    }
     this.ensurePanes();
     if (state.phase === "resting") {
       this.pane?.focus();
       return;
     }
     this.pane?.focus(state.selection);
+  }
+
+  /** Re-reads recorded timing when its note changes, rejecting any older read. */
+  refreshTiming(paths: readonly string[]): void {
+    if (this.savedTiming === null || !paths.includes(this.savedTiming.thought.path)) return;
+    this.savedTiming = null;
+    this.paintElapsed();
   }
 
   /** Restores the recorded caret into the writing pane, without focusing it. */
@@ -978,7 +993,7 @@ export class Loom {
     address.className = "weaver-composer-identity-address";
     if (state.phase === "resting") {
       const saved = state.selected ?? state.root;
-      label.textContent = "Saved";
+      label.textContent = "";
       if (saved === null) address.textContent = "unwritten";
       else appendDigitRuns(address, formatAddress(saved.b, saved.d, saved.n));
     } else {
@@ -1146,6 +1161,8 @@ export class Loom {
       error = this.feedback.kind === "error";
     } else if (state.phase === "submitting") {
       message = "Saving…";
+    } else if (state.phase === "resting") {
+      message = isMobile() ? "Saved" : "Saved · Enter to hide";
     }
 
     this.statusEl.textContent = message ?? "";
@@ -1179,6 +1196,7 @@ export class Loom {
     const blocked = pending || discard || state.phase === "retryable" || state.phase === "uncertain";
     const resting = state.phase === "resting";
     const saved = state.selected ?? state.root;
+    this.branchButton.setAttribute("style", dimensionColorVars((saved?.d ?? 1) + 1));
 
     this.setVisible(this.useButton, pending);
     this.setVisible(this.keepTargetButton, pending);
@@ -1234,7 +1252,7 @@ export class Loom {
       }
       const result = this.savedTiming.result;
       duration = result?.kind === "ready" ? result.snapshot.durationMs : null;
-      time = result?.kind === "ready" ? result.snapshot.time : saved.time;
+      time = result?.kind === "ready" ? result.snapshot.time : result === null ? saved.time : null;
       title = result === null ? "Reading recorded duration…"
         : result.kind === "unavailable" ? result.reason
         : "Recorded duration · creation time";
@@ -1742,7 +1760,11 @@ export class Loom {
       const saved = state.selected ?? state.root;
       if (saved === null) return;
       this.view = "write";
-      void this.host.controller.branch(saved);
+      void this.host.controller.branch(saved).then((opened) => {
+        if (!opened) return;
+        this.render();
+        this.focusInput();
+      });
     });
     this.freshButton.addEventListener("click", () => {
       this.view = "write";
@@ -1911,7 +1933,7 @@ export class Loom {
       return;
     }
 
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !isField(event.target)) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !isField(event.target)) {
       event.preventDefault();
       void this.save();
       return;

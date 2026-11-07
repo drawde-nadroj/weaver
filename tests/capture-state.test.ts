@@ -295,4 +295,45 @@ describe("projection", () => {
     const draft = draftState(painted).draft;
     expect(draftProjection({ ...draft, clock: { ...draft.clock, resumedAt: null } }).durationMs).toBe(2000);
   });
+
+  it("freezes the painted second into the intent while the clock still runs", () => {
+    const painted = reduceCapture(draftWith("typed"), { kind: "painted", ms: 2500 }).model;
+    const out = reduceCapture(painted, { kind: "submit", id: "op1", published: captureInstantAt(AT + 9000) });
+
+    expect(out.effect?.kind).toBe("write");
+    if (out.effect?.kind === "write" && out.effect.intent.kind === "capture") {
+      expect(out.effect.intent.draft.durationMs).toBe(2000);
+      // Submitting later must not move the thought's own day or moment.
+      expect(out.effect.intent.draft.beginning).toEqual(captureInstantAt(AT));
+    }
+  });
+
+  it("ignores a tick that arrives after the clock paused", () => {
+    const painted = reduceCapture(draftWith("typed"), { kind: "painted", ms: 3000 }).model;
+    const paused = reduceCapture(painted, { kind: "pause" }).model;
+    expect(draftState(paused).draft.clock).toEqual({ baselineMs: 3000, resumedAt: null, shownMs: 3000 });
+
+    const late = reduceCapture(paused, { kind: "painted", ms: 9000 }).model;
+    expect(draftState(late).draft.clock.shownMs).toBe(3000);
+  });
+
+  it("keeps the beginning and the banked second when writing resumes", () => {
+    const painted = reduceCapture(draftWith("typed"), { kind: "painted", ms: 3000 }).model;
+    const paused = reduceCapture(painted, { kind: "pause" }).model;
+    const resumed = reduceCapture(paused, {
+      kind: "input",
+      text: "typed more",
+      selection: { from: 10, to: 10 },
+      at: AT + 60000
+    }).model;
+
+    const draft = draftState(resumed).draft;
+    expect(draft.beginning?.at).toBe(AT);
+    expect(draft.clock).toEqual({ baselineMs: 3000, resumedAt: AT + 60000, shownMs: 3000 });
+
+    const out = reduceCapture(resumed, { kind: "submit", id: "op1", published: captureInstantAt(AT + 90000) });
+    if (out.effect?.kind === "write" && out.effect.intent.kind === "capture") {
+      expect(out.effect.intent.draft.durationMs).toBe(3000);
+    }
+  });
 });

@@ -732,13 +732,16 @@ describe("planCaptureEntry", () => {
     expect(next.startsWith("---\ntravels: 1\nmood: quiet\n")).toBe(true);
 
     // One record, already settled: the composer timed it, so nothing is left to
-    // begin or to fill in later.
+    // begin or to fill in later. The prose answers the address on the very next
+    // row; only the separator above the block is blank.
     expect(
-      next.endsWith(`\n\n{ 2.1.2 }\n\nsaw the eleven\n+ 00:00:04 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)
+      next.endsWith(`\n\n{ 2.1.2 }\nsaw the eleven\n+ 00:00:04 ${dayKey(BEGAN)} ${formatClock(BEGAN)}\n`)
     ).toBe(true);
 
     const entry = parseEntries(next).entries.find((candidate) => candidate.n === 2);
     expect(entry?.state).toBe("settled");
+    // No blank row between the address and the prose in the saved note.
+    expect(entry?.firstProseLine).toBe((entry?.line ?? -1) + 1);
     expect(entry?.day).toBe(dayKey(BEGAN));
     expect(entry?.time).toBe(formatClock(BEGAN));
     // The row records whole seconds: a clock may only show a second that happened.
@@ -778,6 +781,8 @@ describe("planCaptureEntry", () => {
     expect(child?.d).toBe(2);
     expect(child?.b).toBe(1);
     expect(child?.parent).toBe(0);
+    // A branch reads the same way: address, then the prose on its next row.
+    expect(child?.firstProseLine).toBe((child?.line ?? -1) + 1);
 
     // A branch never carries the invitation's evidence.
     const records = readAlignments(next);

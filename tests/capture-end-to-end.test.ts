@@ -4,7 +4,8 @@ import WeaverPlugin from "../src/main";
 import { parseEntries } from "../src/core/entries";
 import { captureInstantAt, type CaptureRequest } from "../src/core/capture";
 import { readAlignments } from "../src/core/alignments";
-import { createApp, fileContent, instantiatePlugin } from "../test-support/harness";
+import { bodyQuery, createApp, fileContent, instantiatePlugin } from "../test-support/harness";
+import { shimDocument } from "../test-support/dom";
 import type { TFile } from "obsidian";
 
 /**
@@ -86,6 +87,104 @@ describe("a thought begun before midnight", () => {
     expect(parseEntries(created).entries).toHaveLength(1);
     expect(instance.controller.state.phase).toBe("closed");
 
+    instance.onunload();
+  });
+
+  it("refocuses an existing draft and saved reading without starting another Thread", async () => {
+    const instance = await plugin();
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    Object.defineProperty(outside, "isConnected", { value: true });
+    outside.focus = () => { shimDocument.activeElement = outside as unknown as typeof shimDocument.activeElement; };
+    outside.focus();
+    instance.openLoom();
+    instance.controller.setText("one retained thought", { from: 4, to: 12 });
+    const input = bodyQuery(".weaver-composer-prose .cm-content");
+
+    outside.focus();
+    instance.openLoom();
+    expect(shimDocument.activeElement === input).toBe(true);
+    expect(instance.controller.state.selection).toEqual({ from: 4, to: 12 });
+    expect(instance.controller.state.text).toBe("one retained thought");
+
+    bodyQuery(".weaver-composer-hide")?.click();
+    expect(instance.controller.state.collapsed).toBe(true);
+    instance.openLoom();
+    expect(instance.controller.state.collapsed).toBe(false);
+    expect(instance.controller.state.selection).toEqual({ from: 4, to: 12 });
+
+    bodyQuery(".weaver-composer-dest")?.click();
+    instance.openLoom();
+    expect(bodyQuery(".weaver-composer-chooser")?.hasAttribute("hidden")).toBe(true);
+    expect(shimDocument.activeElement === input).toBe(true);
+
+    await instance.controller.settle();
+    const recorded = noteOf(instance, mainPath("2026-11-05"));
+    const saved = instance.controller.state.selected;
+    outside.focus();
+    instance.openLoom();
+    instance.openLoom();
+
+    expect(instance.controller.state.phase).toBe("resting");
+    expect(instance.controller.state.selected).toEqual(saved);
+    expect(shimDocument.activeElement === input).toBe(true);
+    expect(noteOf(instance, mainPath("2026-11-05"))).toBe(recorded);
+
+    bodyQuery(".weaver-composer-hide")?.click();
+    expect(shimDocument.activeElement === outside as unknown).toBe(true);
+    instance.onunload();
+  });
+});
+
+describe("composer clock handoff", () => {
+  it("records the visibly painted duration and beginning, not time spent saving", async () => {
+    const instance = await plugin();
+    instance.openLoom();
+    instance.controller.setText("a timed thought");
+    await vi.advanceTimersByTimeAsync(7400);
+    const painted = bodyQuery(".weaver-composer-elapsed")?.textContent;
+    expect(painted).toBe("00:00:07 · 23:59");
+
+    // No clock callback painted the time spent stalled before Enter.
+    vi.setSystemTime(new Date(AT_2359.getTime() + 19_900));
+    bodyQuery(".weaver-composer-save")?.click();
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+
+    const source = noteOf(instance, mainPath("2026-11-05"));
+    const entry = parseEntries(source).entries[0];
+    expect(entry?.duration?.ms).toBe(7000);
+    expect(entry?.day).toBe("2026-11-05");
+    expect(entry?.time).toBe("23:59:59");
+    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe(painted);
+    instance.onunload();
+  });
+
+  it("refreshes the saved composer's clock when the note's clock row changes", async () => {
+    const instance = await plugin();
+    instance.openLoom();
+    instance.controller.setText("a clock shared with its note");
+    bodyQuery(".weaver-composer-save")?.click();
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("00:00:00 · 23:59");
+
+    const file = instance.app.vault.getAbstractFileByPath(mainPath("2026-11-05"));
+    if (file === null || !("extension" in file)) throw new Error("expected the saved note");
+    await instance.app.vault.process(file as TFile, (source) =>
+      source.replace("+ 00:00:00", "+ 00:02:14")
+    );
+    instance.app.vault.trigger("modify", file);
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+
+    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("00:02:14 · 23:59");
+
+    // A changed moment no longer identifies the saved thought: do not keep
+    // presenting the old stamp as if it still came from this note.
+    await instance.app.vault.process(file as TFile, (source) =>
+      source.replace("23:59:59", "23:58:43")
+    );
+    instance.app.vault.trigger("modify", file);
+    for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
+    expect(bodyQuery(".weaver-composer-elapsed")?.textContent).toBe("— · —");
     instance.onunload();
   });
 });

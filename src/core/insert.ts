@@ -278,17 +278,23 @@ export function planCaptureEntry(
   const d = parent === null ? 1 : parent.d + 1;
   const address = formatAddress(b, d, n);
   const clock = formatClockRow(request.beginning.time, "+", request.durationMs, request.beginning.day);
-  const block = `${address}${NEWLINE}${NEWLINE}${request.text}${NEWLINE}${clock}`;
+  // The prose begins on the row directly below the address: a captured thought
+  // is read as the address and the words that answer it, not as a labelled
+  // blank field. Blank lines *inside* the prose are the writer's own spacing and
+  // are copied verbatim.
+  const block = `${address}${NEWLINE}${request.text}${NEWLINE}${clock}`;
+  // The caret sits after the typed prose, inside the block.
+  const proseAt = address.length + NEWLINE.length + request.text.length;
 
   const at = parent === null ? null : childAnchor(index, parent);
   const body =
     at === null
-      ? planAppendLine(source, block, address.length + NEWLINE.length * 2 + request.text.length)
+      ? planAppendLine(source, block, proseAt)
       : {
           changes: [{ from: at, to: at, text: `${NEWLINE}${NEWLINE}${block}` }],
           selection: {
-            from: at + NEWLINE.length * 2 + address.length + NEWLINE.length * 2 + request.text.length,
-            to: at + NEWLINE.length * 2 + address.length + NEWLINE.length * 2 + request.text.length
+            from: at + NEWLINE.length * 2 + proseAt,
+            to: at + NEWLINE.length * 2 + proseAt
           }
         };
 
@@ -308,7 +314,7 @@ export function planCaptureEntry(
   if (actualParent !== expectedParent) return null;
 
   // The prose has to be the bytes that were typed, between the address and the row.
-  const expectedProse = `${NEWLINE}${NEWLINE}${request.text}${NEWLINE}`;
+  const expectedProse = `${NEWLINE}${request.text}${NEWLINE}`;
   if (written.slice(entry.to, entry.clockFrom) !== expectedProse) return null;
   const clockLine = entry.clockLine;
   if (clockLine === null || (validated.lines[clockLine] ?? "") !== clock) return null;

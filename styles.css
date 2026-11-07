@@ -696,6 +696,16 @@ body.is-mobile .weaver-composer {
   box-shadow: 0 12px 40px rgb(0 0 0 / 22%);
 }
 
+/* Draft provenance and keyboard focus are independent; neither changes geometry. */
+.weaver-composer:not([data-phase="closed"]):not([data-phase="resting"]) .weaver-composer-card {
+  border-style: dashed;
+}
+
+.weaver-composer-card:has(.weaver-composer-writing:focus-within) {
+  outline: 2px solid var(--weaver-dcolor, var(--interactive-accent));
+  outline-offset: 3px;
+}
+
 
 /* Containers identify the active area without framing the prose a second time. */
 .weaver-composer-reference:focus,
@@ -713,17 +723,32 @@ body.is-mobile .weaver-composer {
 }
 
 
-/* Saving is the draft's own colour,  not a second product's purple: the button
- * belongs to the frame it sits in. */
+/* Every entry action previews its destination dimension using the same tint. */
 .weaver-composer button.weaver-composer-save,
 .weaver-composer button.weaver-composer-use,
 .weaver-composer button.weaver-composer-retry,
-.weaver-composer button.weaver-composer-check {
+.weaver-composer button.weaver-composer-check,
+.weaver-composer button.weaver-composer-branch,
+.weaver-composer button.weaver-composer-new {
   border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
   background: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 18%, var(--background-primary));
   color: var(--text-normal);
   font-weight: 600;
   padding: 0 12px;
+}
+
+@media (hover: hover) {
+  .weaver-composer button:is(
+    .weaver-composer-save,
+    .weaver-composer-use,
+    .weaver-composer-retry,
+    .weaver-composer-check,
+    .weaver-composer-branch,
+    .weaver-composer-new
+  ):hover:not(:disabled) {
+    background: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 26%, var(--background-primary));
+    color: var(--text-normal);
+  }
 }
 
 
@@ -1000,6 +1025,16 @@ body.weaver-phone .weaver-composer-card {
   outline: none;
 }
 
+/* CodeMirror draws the caret separately from the native contenteditable caret. */
+.weaver-composer .weaver-composer-editor .cm-cursor {
+  border-left: 2px solid var(--text-normal);
+}
+
+/* The card supplies the saved reading's focus ring as well as the editor's. */
+.weaver-composer-writing .weaver-markdown-reading:focus {
+  outline: none;
+}
+
 .weaver-composer-editor .weaver-markdown-editor {
   background: transparent;
   color: inherit;
@@ -1126,7 +1161,9 @@ body.weaver-phone .weaver-composer-card {
   gap: 8px;
   color: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: var(--font-ui-small, 14px);
+  font-size: var(--font-ui-smaller, 12px);
+  line-height: 1.4;
+  min-height: 1.4em;
 }
 
 .weaver-composer-chooser {
@@ -1182,8 +1219,8 @@ body.weaver-phone .weaver-composer-card {
   flex-direction: column;
   justify-content: flex-end;
   box-sizing: border-box;
-  min-height: var(--weaver-control-height);
-  padding-bottom: max(0px, calc((var(--weaver-control-height) - 1.4 * var(--font-ui-smaller, 12px)) / 2));
+  /* Reserve two compact metadata lines so save feedback cannot move the clock. */
+  min-height: max(var(--weaver-control-height), calc(2.8 * var(--font-ui-smaller, 12px)));
 }
 
 .weaver-composer-actions {
@@ -1248,11 +1285,6 @@ body.weaver-phone .weaver-composer-card {
   margin-top: 8px;
 }
 
-.weaver-composer button.weaver-composer-branch,
-.weaver-composer button.weaver-composer-new {
-  border-color: var(--background-modifier-border);
-  color: var(--text-normal);
-}
 
 .weaver-composer button.weaver-composer-quiet-close {
   color: var(--text-muted);

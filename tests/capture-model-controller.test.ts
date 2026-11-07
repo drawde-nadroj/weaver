@@ -54,13 +54,17 @@ class MemoryStore implements CaptureStorePort {
 class Host implements CaptureModelHost {
   readonly store = new MemoryStore();
   readonly stages: unknown[] = [];
+  /** Every request handed to the writer, so its frozen clock can be read. */
+  readonly requests: CaptureRequest[] = [];
   outcome: "confirmed" | "unconfirmed" | "refused" = "confirmed";
   persisted: string | null = "before";
   live: string | null = null;
   acknowledgements: string[] = [];
+  /** The world time a surface samples; moving it never moves the draft's clock. */
+  current: number = NOW;
 
   now(): number {
-    return NOW;
+    return this.current;
   }
   contexts() {
     return [];
@@ -78,6 +82,7 @@ class Host implements CaptureModelHost {
     };
   }
   async writeCapture(request: CaptureRequest, _retry: unknown, beforeCommit: (r: CaptureReceipt) => void) {
+    this.requests.push(request);
     const receipt = this.receipt(request);
     beforeCommit(receipt);
     if (this.outcome === "confirmed") return { kind: "confirmed" as const, receipt };
@@ -183,6 +188,80 @@ describe("writing through the model", () => {
     controller.start();
     await submitted(controller);
     expect(controller.model.state.kind).toBe("draft");
+  });
+});
+
+describe("the clock a save records", () => {
+  /** A started draft with one committed input, whose clock begins at `at`. */
+  function typed(controller: CaptureModelController, at = NOW): void {
+    controller.start();
+    controller.dispatch({ kind: "ensure-draft", id: "d1", target: { kind: "root", contextId: "main" } });
+    controller.dispatch({ kind: "input", text: "typed", selection: { from: 5, to: 5 }, at, invitations: [] });
+  }
+
+  it("files the last painted second even when the wall clock has moved on", async () => {
+    const { controller, host } = harness();
+    typed(controller);
+    // The surface is the only thing that may advance the record: a fresh sample
+    // taken at submit time must never replace the second that was on screen.
+    controller.commitDuration(7000);
+    host.current = NOW + 9000;
+
+    await controller.settle();
+
+    expect(host.requests).toHaveLength(1);
+    expect(host.requests[0]?.durationMs).toBe(7000);
+  });
+
+  it("keeps the painted second through a pause and a late tick", async () => {
+    const { controller, host } = harness();
+    typed(controller);
+    controller.commitDuration(4000);
+    controller.pause();
+    controller.commitDuration(9000);
+    host.current = NOW + 12000;
+
+    await controller.settle();
+
+    expect(host.requests[0]?.durationMs).toBe(4000);
+  });
+
+  it("counts only the spans spent writing", async () => {
+    const { controller, host } = harness();
+    typed(controller);
+    controller.commitDuration(4000);
+    controller.pause();
+    host.current = NOW + 60000;
+
+    // Paused: the shown second is frozen, and a wall-clock sample never moves it.
+    expect(controller.state.durationMs).toBe(4000);
+    controller.commitDuration(9000);
+    expect(controller.state.durationMs).toBe(4000);
+
+    // Resuming starts from the stop, not from the minute that passed.
+    controller.setText("typed more");
+    host.current = NOW + 62000;
+    controller.commitDuration(6000);
+    expect(controller.state.durationMs).toBe(6000);
+
+    host.current = NOW + 90000;
+    await controller.settle();
+
+    expect(host.requests[0]?.durationMs).toBe(6000);
+  });
+
+  it("dates the thought from its first input, not from the save", async () => {
+    const { controller, host } = harness();
+    const began = new Date(2026, 10, 5, 23, 59, 59).getTime();
+    typed(controller, began);
+    controller.commitDuration(1000);
+    host.current = new Date(2026, 10, 6, 0, 0, 4).getTime();
+
+    await controller.settle();
+
+    expect(host.requests[0]?.beginning.at).toBe(began);
+    expect(host.requests[0]?.beginning.day).toBe("2026-11-05");
+    expect(host.requests[0]?.beginning.time).toBe("23:59:59");
   });
 });
 

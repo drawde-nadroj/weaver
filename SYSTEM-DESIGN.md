@@ -39,7 +39,7 @@ moment's alone.
 | Dimensional Address | `formatAddress` | `parseAddressPrefix`, `parseEntries` | `{ B.D.N }`, matched as a prefix |
 | Prose | the writer's own typing | `parseEntries` | every line between the address and the clock row that is not a whisper row, trimmed at both ends |
 | Whisper | the model, at settle or after it | `parseWhisperLine` | `~ <text>` (a name), `~ learn: <text>`, `~ next: <text>`, or `~ ask: <text?>` — one to three rows (the prompt asks for two or three); a `thread:` row may be appended later |
-| Moment | `planEntryBeginning`, `planCaptureEntry` | `parseClockRow` | `YYYY-MM-DD HH:MM:SS` captured at settle (or the Loom's Save); the draft's beginning still freezes on its first committed character for invitation qualification, and an undated historical moment inherits the filename day |
+| Moment | `planEntryBeginning`, `planCaptureEntry` | `parseClockRow` | `YYYY-MM-DD HH:MM:SS` frozen on the first committed input and copied unchanged when the Loom saves; an undated historical moment inherits the filename day |
 | Duration | `formatDurationLine` | `parseClockRow` | `[+-=] HH:MM:SS` at the head of the clock row; `-` open, `=` paused, `+` settled |
 | Close | `closeLine` | `parseClose` | `✓ HH:MM:SS`, at most one, never an entry |
 | Frontmatter | `dayFrontmatter`, `applyDayStats`, `mergeAlignment` | `scanFrontmatter`, `recountDay`, `readAlignments` | `date`, `travels`, `depth`, `duration`, and structured `weaver-alignments` |
@@ -177,7 +177,7 @@ transaction, so one undo reverses all of it.
 | `planAppendLine` | the shared append primitive | one insertion at the tip | no |
 | `planCloseDay` | close the day | `✓ HH:MM:SS` | no |
 
-<!-- claim: src/core/insert.ts#planCaptureEntry @7886bde2d8 -->
+<!-- claim: src/core/insert.ts#planCaptureEntry @e81a399167 -->
 <!-- claim: src/core/insert.ts#planChildEntry @5cc924783b -->
 <!-- claim: src/core/insert.ts#planEntryBeginning @3e58476127 -->
 <!-- claim: src/core/insert.ts#planDeleteEntry @f800e9f3b2 -->
@@ -190,7 +190,8 @@ transaction, so one undo reverses all of it.
 allocates `N` itself, places a root at the tip or a child under its parent above
 older siblings, and then **parses the result back**: the written note must contain
 exactly the allocated entry, at the intended parent and depth, with the typed prose
-between the address and the planned clock row. A paste that leaves a fence open, or
+between the address and the planned clock row, beginning on the row immediately
+after the address without an inserted blank row. A paste that leaves a fence open, or
 prose ending in a line that reads as an address or as a clock row, therefore refuses
 instead of writing a record that describes a different entry. An invitation's
 evidence joins the same plan only when the thought is a root, an opening was really
@@ -490,8 +491,9 @@ order across draft and saved states. The rail has status and one bottom-left
 timing label: writing duration and frozen start time while drafting, then the
 entry's recorded duration and creation time after saving. Saved timing is read
 through `src/entries/thought-index.ts#ThoughtIndex`, never from the cleared draft
-clock; late reads cannot replace a newer draft's timing. Missing recorded values
-stay unknown rather than becoming zero. Changed shared-clock ticks commit their
+clock; `src/ui/loom.ts#refreshTiming` re-reads it when the note changes, and late
+reads cannot replace a newer draft's timing. A changed or unreadable thought
+shows unknown timing instead of retaining an old stamp. Changed shared-clock ticks commit their
 painted second to the capture model; incidental renders never advance an existing
 draft's clock or overwrite a committed stop. A pause or save retains the last
 displayed second. The empty draft retains the footer's height without numbers;
@@ -501,6 +503,18 @@ same normal-text digits and coloured punctuation as a note frame. Reference
 navigation belongs to its focusable toolbar; editing or selecting prose never
 walks the thought sequence. `src/main.ts#openReference` explicitly shows a
 reading-only surface without beginning a draft.
+`src/main.ts#openLoom` retrieves the existing draft or saved reading on an unnamed
+open, restores the writing pane and its selection, and focuses it without starting
+another Thread. `src/ui/loom.ts#rememberFocus` retains the last outside focus
+target across repeated retrievals so Hide can return there.
+The draft's dashed frame and the prose-focus outline are independent signals;
+the drawn CodeMirror caret has an explicit normal-text-colour stroke. A saved
+reading has a solid frame and persistent completion status with a desktop
+Enter-to-hide hint. Two compact metadata lines keep timing stationary as the
+status changes.
+The entry actions share Save's tinted fill and border. Branch previews the saved
+thought's next dimension through `src/core/color.ts#dimensionColorVars`; New Thread
+always uses the red first dimension, independent of the current reading.
 The contextual copy action reads the draft, saved prose or reference-only
 snapshot. Destructive confirmation defaults to Keep writing; cancelling it or
 finishing a destination proposal returns focus to the retained editor.
@@ -628,7 +642,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/duration.ts` | core | 157 | 6 | no |
 | `src/core/entries.ts` | core | 426 | 15 | no |
 | `src/core/frame.ts` | core | 369 | 22 | no |
-| `src/core/insert.ts` | core | 675 | 14 | no |
+| `src/core/insert.ts` | core | 681 | 14 | no |
 | `src/core/loom.ts` | core | 379 | 12 | no |
 | `src/core/navigation.ts` | core | 150 | 12 | no |
 | `src/core/portal-history.ts` | core | 213 | 5 | no |
@@ -662,7 +676,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/entries/session.ts` | entries | 165 | 4 | no |
 | `src/entries/thought-index.ts` | entries | 271 | 2 | no |
 | `src/entries/writer.ts` | entries | 250 | 11 | yes |
-| `src/main.ts` | root | 1129 | 1 | yes |
+| `src/main.ts` | root | 1134 | 1 | yes |
 | `src/model/whisper-model.ts` | root | 186 | 6 | yes |
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
 | `src/notices.ts` | root | 169 | 23 | no |
@@ -674,7 +688,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom.ts` | ui | 2115 | 4 | yes |
+| `src/ui/loom.ts` | ui | 2137 | 4 | yes |
 | `src/ui/markdown-pane.ts` | ui | 879 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -1172,14 +1186,14 @@ The plans that write entry text, and the arithmetic every plan shares.
 | `planChildEntry` | function | 112 | `export function planChildEntry( _source: string, index: EntryIndex, parent: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
 | `planEntryBeginning` | function | 178 | `export function planEntryBeginning( _source: string, index: EntryIndex, entry: Entry, beganAt: Date ): InsertPlan \| null` | — | `tests/entry-plans.test.ts` |
 | `planCaptureEntry` | function | 255 | `export function planCaptureEntry( source: string, index: EntryIndex, request: CaptureRequest ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planDeleteEntry` | function | 350 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planDuration` | function | 413 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
-| `planSettleEntry` | function | 450 | `export function planSettleEntry( _source: string, index: EntryIndex, entry: Entry, ms: number, publishedAt: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planWhisper` | function | 494 | `export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
-| `planThread` | function | 523 | `export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan \| null` | `entries/engine.ts` | — |
-| `offsetToLineCh` | function | 546 | `export function offsetToLineCh(source: string, offset: number):` | — | — |
-| `cmChanges` | function | 559 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
-| `applyPlanToSource` | function | 566 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
+| `planDeleteEntry` | function | 356 | `export function planDeleteEntry( source: string, index: EntryIndex, entry: Entry ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planDuration` | function | 419 | `export function planDuration( _source: string, index: EntryIndex, entry: Entry, sigil: DurationSigil, ms: number ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts`<br>`tests/writer.test.ts` |
+| `planSettleEntry` | function | 456 | `export function planSettleEntry( _source: string, index: EntryIndex, entry: Entry, ms: number, publishedAt: Date ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planWhisper` | function | 500 | `export function planWhisper( _source: string, index: EntryIndex, entry: Entry, whisper: readonly WhisperItem[] ): InsertPlan \| null` | `entries/engine.ts` | `tests/entry-plans.test.ts` |
+| `planThread` | function | 529 | `export function planThread( source: string, index: EntryIndex, entry: Entry, item: WhisperItem ): InsertPlan \| null` | `entries/engine.ts` | — |
+| `offsetToLineCh` | function | 552 | `export function offsetToLineCh(source: string, offset: number):` | — | — |
+| `cmChanges` | function | 565 | `export function cmChanges( changes: readonly TextChange[] ):` | `entries/engine.ts`<br>`entries/writer.ts` | `tests/entry-plans.test.ts` |
+| `applyPlanToSource` | function | 572 | `export function applyPlanToSource(source: string, plan: InsertPlan):` | `entries/engine.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/close.test.ts`<br>`tests/entry-plans.test.ts` |
 
 #### `src/core/loom.ts`
 
@@ -1212,7 +1226,7 @@ Where you have been: a real history, with a cursor, not a stack that eats itself
 | `NavigationHistory` | interface | 69 | `export interface NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
 | `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
 | `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
-| `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
+| `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-model-controller.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
 | `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `core/capture-state.ts`<br>`entries/loom.ts`<br>`main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/plugin.test.ts` |
 | `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |

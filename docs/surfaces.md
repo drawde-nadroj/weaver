@@ -286,15 +286,28 @@ fresh time sample or a discarded draft clock.
   editor. `⇧⏎` inserts a newline and `⏎` saves, including soft Return. A phone also
   has a visible New line action. `⌘⏎` / `Ctrl⏎` are captured inside the Loom before
   Obsidian's own scope can claim them; IME candidate confirmation never saves.
+  A draft keeps a quiet dashed frame; focusing its prose adds a separate solid
+  focus outline without changing layout. The drawn CodeMirror caret uses an
+  explicit normal-text-colour stroke, not the native contenteditable caret.
+  `⌘⇧⏎` retrieves and focuses the existing draft or saved reading, including
+  after clicking elsewhere or hiding a draft; it never toggles or starts a new
+  Thread while one is open. Draft text and selection survive retrieval.
 - Saving: the prose is read-only and the status says `Saving…`. A failed or
   unconfirmed save keeps the text, timing and reason. `Check save` reads without
   writing; only a proven-absent write offers `Retry save`, guarded against a note
   that changed since the attempt. Reading view writes through the vault, never
   into its dormant editor buffer.
-- Saved: the same prose pane becomes read-only. `Branch` and `New Thread` occupy
-  the action slot that held Save; status stays at the left. The real address
-  replaces the draft identity without adding a new row. `Hide`, one more `⏎`,
-  or `Esc` puts the reading away without another write.
+- Saved: the same prose pane becomes read-only and its frame becomes solid.
+  `Branch` and `New Thread` occupy the action slot that held Save; the status
+  persistently says Saved, with an Enter-to-hide hint on desktop. The real address
+  replaces the draft identity without adding a new row or repeating the status.
+  The metadata rail reserves two compact lines so feedback does not move timing.
+  `Hide`, one more `⏎`, or `Esc` puts the reading away without another write.
+  Branch uses the next dimension's colour; New Thread always uses first-dimension
+  red. Both share Save's tinted fill, border and text treatment. Branch restores
+  focus to the new draft after its parent has been validated.
+  Changes to the note's clock row refresh the saved timing; if the thought no
+  longer matches the record, the old time and duration are not presented as current.
 - Branching: one compact parent excerpt is shown above the prose, expandable on
   request. A destination or parent change with words in the draft is still a
   proposal, revalidated when applied.

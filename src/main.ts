@@ -469,22 +469,26 @@ export default class WeaverPlugin extends Plugin {
    * committed input itself. Naming that Realm while another draft exists is a
    * proposal to move it, not a silent retarget; an unnamed open resumes.
    *
-   * The surface is mounted and drawn before the input is touched, so the caret can
-   * only be restored into an editor that is already on screen — a phone will not
-   * raise a keyboard for an element the writer cannot see.
+   * An unnamed open retrieves the existing draft or saved reading, never toggles
+   * it or starts another Thread. The surface is drawn before focusing so a phone
+   * only raises its keyboard for visible prose.
    */
   openLoom(options: { contextId?: string } = {}, window?: Window): void {
     const contextId = options.contextId ?? this.workspaces.viewing() ?? MAIN_CONTEXT_ID;
     // Where focus came from, remembered before the surface takes it, so Hide can
     // put it back exactly there.
     this.composer.rememberFocus();
-    this.controller.open(contextId === "" ? MAIN_CONTEXT_ID : contextId, {
-      move: options.contextId !== undefined
-    });
+    if (options.contextId === undefined && this.controller.state.phase !== "closed") {
+      if (this.controller.state.collapsed) this.controller.expand();
+    } else {
+      this.controller.open(contextId === "" ? MAIN_CONTEXT_ID : contextId, {
+        move: options.contextId !== undefined
+      });
+    }
     this.composer.mount(window?.document ?? document);
     this.composer.render();
     this.composer.restoreSelection();
-    if (this.controller.state.phase === "editing") this.composer.focusInput();
+    this.composer.focusInput();
   }
 
   /**
@@ -1044,6 +1048,7 @@ export default class WeaverPlugin extends Plugin {
   private invalidateIndex(paths: readonly string[]): void {
     for (const path of paths) this.thoughtIndex?.invalidate(path);
     this.referenceGeneration += 1;
+    this.composer?.refreshTiming(paths);
   }
 
   private async loadSettings(): Promise<void> {
