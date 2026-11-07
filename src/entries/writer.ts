@@ -13,7 +13,8 @@
  * writer, so an append cannot land on a document that moved since it was read.
  */
 
-import { Transaction } from "@codemirror/state";
+import { Transaction, type TransactionSpec } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import { MarkdownView, type App, type TFile } from "obsidian";
 
 import {
@@ -24,6 +25,17 @@ import {
 } from "../core/insert";
 import { programmaticWrite } from "../editor/entry-field";
 import { findEditorViewForFile } from "../editor/view-registry";
+
+/**
+ * Dispatches a change to the composer's owned, fileless editor buffer.
+ *
+ * This is not a note write: it accepts no file or vault, and preserves the
+ * caller's input/history annotations. Publishing a draft still uses a capture
+ * plan through the ordinary note writer.
+ */
+export function dispatchDraftChange(view: EditorView, transaction: TransactionSpec): void {
+  view.dispatch(transaction);
+}
 
 /** One write: its changes, the resulting text, and where the caret belongs. */
 export interface RewriteResult {

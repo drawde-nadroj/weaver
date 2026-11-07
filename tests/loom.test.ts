@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { CaptureResult, CaptureRequest, ThoughtRef, ThreadView } from "../src/core/capture";
+import type { CaptureResult, CaptureRequest, ThoughtRef } from "../src/core/capture";
 import { mainContext, type WeavingContext } from "../src/core/contexts";
 import { CaptureController, type CaptureHost, type CaptureRecord, type CaptureStore } from "../src/entries/capture";
 import { EntryClock } from "../src/entries/clock";
 import { EntrySession } from "../src/entries/session";
+import { ThoughtIndex } from "../src/entries/thought-index";
 import { Loom, type LoomInvitation } from "../src/ui/loom";
 import { bodyQuery, createApp, resetHarness } from "../test-support/harness";
 import { fireWindowEvent, type ShimElement } from "../test-support/dom";
+
 
 const CONTEXTS: WeavingContext[] = [
   mainContext({ folder: "Chronomancer", format: "YYYY.MM.DD" }),
@@ -53,13 +55,13 @@ interface Run {
   card(): ShimElement;
   resume(): ShimElement;
   chooser(): ShimElement;
-  saved(): ShimElement;
   menu(): ShimElement;
   status(): ShimElement;
   openings: string[];
   setInvitation(strip: LoomInvitation | null): void;
   button(selector: string): ShimElement | null;
   answer(result: CaptureResult): void;
+  advance(ms: number): void;
   destroy(): void;
 }
 
@@ -67,12 +69,8 @@ async function flush(): Promise<void> {
   for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
 }
 
-/** Waits one macrotask so the harness's animation-frame timer runs. */
-async function tick(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
 
-function harness(): Run {
+function harness(source = NOTE_SOURCE): Run {
   let now = new Date(2026, 10, 5, 9, 0, 0).getTime();
   const requests: CaptureRequest[] = [];
   const writes: string[] = [];
@@ -92,7 +90,7 @@ function harness(): Run {
       requests.push(request);
       return Promise.resolve(reply);
     },
-    read: (path) => Promise.resolve(path === NOTE_PATH ? NOTE_SOURCE : null),
+    read: (path) => Promise.resolve(path === NOTE_PATH ? source : null),
     confirmPersisted: () => Promise.resolve(false),
     editInNote: () => Promise.resolve(true),
     freezeNative: () => {},
@@ -112,13 +110,12 @@ function harness(): Run {
     requests,
     writes,
     travels,
-    input: () => bodyQuery(".weaver-composer-input") as ShimElement,
+    input: () => bodyQuery(".weaver-composer-prose .cm-content") as ShimElement,
     body: () => bodyQuery(".weaver-composer-body") as ShimElement,
     root: () => bodyQuery(".weaver-composer") as ShimElement,
     card: () => bodyQuery(".weaver-composer-card") as ShimElement,
     resume: () => bodyQuery(".weaver-composer-resume") as ShimElement,
     chooser: () => bodyQuery(".weaver-composer-chooser") as ShimElement,
-    saved: () => bodyQuery(".weaver-composer-saved") as ShimElement,
     menu: () => bodyQuery(".weaver-composer-menu") as ShimElement,
     status: () => bodyQuery(".weaver-composer-status") as ShimElement,
     openings,
@@ -129,39 +126,43 @@ function harness(): Run {
     answer(result) {
       reply = result;
     },
+    advance(ms) {
+      now += ms;
+      clock.refresh();
+    },
     destroy() {
       composer.destroy();
       clock.destroy();
     }
   };
 
+  const thoughtIndex = new ThoughtIndex({
+    paths: () => [NOTE_PATH],
+    read: host.read,
+    generation: () => 0,
+    contexts: () => CONTEXTS
+  });
   const composer = new Loom({
     app: createApp(),
     controller,
     clock,
     contexts: () => CONTEXTS,
-    loadThread: (): Promise<ThreadView | null> => Promise.resolve(null),
+    loadThought: (target) => thoughtIndex.loadThought(target),
     travel: (contextId) => {
       travels.push(contextId);
       return Promise.resolve(true);
     },
     viewing: () => "main",
-    renderMarkdown: (element, markdown) => {
-      element.textContent = markdown;
-    },
-    openRealms: () => {},
     writeHere: (contextId) => writes.push(contextId),
     invitations: () => strip === null ? [] : [strip],
     takeInvitation: (id) => openings.push(id),
     dismissInvitation: () => { strip = null; },
-    openPortals: () => {}
   });
 
   run.composer = composer;
   controller.open("main");
   composer.mount();
   composer.render();
-  void now;
 
   return run;
 }
@@ -191,58 +192,59 @@ beforeEach(() => {
   resetHarness();
 });
 
-describe("the compact surface", () => {
 
-  it("shows prose as the dominant field and no nested frame", () => {
-    const run = harness();
-    const input = run.input();
-    expect(input.tagName.toLowerCase()).toBe("textarea");
-    expect(input.className).toContain("weaver-composer-input");
-    // No separate rail/outline/selection rows remain around the prose.
-    expect(run.button(".weaver-composer-rail")).toBeNull();
-    expect(run.button(".weaver-composer-outline")).toBeNull();
-  });
-
-  it("keeps the footer to timing and one Save action", () => {
-    const run = harness();
-    const footer = run.button(".weaver-composer-footer");
-    expect(footer).not.toBeNull();
-    expect(footer?.querySelector(".weaver-composer-save")).not.toBeNull();
-    expect(footer?.querySelector(".weaver-composer-duration")).not.toBeNull();
-    expect(footer?.querySelector(".weaver-composer-moment")).not.toBeNull();
-  });
-
-  it("wears the dimension colour of the entry it will become", async () => {
-    const run = harness();
-    run.card().rect = { top: 0, left: 0, right: 0, bottom: 0, width: 720, height: 300 };
-    run.composer.render();
-    await tick();
-
-    // A root is written at depth 1: the first anchor, red.
-    expect(run.root().getAttribute("data-d")).toBe("1");
-    expect(run.root().getAttribute("style")).toContain("--weaver-dcolor:#ef4444");
-    expect(run.root().getAttribute("style")).toContain("--weaver-d:1");
-  });
-
-  it("steps the colour one dimension deeper when branching", async () => {
-    const run = harness();
-    run.card().rect = { top: 0, left: 0, right: 0, bottom: 0, width: 720, height: 300 };
+describe("composer timing", () => {
+  it("reads the saved duration from the note instead of the cleared draft clock", async () => {
+    const run = harness(NOTE_SOURCE.replace("00:00:00", "00:02:14"));
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("");
     type(run, "typed");
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:00:00 · 09:00");
     run.answer(saved());
-    run.button(".weaver-composer-save")!.click();
+    run.input().dispatch("keydown", { key: "Enter" });
     await flush();
+    expect(run.controller.state.phase).toBe("resting");
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:02:14 · 09:00");
+  });
 
-    run.saved().querySelector(".weaver-composer-branch")?.click();
+  it("retains the painted duration across a pause before saving", async () => {
+    const run = harness();
+    type(run, "typed");
+    run.advance(2400);
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("00:00:02 · 09:00");
+    run.controller.pause();
+    run.advance(5000);
+    run.input().dispatch("keydown", { key: "Enter" });
     await flush();
-    await tick();
+    expect(run.requests[0]?.durationMs).toBe(2000);
+  });
 
-    // The parent is depth 1, so the branch is depth 2: the second anchor.
-    expect(run.root().getAttribute("data-d")).toBe("2");
-    expect(run.root().getAttribute("style")).toContain("--weaver-dcolor:#f97316");
+  it("does not invent a zero duration when the saved thought cannot be read", async () => {
+    const run = harness();
+    type(run, "typed");
+    run.answer(saved(2));
+    run.input().dispatch("keydown", { key: "Enter" });
+    await flush();
+    expect(run.button(".weaver-composer-elapsed")?.textContent).toBe("— · 09:00");
   });
 });
 
 describe("multiline writing", () => {
+  it("does not submit an IME candidate before composition commits", async () => {
+    const run = harness();
+    run.answer(saved());
+    run.input().dispatch("compositionstart");
+    type(run, "漢");
+    run.input().dispatch("keydown", { key: "Enter", isComposing: true });
+    await flush();
+    expect(run.requests).toEqual([]);
+    expect(run.controller.state.phase).toBe("editing");
+    run.input().dispatch("compositionend");
+    run.input().dispatch("keydown", { key: "Enter" });
+    await flush();
+    expect(run.requests).toHaveLength(1);
+    expect(run.controller.state.phase).toBe("resting");
+  });
+
   it("commits on a plain Return and keeps the newline on Shift+Return", async () => {
     const run = harness();
     type(run, "first line\nsecond line");
@@ -270,8 +272,6 @@ describe("multiline writing", () => {
 
     expect(run.requests).toHaveLength(1);
     expect(run.controller.state.phase).toBe("resting");
-    expect(run.saved().hasAttribute("hidden")).toBe(false);
-    expect(run.input().hasAttribute("hidden")).toBe(true);
 
     // After entering a thought the reading holds the keys, so Escape always
     // puts the Loom away instead of being swallowed by a blurred body.
@@ -296,7 +296,7 @@ describe("multiline writing", () => {
     type(run, "typed");
     run.answer(saved());
 
-    // Obsidian's own scope sees `Mod-Enter` before the textarea does, which is
+    // Obsidian's own scope sees `Mod-Enter` before the embedded editor does, which is
     // why the chord is taken in the window's capture phase.
     fireWindowEvent("keydown", { key: "Enter", metaKey: true, target: run.input() });
     await flush();
@@ -325,18 +325,17 @@ describe("discarding", () => {
 
     run.button(".weaver-composer-more")!.click();
     const items = run.menu().querySelectorAll(".weaver-composer-menu-item");
-    const discard = items.find((item) => item.textContent === "Discard");
+    const discard = items.find((item) => item.textContent.startsWith("Discard"));
     expect(discard).toBeDefined();
     discard?.click();
+    expect(run.controller.state.text).toBe("throw this away");
+    expect(run.requests).toEqual([]);
 
-    expect(run.status().hasAttribute("hidden")).toBe(false);
-    expect(run.status().textContent).toContain("Discard this draft?");
 
     // A render from anywhere else must not erase the open question.
     run.composer.render();
-    expect(run.status().textContent).toContain("Discard this draft?");
-
-    run.status().querySelector(".weaver-composer-save")?.click();
+    expect(run.controller.state.text).toBe("throw this away");
+    run.button(".weaver-composer-save-alt")?.click();
     expect(run.controller.state.phase).toBe("closed");
     expect(run.controller.state.text).toBe("");
   });
@@ -347,14 +346,11 @@ describe("discarding", () => {
 
     run.button(".weaver-composer-more")!.click();
     const items = run.menu().querySelectorAll(".weaver-composer-menu-item");
-    items.find((item) => item.textContent === "Discard")?.click();
+    items.find((item) => item.textContent.startsWith("Discard"))?.click();
 
-    const keep = run.status()
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "Keep writing");
-    keep?.click();
+    run.button(".weaver-composer-actions .weaver-composer-quiet-close")?.click();
 
-    expect(run.status().hasAttribute("hidden")).toBe(true);
+    expect(run.requests).toEqual([]);
     expect(run.controller.state.text).toBe("keep this");
   });
 });
@@ -369,7 +365,6 @@ describe("the destination chooser", () => {
     run.button(".weaver-composer-dest")!.click();
 
     expect(run.chooser().hasAttribute("hidden")).toBe(false);
-    expect(run.input().hasAttribute("hidden")).toBe(true);
     expect(run.controller.state.text).toBe("kept through the chooser");
 
     const rows = run.chooser().querySelectorAll(".weaver-composer-chooser-row");
@@ -379,7 +374,6 @@ describe("the destination chooser", () => {
 
     expect(run.writes).toEqual(["ctx-spanish"]);
     expect(run.chooser().hasAttribute("hidden")).toBe(true);
-    expect(run.input().hasAttribute("hidden")).toBe(false);
     expect(run.input().value).toBe("kept through the chooser");
     expect(run.body().scrollTop).toBe(120);
   });
@@ -459,14 +453,19 @@ describe("the saved state", () => {
     run.button(".weaver-composer-save")!.click();
     await flush();
 
-    run.saved().querySelector(".weaver-composer-branch")?.click();
+    run.button(".weaver-composer-branch")?.click();
     await flush();
     expect(run.controller.state.parent?.n).toBe(1);
 
-    run.answer({ ok: false, error: "n/a" });
-    run.saved().querySelector(".weaver-composer-new")?.click();
+    type(run, "a child");
+    run.answer(saved(2));
+    run.button(".weaver-composer-save")?.click();
+    await flush();
+    expect(run.requests[1]?.parent?.n).toBe(1);
+    run.button(".weaver-composer-new")?.click();
     await flush();
     expect(run.controller.state.text).toBe("");
+    expect(run.controller.state.parent).toBeNull();
   });
 
   it("closes quietly without creating another entry", async () => {

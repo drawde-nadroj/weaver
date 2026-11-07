@@ -13,7 +13,7 @@
  * listeners that keep derived facts (day counters, portal association) true.
  */
 
-import { Component, MarkdownRenderer, Notice, Plugin, TFile, MarkdownView } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
 
 import { readAlignments } from "./core/alignments";
 import { formatClock } from "./core/clock";
@@ -23,7 +23,7 @@ import { entryBySeq, parseEntries } from "./core/entries";
 import { applyPlanToSource } from "./core/insert";
 import { MAIN_CONTEXT_ID, sourceDayOf } from "./core/contexts";
 import { dayKey as dayKeyOf } from "./core/day";
-import { threadViewOf, type ThoughtRef } from "./core/capture";
+import type { ThoughtRef } from "./core/capture";
 import { portalAlignments, readPortalSchedules } from "./core/portals";
 import { editorPathOf } from "./editor/editor-path";
 import { back, canGoBack, canGoForward, forward, initialHistory, record, type NavigationHistory, type Stop } from "./core/navigation";
@@ -202,16 +202,9 @@ export default class WeaverPlugin extends Plugin {
       reference: this.reference,
       clock: this.clock,
       contexts: () => this.contexts(),
-      loadThread: async (target) => {
-        const source = await this.readNote(target.path);
-        return source === null ? null : threadViewOf(parseEntries(source), target.path, target);
-      },
+      loadThought: (target) => this.thoughtIndex.loadThought(target),
       travel: (contextId) => this.visitTapestry(contextId),
       viewing: () => this.workspaces.viewing(),
-      renderMarkdown: (element, markdown, sourcePath, component) => {
-        void this.renderMarkdown(element, markdown, sourcePath, component);
-      },
-      openRealms: () => this.composer.showPanel("tapestries"),
       writeHere: (contextId) => {
         void this.controller.setDestination(contextId);
       },
@@ -230,7 +223,6 @@ export default class WeaverPlugin extends Plugin {
         this.portals.dismiss(occurrenceId);
         this.repaintSurface();
       },
-      openPortals: () => this.composer.showPanel("invitations")
     });
 
     this.workspaces = new ContextWorkspaces({
@@ -478,7 +470,7 @@ export default class WeaverPlugin extends Plugin {
    * proposal to move it, not a silent retarget; an unnamed open resumes.
    *
    * The surface is mounted and drawn before the input is touched, so the caret can
-   * only be restored into a textarea that is already on screen — a phone will not
+   * only be restored into an editor that is already on screen — a phone will not
    * raise a keyboard for an element the writer cannot see.
    */
   openLoom(options: { contextId?: string } = {}, window?: Window): void {
@@ -508,7 +500,7 @@ export default class WeaverPlugin extends Plugin {
       null
     );
     this.composer.mount();
-    this.composer.render();
+    this.composer.showPanel("reference");
   }
 
   /** Cycles the Tapestries in configured order while the Loom is focused. */
@@ -536,7 +528,7 @@ export default class WeaverPlugin extends Plugin {
       null
     );
     this.composer.mount();
-    this.composer.render();
+    this.composer.showPanel("reference");
   }
 
   /** Re-measures the open notes, so a frame effect that changed on its own is drawn. */
@@ -779,26 +771,6 @@ export default class WeaverPlugin extends Plugin {
     return { getLayout: () => getLayout(), applyLayout: (layout) => changeLayout(layout) };
   }
 
-  /**
-   * Renders saved prose as Markdown, so a link in a thought is still a link.
-   *
-   * The public renderer, not a workspace-internal one, so embedded notes, tags and
-   * links behave exactly as they do in a note — and the component the composer
-   * owns is what unloads them when the surface repaints.
-   */
-  private async renderMarkdown(
-    element: HTMLElement,
-    markdown: string,
-    sourcePath: string,
-    component: Component
-  ): Promise<void> {
-    try {
-      await MarkdownRenderer.render(this.app, markdown, element, sourcePath, component);
-    } catch {
-      // A note that cannot be rendered is still readable as its own text.
-      element.textContent = markdown;
-    }
-  }
 
   /**
    * The one door to another Realm.

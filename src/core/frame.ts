@@ -359,3 +359,10 @@ export function loomLayout(input: LoomBoxInput): LoomBox {
   const mode: LoomBox["mode"] = fits ? "split" : input.activeArea === "upper" ? "upper" : "lower";
   return { left, top: anchoredTop(height), width, height, mode, header, footer, padding, gap };
 }
+
+/** Scroll movement that brings a clipped caret or content edge back into its viewport. */
+export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number {
+  if (targetTop < top) return targetTop - top;
+  if (targetBottom > bottom) return targetBottom - bottom;
+  return 0;
+}

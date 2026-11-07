@@ -14,8 +14,8 @@ there is nothing to do.
    requires accepting the proposed change; it never silently retargets the draft.
 3. Type. The first committed character freezes the draft's beginning: the local day
    and the moment, a duration that counts only while you are writing here, and the
-   openings that instant qualifies for. Letters inside the input are prose; `N`, `T`,
-   `j`, `k`, `h` and `l` act on the saved selection in the resting state.
+   openings that instant qualifies for. Letters and arrows in the prose stay
+   ordinary writing and text selection, never hidden navigation commands.
 4. `⏎` saves it. `Shift-⏎` is a newline, a soft keyboard's Return is a save, and
    `Esc` hides the surface without losing a word.
 
@@ -30,8 +30,10 @@ transaction, so one undo removes the address, the prose and the clock row togeth
    and the openings if there were any.
 2. `Saving…`, with the submitted prose read-only. Nothing in the note was visible
    before this, so there is no empty entry to finish.
-3. A success renders the saved prose with the recorded address, duration and moment,
-   selects it, and focuses that selection — so the structural motions work at once.
+3. The same prose pane becomes a rendered reading with its real, colour-coded
+   address. Branch and New Thread replace Save in the same action rail. Its timing
+   label stays in place, now showing the saved note's duration and creation time
+   instead of the draft's writing duration and start time; no extra row appears.
    A distinct second `⏎` — even one pressed while it was still saving — closes the
    surface, and the note holds exactly one entry either way.
 4. The entry lands in the daily note for the day the thought **began**, which may be
@@ -54,17 +56,17 @@ way this save cannot explain.
 
 ## Flow: branch from a Thread
 
-1. In the resting state, select a thought — the saved one, or one of the root's
-   branches — and press `N`, or press `Branch`. The parent is always the selected
-   thought; composing prose never changes it.
+1. After saving, press `Branch`. The saved thought is the parent; composing prose
+   never changes it. Use the rendered reference to read other thoughts, or Open
+   to reach one in its note.
 2. Type and press `⏎`. The child lands in the parent's file, one dimension deeper.
 
-An empty branch offers *Back to saved thought*: leaving it writes nothing at all.
-`T` starts a fresh Thread — a new root, depth 1 — in the same destination.
+An empty branch can be hidden without writing anything. `New Thread`, offered
+after a save, starts a fresh root at depth 1 in the same destination.
 
 ## Flow: travel to a destination
 
-1. `Go` on a context row, or `Go` in the composer's header.
+1. `Open workspace` on a destination row in the Loom's chooser.
 2. The current layout is stored as that destination's own, the draft's clock is
    frozen and the draft stored, and the destination's last-used workspace is
    restored — panes, files, and each pane's own caret and scroll.

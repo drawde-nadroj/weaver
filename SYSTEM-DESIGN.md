@@ -143,6 +143,12 @@ outside `src/entries/day-note.ts`; if `editor.replaceRange` appears anywhere; or
 if a `dispatch` that carries `changes` appears outside `src/entries/engine.ts`
 and `src/entries/writer.ts`.
 
+The fileless composer also sends its document changes through
+`src/entries/writer.ts#dispatchDraftChange`. Its only caller supplies the pane's
+own newly created editor, not a file-bound Obsidian view; no file or vault is
+passed and no evidence is published. Input and synchronization keep their own
+history annotations. Saving still goes through the capture plan and note writer.
+
 Reading view may retain a CodeMirror buffer without saving it.
 `src/editor/view-registry.ts#findEditorViewForFile` excludes that dormant buffer,
 so `src/entries/writer.ts#rewriteDay` uses the vault unless an editing view owns
@@ -394,7 +400,7 @@ Nothing reflows. The text decides where the box is, never the reverse.
 - `src/core/frame.ts#loomAnchor` places the Loom from visual-viewport bounds and
   only intersecting toolbar bounds. `src/ui/loom.ts#Loom` anchors its bottom edge
   there and grows upward, so a resized window height cannot confuse a fixed
-  containing block's coordinates. Only the body scrolls; the textarea survives
+  containing block's coordinates. Only the body scrolls; the editor survives
   keyboard resize and panning with its selection intact.
 
 <!-- claim: src/core/frame.ts#frameBox @cbb958de1d -->
@@ -468,6 +474,42 @@ and `src/core/portal-history.ts#linkedPortalEntry` checks sequence, day and mome
 before a historical jump. `src/core/navigation.ts#record` keeps a cursor, so back
 and forward walk the same path, and the cursor moves only after a navigation
 succeeds.
+
+`src/ui/markdown-pane.ts#MarkdownPane` owns a persistent fileless CodeMirror
+editor for formatting while typing and Obsidian-rendered HTML for read-only
+content. It never mounts a private native file editor and never writes a note.
+Mode changes retain the editor's source, selection and undo history; a genuinely
+new empty draft resets history, while a path change or the user's own deletion
+does not. Native rendering is tied to a generation and source path, so a late
+result cannot replace a newer reading. Internal links use the public workspace
+router with that source path and Obsidian's modifier-key disposition. Editing
+decorates Markdown source; it does not claim native Live Preview parity.
+
+`src/ui/loom.ts#Loom` keeps header, identity, prose and action rail in the same
+order across draft and saved states. The rail has status and one bottom-left
+timing label: writing duration and frozen start time while drafting, then the
+entry's recorded duration and creation time after saving. Saved timing is read
+through `src/entries/thought-index.ts#ThoughtIndex`, never from the cleared draft
+clock; late reads cannot replace a newer draft's timing. Missing recorded values
+stay unknown rather than becoming zero. Changed shared-clock ticks commit their
+painted second to the capture model; incidental renders never advance an existing
+draft's clock or overwrite a committed stop. A pause or save retains the last
+displayed second. The empty draft retains the footer's height without numbers;
+no separate timestamp row is added. Each reading owns its
+dimension colour, and `src/ui/dcn.ts#appendDigitRuns` gives its real address the
+same normal-text digits and coloured punctuation as a note frame. Reference
+navigation belongs to its focusable toolbar; editing or selecting prose never
+walks the thought sequence. `src/main.ts#openReference` explicitly shows a
+reading-only surface without beginning a draft.
+The contextual copy action reads the draft, saved prose or reference-only
+snapshot. Destructive confirmation defaults to Keep writing; cancelling it or
+finishing a destination proposal returns focus to the retained editor.
+The writing slot retains its identity and at least one full prose line even with
+reference and keyboard open together. `src/core/frame.ts#revealScrollDelta`
+reveals the prose viewport in the body, then the editing caret inside that prose
+scroller, without panning the window or changing the selection.
+The viewport pass in `src/ui/loom.ts#Loom` also chooses the stacked or split
+arrangement; resizing never waits for another edit.
 
 <!-- claim: src/editor/entry-keys.ts#shouldPinStopwatch @eefa36e514 -->
 
@@ -569,7 +611,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-61 files, 488 exported symbols, 53 test files.
+62 files, 493 exported symbols, 53 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -585,7 +627,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/core/document.ts` | core | 92 | 6 | no |
 | `src/core/duration.ts` | core | 157 | 6 | no |
 | `src/core/entries.ts` | core | 426 | 15 | no |
-| `src/core/frame.ts` | core | 362 | 21 | no |
+| `src/core/frame.ts` | core | 369 | 22 | no |
 | `src/core/insert.ts` | core | 675 | 14 | no |
 | `src/core/loom.ts` | core | 379 | 12 | no |
 | `src/core/navigation.ts` | core | 150 | 12 | no |
@@ -619,8 +661,8 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/entries/reference.ts` | entries | 545 | 13 | no |
 | `src/entries/session.ts` | entries | 165 | 4 | no |
 | `src/entries/thought-index.ts` | entries | 271 | 2 | no |
-| `src/entries/writer.ts` | entries | 238 | 10 | yes |
-| `src/main.ts` | root | 1157 | 1 | yes |
+| `src/entries/writer.ts` | entries | 250 | 11 | yes |
+| `src/main.ts` | root | 1129 | 1 | yes |
 | `src/model/whisper-model.ts` | root | 186 | 6 | yes |
 | `src/model/whisper-runner.ts` | root | 227 | 5 | no |
 | `src/notices.ts` | root | 169 | 23 | no |
@@ -632,7 +674,8 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 51 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
-| `src/ui/loom.ts` | ui | 1427 | 4 | yes |
+| `src/ui/loom.ts` | ui | 2115 | 4 | yes |
+| `src/ui/markdown-pane.ts` | ui | 879 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
 ### Commands
@@ -694,43 +737,69 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-close-mark` | styled | `reading/close-processor.ts` |
 | `weaver-close-mark-line` | styled | `editor/close-decorations.ts` |
 | `weaver-composer` | styled | `ui/loom.ts` |
+| `weaver-composer-actions` | styled | `ui/loom.ts` |
 | `weaver-composer-body` | styled | `ui/loom.ts` |
 | `weaver-composer-branch` | styled | `ui/loom.ts` |
 | `weaver-composer-card` | styled | `ui/loom.ts` |
+| `weaver-composer-check` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser` | styled | `ui/loom.ts` |
+| `weaver-composer-chooser-empty` | hook | `ui/loom.ts` |
 | `weaver-composer-chooser-here` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-row` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-title` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-travel` | styled | `ui/loom.ts` |
 | `weaver-composer-chooser-write` | styled | `ui/loom.ts` |
 | `weaver-composer-context` | styled | `ui/loom.ts` |
+| `weaver-composer-context-label` | hook | `ui/loom.ts` |
 | `weaver-composer-dest` | styled | `ui/loom.ts` |
-| `weaver-composer-duration` | styled | `ui/loom.ts` |
+| `weaver-composer-editor` | styled | `ui/loom.ts` |
+| `weaver-composer-elapsed` | styled | `ui/loom.ts` |
 | `weaver-composer-footer` | styled | `ui/loom.ts` |
 | `weaver-composer-header` | styled | `ui/loom.ts` |
 | `weaver-composer-hide` | styled | `ui/loom.ts` |
-| `weaver-composer-input` | styled | `ui/loom.ts` |
+| `weaver-composer-identity` | styled | `ui/loom.ts` |
+| `weaver-composer-identity-address` | styled | `ui/loom.ts` |
+| `weaver-composer-identity-label` | styled | `ui/loom.ts` |
+| `weaver-composer-keyhint` | styled | `ui/loom.ts` |
 | `weaver-composer-menu` | styled | `ui/loom.ts` |
 | `weaver-composer-menu-item` | styled | `ui/loom.ts` |
-| `weaver-composer-moment` | styled | `ui/loom.ts` |
 | `weaver-composer-more` | styled | `ui/loom.ts` |
 | `weaver-composer-new` | styled | `ui/loom.ts` |
+| `weaver-composer-newline` | hook | `ui/loom.ts` |
+| `weaver-composer-prose` | styled | `ui/loom.ts` |
 | `weaver-composer-quiet-close` | styled | `ui/loom.ts` |
 | `weaver-composer-ref-toggle` | styled | `ui/loom.ts` |
 | `weaver-composer-reference` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-body` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-head` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-address` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-invitations` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-nav` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-next` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-notice` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-open` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-position` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-prev` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-prose` | styled | `ui/loom.ts` |
 | `weaver-composer-reference-search` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-search-toggle` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-tab` | hook | `ui/loom.ts` |
+| `weaver-composer-reference-tabs` | styled | `ui/loom.ts` |
+| `weaver-composer-reference-tools` | styled | `ui/loom.ts` |
 | `weaver-composer-resume` | styled | `ui/loom.ts` |
 | `weaver-composer-resume-dismiss` | styled | `ui/loom.ts` |
 | `weaver-composer-resume-open` | styled | `ui/loom.ts` |
+| `weaver-composer-retry` | styled | `ui/loom.ts` |
 | `weaver-composer-save` | styled | `ui/loom.ts` |
-| `weaver-composer-saved` | styled | `ui/loom.ts` |
-| `weaver-composer-saved-actions` | styled | `ui/loom.ts` |
-| `weaver-composer-saved-address` | styled | `ui/loom.ts` |
-| `weaver-composer-saved-prose` | styled | `ui/loom.ts` |
+| `weaver-composer-save-alt` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcut` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcuts` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcuts-close` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcuts-list` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcuts-title` | styled | `ui/loom.ts` |
+| `weaver-composer-state` | styled | `ui/loom.ts` |
 | `weaver-composer-status` | styled | `ui/loom.ts` |
+| `weaver-composer-use` | styled | `ui/loom.ts` |
 | `weaver-composer-viewing` | styled | `ui/loom.ts` |
+| `weaver-composer-writing` | styled | `ui/loom.ts` |
 | `weaver-dcn-ink` | styled | `ui/dcn.ts` |
 | `weaver-dcn-num` | styled | `ui/dcn.ts` |
 | `weaver-duration` | styled | `editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` |
@@ -749,7 +818,29 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-frame-fixed` | styled | `main.ts` |
 | `weaver-frame-label` | styled | `editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts`<br>`ui/day-link.ts` |
 | `weaver-frame-layer` | styled | `editor/entry-frame.ts` |
-| `weaver-hint-layer` | styled | `ui/loom.ts` |
+| `weaver-markdown` | styled | `ui/markdown-pane.ts` |
+| `weaver-markdown-content` | hook | `ui/loom.ts`<br>`ui/markdown-pane.ts` |
+| `weaver-markdown-editor` | styled | `ui/markdown-pane.ts` |
+| `weaver-markdown-editor-host` | hook | `ui/markdown-pane.ts` |
+| `weaver-markdown-error` | styled | `ui/markdown-pane.ts` |
+| `weaver-markdown-reading` | styled | `ui/loom.ts`<br>`ui/markdown-pane.ts` |
+| `weaver-md-codeblock` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h1` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h2` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h3` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h4` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h5` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-h6` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-hr` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-image` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-list-item` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-mark` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-quote` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-table-cell` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-table-delimiter` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-table-pipe` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-table-row` | styled | `ui/markdown-pane.ts` |
+| `weaver-md-wikilink` | styled | `ui/markdown-pane.ts` |
 | `weaver-no-emphasis` | styled | `main.ts`<br>`ui/css.ts` |
 | `weaver-phone` | styled | `main.ts` |
 | `weaver-platform-mobile` | body state | `main.ts` |
@@ -811,8 +902,9 @@ Derived, not asserted: a module whose exports no test names is listed here until
 | `src/ui/css.ts` | 0 | 4 |
 | `src/ui/dcn.ts` | 0 | 6 |
 | `src/ui/invitation.ts` | 0 | 5 |
+| `src/ui/markdown-pane.ts` | 0 | 3 |
 
-Modules with no symbol named by any test: 9.
+Modules with no symbol named by any test: 10.
 
 ### Symbols
 
@@ -871,7 +963,7 @@ One thought being written outside its note: the facts a capture is made of.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `CaptureInstant` | interface | 35 | `export interface CaptureInstant` | `core/capture-state.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts` | — |
+| `CaptureInstant` | interface | 35 | `export interface CaptureInstant` | `core/capture-state.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`ui/loom.ts` | — |
 | `CaptureInvitation` | interface | 55 | `export interface CaptureInvitation` | `core/capture-state.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts` | `tests/capture-state.test.ts`<br>`tests/capture.test.ts` |
 | `DraftTarget` | type | 77 | `export type DraftTarget = \|` | `core/capture-state.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts` | — |
 | `ThoughtRef` | interface | 89 | `export interface ThoughtRef` | `core/capture-state.ts`<br>`core/loom.ts`<br>`core/navigation.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/plugin-data.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/capture-model-controller.test.ts`<br>`tests/capture-state.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/loom.test.ts`<br>`tests/plugin-data.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reviews.test.ts` |
@@ -897,9 +989,9 @@ One thought being written outside its note: the facts a capture is made of.
 | `resolveThought` | function | 328 | `export function resolveThought(index: EntryIndex, ref: ThoughtRef): Entry \| null` | `core/insert.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/engine.ts`<br>`entries/thought-index.ts` | `tests/capture.test.ts` |
 | `excerptOf` | function | 338 | `export function excerptOf(prose: string, words = 6): string` | — | — |
 | `ThreadNode` | interface | 350 | `export interface ThreadNode` | — | — |
-| `ThreadView` | interface | 373 | `export interface ThreadView` | `ui/loom.ts` | `tests/loom.test.ts` |
+| `ThreadView` | interface | 373 | `export interface ThreadView` | — | — |
 | `ThreadMove` | type | 384 | `export type ThreadMove = "previous" \| "next" \| "parent" \| "child"` | — | — |
-| `threadViewOf` | function | 393 | `export function threadViewOf( index: EntryIndex, path: string, target: ThoughtRef \| null ): ThreadView \| null` | `main.ts` | — |
+| `threadViewOf` | function | 393 | `export function threadViewOf( index: EntryIndex, path: string, target: ThoughtRef \| null ): ThreadView \| null` | — | — |
 | `moveThreadSelection` | function | 461 | `export function moveThreadSelection(view: ThreadView, direction: ThreadMove): ThoughtRef \| null` | — | — |
 | `branchLabel` | function | 484 | `export function branchLabel(parent: ThoughtRef): string` | — | `tests/capture.test.ts` |
 | `openingLabel` | function | 491 | `export function openingLabel(portal: PortalInstant): string` | — | — |
@@ -957,7 +1049,7 @@ The destinations Weaver may weave into, and the way back from a path.
 | `parseDayTemplate` | function | 139 | `export function parseDayTemplate( folder: string, format: string ):` | — | `tests/contexts.test.ts` |
 | `templateNamesADay` | function | 173 | `export function templateNamesADay(template: DayTemplate): boolean` | — | — |
 | `contextDayForPath` | function | 238 | `export function contextDayForPath( path: string, contexts: readonly WeavingContext[] ): ContextDay \| null` | `core/reference.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture.ts`<br>`entries/engine.ts` | `tests/contexts.test.ts` |
-| `contextDayPath` | function | 267 | `export function contextDayPath(context: WeavingContext, day: string): string` | `entries/context-workspaces.ts`<br>`entries/day-note.ts` | `tests/contexts.test.ts` |
+| `contextDayPath` | function | 267 | `export function contextDayPath(context: WeavingContext, day: string): string` | `entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`ui/loom.ts` | `tests/contexts.test.ts` |
 | `mainContext` | function | 272 | `export function mainContext(options: DayNoteOptions): WeavingContext` | — | `tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/loom.test.ts` |
 | `effectiveContexts` | function | 277 | `export function effectiveContexts( options: DayNoteOptions, additional: readonly WeavingContext[] ): WeavingContext[]` | `entries/day-note.ts` | `tests/contexts.test.ts` |
 | `contextById` | function | 291 | `export function contextById( contexts: readonly WeavingContext[], id: string ): WeavingContext \| null` | `entries/day-note.ts` | — |
@@ -985,7 +1077,7 @@ The day's name, and nothing else.
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `DayNoteOptions` | interface | 18 | `export interface DayNoteOptions` | `core/contexts.ts`<br>`entries/day-note.ts` | — |
-| `dayKey` | function | 24 | `export function dayKey(now: Date): string` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`main.ts` | `tests/day-note.test.ts`<br>`tests/entry-plans.test.ts` |
+| `dayKey` | function | 24 | `export function dayKey(now: Date): string` | `core/capture.ts`<br>`core/insert.ts`<br>`core/portals.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/day-note.test.ts`<br>`tests/entry-plans.test.ts` |
 | `dayNotePathFor` | function | 36 | `export function dayNotePathFor(day: string, options: DayNoteOptions): string` | `core/contexts.ts` | `tests/day-note.test.ts` |
 | `dayNotePath` | function | 46 | `export function dayNotePath(now: Date, options: DayNoteOptions): string` | — | `tests/day-note.test.ts`<br>`tests/start-entry.test.ts` |
 | `dayKeyFromName` | function | 54 | `export function dayKeyFromName(basename: string): string \| null` | `core/contexts.ts`<br>`core/reference.ts`<br>`entries/engine.ts` | `tests/day-note.test.ts` |
@@ -1066,6 +1158,7 @@ The frame around one entry: a box, and nothing else.
 | `LoomAnchor` | interface | 285 | `export interface LoomAnchor` | `ui/loom.ts` | — |
 | `loomAnchor` | function | 300 | `export function loomAnchor( viewport: LoomViewport, toolbar: LoomViewport \| null ): LoomAnchor` | `ui/loom.ts` | `tests/frame.test.ts` |
 | `loomLayout` | function | 330 | `export function loomLayout(input: LoomBoxInput): LoomBox` | — | `tests/frame.test.ts` |
+| `revealScrollDelta` | function | 364 | `export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number` | `ui/loom.ts` | `tests/frame.test.ts` |
 
 #### `src/core/insert.ts`
 
@@ -1120,7 +1213,7 @@ Where you have been: a real history, with a cursor, not a stack that eats itself
 | `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
 | `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
 | `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
-| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts`<br>`ui/markdown-pane.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `core/capture-state.ts`<br>`entries/loom.ts`<br>`main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/plugin.test.ts` |
 | `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
 | `canGoForward` | function | 129 | `export function canGoForward(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
@@ -1181,7 +1274,7 @@ Reading a note's thoughts: the values a reference is drawn from and walked by.
 | `ReferenceQuery` | interface | 58 | `export interface ReferenceQuery` | `core/reviews.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts` | `tests/reference-controller.test.ts`<br>`tests/thought-index.test.ts` |
 | `ReferenceStop` | interface | 65 | `export interface ReferenceStop` | `entries/reference.ts` | — |
 | `ThoughtSnapshot` | interface | 79 | `export interface ThoughtSnapshot` | `core/capture-state.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts` | `tests/capture-model-controller.test.ts`<br>`tests/capture-state.test.ts`<br>`tests/reference-controller.test.ts` |
-| `ThoughtSnapshotResult` | type | 92 | `export type ThoughtSnapshotResult = \|` | `entries/thought-index.ts` | — |
+| `ThoughtSnapshotResult` | type | 92 | `export type ThoughtSnapshotResult = \|` | `entries/thought-index.ts`<br>`ui/loom.ts` | — |
 | `ReferenceReadError` | interface | 97 | `export interface ReferenceReadError` | `entries/reference.ts`<br>`entries/thought-index.ts` | — |
 | `ThoughtRecord` | interface | 106 | `export interface ThoughtRecord` | `entries/reference.ts`<br>`entries/thought-index.ts` | `tests/reference-controller.test.ts`<br>`tests/reference.test.ts` |
 | `ReferenceSequence` | interface | 129 | `export interface ReferenceSequence` | `entries/reference.ts`<br>`entries/thought-index.ts` | `tests/reference-controller.test.ts` |
@@ -1545,7 +1638,7 @@ The reading index: recognised notes parsed once and queried by scope, order and
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
 | `ThoughtIndexPorts` | interface | 49 | `export interface ThoughtIndexPorts` | — | `tests/thought-index.test.ts` |
-| `ThoughtIndex` | class | 70 | `export class ThoughtIndex` | `entries/reference.ts`<br>`main.ts` | `tests/reference-controller.test.ts`<br>`tests/thought-index.test.ts` |
+| `ThoughtIndex` | class | 70 | `export class ThoughtIndex` | `entries/reference.ts`<br>`main.ts` | `tests/loom.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/thought-index.test.ts` |
 
 #### `src/entries/writer.ts`
 
@@ -1553,16 +1646,17 @@ The one writer of a day note.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `RewriteResult` | interface | 29 | `export interface RewriteResult` | `entries/engine.ts` | — |
-| `Rewrite` | type | 37 | `export type Rewrite = (source: string) => RewriteResult \| null` | `settings.ts` | — |
-| `RewriteRefused` | class | 46 | `export class RewriteRefused extends Error` | `entries/engine.ts` | — |
-| `RewriteOptions` | interface | 49 | `export interface RewriteOptions` | — | — |
-| `rewriteDay` | function | 71 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
-| `planRewrite` | function | 143 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
-| `minimalChange` | function | 156 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
-| `confirmExistingWrite` | function | 179 | `export async function confirmExistingWrite( app: App, file: TFile, expected: string ): Promise<boolean>` | `main.ts` | — |
-| `registerWrite` | function | 225 | `export function registerWrite(operationId: string, promise: Promise<unknown>): () => void` | `entries/engine.ts` | `tests/writer.test.ts` |
-| `waitForWrite` | function | 234 | `export async function waitForWrite(_app: App, operationId: string): Promise<void>` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `dispatchDraftChange` | function | 36 | `export function dispatchDraftChange(view: EditorView, transaction: TransactionSpec): void` | `ui/markdown-pane.ts` | — |
+| `RewriteResult` | interface | 41 | `export interface RewriteResult` | `entries/engine.ts` | — |
+| `Rewrite` | type | 49 | `export type Rewrite = (source: string) => RewriteResult \| null` | `settings.ts` | — |
+| `RewriteRefused` | class | 58 | `export class RewriteRefused extends Error` | `entries/engine.ts` | — |
+| `RewriteOptions` | interface | 61 | `export interface RewriteOptions` | — | — |
+| `rewriteDay` | function | 83 | `export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =` | `entries/engine.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `planRewrite` | function | 155 | `export function planRewrite(build: (source: string) => InsertPlan \| null): Rewrite` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `minimalChange` | function | 168 | `export function minimalChange(before: string, after: string): TextChange[]` | `core/insert.ts`<br>`main.ts` | `tests/writer.test.ts` |
+| `confirmExistingWrite` | function | 191 | `export async function confirmExistingWrite( app: App, file: TFile, expected: string ): Promise<boolean>` | `main.ts` | — |
+| `registerWrite` | function | 237 | `export function registerWrite(operationId: string, promise: Promise<unknown>): () => void` | `entries/engine.ts` | `tests/writer.test.ts` |
+| `waitForWrite` | function | 246 | `export async function waitForWrite(_app: App, operationId: string): Promise<void>` | `entries/engine.ts` | `tests/writer.test.ts` |
 
 #### `src/main.ts`
 
@@ -1696,7 +1790,7 @@ The digit-and-ink grammar: `B.D.N`, the clock row and the date label all split
 | `INK_CLASS` | const | 18 | `export const INK_CLASS = "weaver-dcn-ink"` | `editor/entry-decorations.ts` | — |
 | `Slice` | interface | 21 | `export interface Slice` | — | — |
 | `addressSlices` | function | 31 | `export function addressSlices(text: string): Slice[]` | `editor/entry-decorations.ts` | — |
-| `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts` | — |
+| `appendDigitRuns` | function | 39 | `export function appendDigitRuns(parent: HTMLElement, text: string): void` | `reading/entry-processor.ts`<br>`ui/loom.ts` | — |
 | `appendClockRuns` | function | 54 | `export function appendClockRuns(parent: HTMLElement, clock: string): HTMLElement[]` | `editor/stopwatch-widget.ts`<br>`reading/entry-processor.ts` | — |
 
 #### `src/ui/invitation.ts`
@@ -1717,10 +1811,20 @@ The Loom: the one compact surface a thought is written in, from anywhere.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `CaptureSurface` | interface | 32 | `export interface CaptureSurface` | — | — |
-| `LoomHost` | interface | 54 | `export interface LoomHost` | — | — |
-| `LoomInvitation` | interface | 90 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
-| `Loom` | class | 134 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
+| `CaptureSurface` | interface | 38 | `export interface CaptureSurface` | — | — |
+| `LoomHost` | interface | 59 | `export interface LoomHost` | — | — |
+| `LoomInvitation` | interface | 84 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
+| `Loom` | class | 170 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
+
+#### `src/ui/markdown-pane.ts`
+
+One persistent Markdown surface, rich while editing and natively rendered while
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `PaneSelection` | interface | 57 | `export interface PaneSelection` | `ui/loom.ts` | — |
+| `MarkdownPaneOptions` | interface | 65 | `export interface MarkdownPaneOptions` | — | — |
+| `MarkdownPane` | class | 437 | `export class MarkdownPane` | `ui/loom.ts` | — |
 
 #### `src/ui/platform.ts`
 
@@ -1728,7 +1832,7 @@ Which platform this is, as one answer.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`entries/context-workspaces.ts`<br>`main.ts`<br>`ui/loom.ts` | `tests/platform-classes.test.ts` |
+| `isPhone` | function | 14 | `export function isPhone(): boolean` | `editor/entry-keys.ts`<br>`entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
 | `isMobile` | function | 21 | `export function isMobile(): boolean` | `main.ts`<br>`ui/loom.ts` | `tests/platform-classes.test.ts` |
 | `isTablet` | function | 28 | `export function isTablet(): boolean` | `entries/context-workspaces.ts`<br>`main.ts` | `tests/platform-classes.test.ts` |
 | `canHover` | function | 35 | `export function canHover(): boolean` | — | — |

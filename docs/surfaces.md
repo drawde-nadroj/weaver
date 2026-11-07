@@ -11,11 +11,11 @@ it writes only what `⏎`, `n` and `x` write.
 
 | Intent | Verb | Where |
 | --- | --- | --- |
-| Begin | `⌘⇧E` *Start an entry* | anywhere, including inside an editor, Reading view, and no note at all |
+| Begin | `⌘⇧⏎` *Weave a Thread* | anywhere; opens a draft without creating a note |
 | Finish this entry | `⏎` | the open entry the caret is in, on every platform |
 | Go deeper | `⏎` again, on a settled entry, or *Descend into a child entry* | the settled entry the caret is in |
-| Go deeper, or somewhere else | `⌘⇧P` *Today's entries* | anywhere; the card shows today's note |
-| Make a newline | `⇧⏎` | the caret, in any entry, on a desk |
+| Read or go elsewhere | `⌘⇧P` *Browse the Loom* | anywhere; opens the rendered reference without starting a draft |
+| Make a newline | `⇧⏎`, or New line in the mobile composer | the prose; the note editor keeps its own desktop newline |
 | Read the settled entries | *Whisper the day* | the day note on screen, else today's |
 | End the day | *Close the day* | anywhere |
 
@@ -29,15 +29,15 @@ keyboard has no `⇧⏎` and `⏎` settles everywhere, so a phone has no newline
 inside an entry: its prose is one paragraph, and multi-line prose is written on a
 desk or pasted.
 
-`⌘⇧E` is bound twice on purpose. The command covers the caret that is not in an
+`⌘⇧⏎` is bound twice on purpose. The command covers the caret that is not in an
 editor; inside an editor CodeMirror's own keymap takes the same chord at
-`Prec.highest`. It is `⌘⇧E` and not `⌘⏎` because Obsidian's core *Open link under
+`Prec.highest`. It is `⌘⇧⏎` and not `⌘⏎` because Obsidian's core *Open link under
 cursor in new tab* owns `⌘⏎` and its scope runs in the document's capture phase,
 so no plugin keymap — at any precedence — ever sees that chord.
 
 Every command carries an icon, and the mobile toolbar is the writer's to configure:
-Obsidian has no API that places a command on it, so *Start an entry* and *Descend
-into a child entry* are added under *Manage toolbar options*.
+Obsidian has no API that places a command on it, so *Weave a Thread* and *Browse
+the Loom* are added under *Manage toolbar options*.
 
 ## The audit
 
@@ -48,10 +48,10 @@ Every surface must answer three questions; one that cannot is not a surface.
 2. **What happens if it is wrong?** One undo reverses any single action: a plan is
    one transaction, including the branch renumbering that a deletion causes. An
    insert never renumbers anything — a child inherits its parent's `B`.
-3. **What does it show when there is nothing?** The navigator says
-   `no entries yet — ＋ starts the first` and writes nothing. *Start an entry*
-   whose day note cannot be created says `today's day note could not be found.
-   Nothing was written.`
+3. **What does it show when there is nothing?** The reference names an empty
+   reading, and a new draft keeps Save disabled until there are words. A failed
+   or unconfirmed save retains those words and reports the result; Check save
+   resolves uncertainty before another write is offered.
 
 ## Surface specs
 
@@ -266,31 +266,35 @@ refused rather than silently snapped. Evidence never costs the words: a record
 that cannot be added is dropped while the thought is still written. Unreadable
 existing evidence is refused rather than overwritten.
 
-`src/ui/loom.ts` is the one bottom surface, and it speaks the note's own visual
-language: the draft's dimension colour, the same rounded frame, two rails cut behind
-their labels, the duration at the bottom-left and the moment at the bottom-right,
-and the same digit grammar for an address. It is a labelled non-modal region — no
-`aria-modal`, no focus trap, no dimming — mounted in the focused window's document
-above every leaf, so a layout change cannot destroy the draft's input.
+`src/ui/loom.ts` owns one compact non-modal surface. The header, identity slot,
+prose pane and action rail keep the same order through drafting, saving, reading
+and branching. The identity uses the frame's digit grammar: normal-text digits,
+dimension-coloured punctuation. A draft names its kind and dimension, never an
+invented address. One quiet timing label stays at the bottom-left: elapsed writing
+duration and start time while drafting, recorded duration and creation time after
+saving. An empty draft shows no numbers but keeps the same footer height. Missing
+recorded timing stays unknown; there is no extra time row or live wall clock.
+The saved duration is the last painted second, retained across pauses—not a
+fresh time sample or a discarded draft clock.
 
 - Header: a compact, left-aligned destination control (`Main ▾`, or `Branch · Main ▾`),
-  `Hide`, and a `More` overflow menu. When viewing differs from writing, one quiet
-  line says `viewing <realm>`. The destination control opens the chooser.
-- Editing: the prose is the dominant area, a textarea that grows with its content up
-  to the usable viewport, with no nested input frame. `⇧⏎` is the newline and `⏎`
-  commits on every platform — a phone's soft Return included — as does the footer's
-  `Save` (labelled `Save ↵`); `⌘⏎` / `Ctrl⏎` still commit too. The modifier chord is
-  taken in the window's capture phase while focus is inside the Loom, because
-  Obsidian's own scope claims `Mod+Enter` before any field listener can see it. A
-  committed IME composition is one beginning, and a held key never saves twice.
+  `Reference`, `Hide`, and `More`. The destination control opens the chooser;
+  when viewing differs from writing, one quiet line names the viewing Realm.
+- Editing: one persistent rich Markdown editor grows with its content rather
+  than reserving an empty field. Formatting appears during composition; reading
+  uses Obsidian's Markdown rendering. This is not a private native Live Preview
+  editor. `⇧⏎` inserts a newline and `⏎` saves, including soft Return. A phone also
+  has a visible New line action. `⌘⏎` / `Ctrl⏎` are captured inside the Loom before
+  Obsidian's own scope can claim them; IME candidate confirmation never saves.
 - Saving: the prose is read-only and the status says `Saving…`. A failed or
   unconfirmed save keeps the text, timing and reason. `Check save` reads without
   writing; only a proven-absent write offers `Retry save`, guarded against a note
   that changed since the attempt. Reading view writes through the vault, never
   into its dormant editor buffer.
-- Saved: the saved thought is drawn from its note by `renderMarkdown`. `Branch`
-  and `New Thread` are offered as secondary actions; Save is removed. The header's
-  `Hide`, one more `⏎`, or `Esc` puts the reading away without another write.
+- Saved: the same prose pane becomes read-only. `Branch` and `New Thread` occupy
+  the action slot that held Save; status stays at the left. The real address
+  replaces the draft identity without adding a new row. `Hide`, one more `⏎`,
+  or `Esc` puts the reading away without another write.
 - Branching: one compact parent excerpt is shown above the prose, expandable on
   request. A destination or parent change with words in the draft is still a
   proposal, revalidated when applied.
@@ -298,18 +302,31 @@ above every leaf, so a layout change cannot destroy the draft's input.
   excerpt — anchored above the visible bottom controls and the keyboard boundary.
   `Resume` restores the draft and caret *before* focusing. The strip measures itself,
   never a height retained from the expanded card.
-- Reference: optional, collapsed by default, expanded through an explicit control.
-  It shows one thought at a time; `/` searches, `↑`/`↓` walk, `Enter` accepts or edits.
-  On a wide pane it may sit beside the prose; on a narrow pane it stacks above it.
-- The chooser, the Tapestry list and the invitation list replace the content area
-  temporarily; the draft, its selection, its timing and its scroll are preserved.
+- Reference: rendered Markdown with its own dimension colour and frame-style
+  address. Previous, Next, Search and Open in note are visible controls. Navigation
+  shortcuts apply when its navigation toolbar owns focus, not while selecting
+  prose or typing in a field. Search retains its query and restores the prior
+  place on cancellation. The Reference control works on desktop and mobile.
+- More contains Copy text, Discard draft and Keyboard shortcuts, not duplicate
+  navigation. Copy uses the saved prose or reference-only snapshot when reading;
+  Discard is only for an editable unsaved draft. The menu supports arrows,
+  Home/End and Escape. Discard confirmation defaults to Keep writing; cancellation
+  and a completed destination proposal return focus to the retained editor.
+- The chooser and Invitations have a visible Back action. Their presentation
+  preserves the mounted editor, selection, undo history and scroll position.
 
 Its box follows the content up to the usable visual viewport. `loomAnchor` in
 `src/core/frame.ts` returns that viewport's bottom edge and the extent above it;
 the renderer grows upward from that edge rather than deriving a CSS bottom inset
-from the window height. Keyboard resize and panning preserve the textarea node and
+from the window height. Keyboard resize and panning preserve the editor node and
 selection. Only an intersecting mobile toolbar reserves space; a toolbar behind
-the keyboard does not. The body scrolls while the header and footer remain fixed.
+the keyboard does not. The writing slot always retains its identity and one full
+line; excess reference content scrolls instead of compressing the caret away.
+Long prose and the body scroll independently while the header and footer remain
+fixed. Resizing reveals the caret inside the prose viewport, not the entire
+unbounded editor document.
+The current usable width chooses the stacked or split arrangement on viewport
+updates, without requiring another keystroke.
 Opening the Loom freezes the note's own clock first. Desktop controls are 32px
 high, with no native button shadows; mobile and coarse-pointer targets are 44px,
 without filling every target's background. Shortcut suffixes are not drawn on touch.
@@ -367,18 +384,16 @@ is a child of the frame, not of the shrink-wrapped head.
 The Loom is one non-modal, bottom-anchored dialog; its upper area is the reading
 surface, and the same area swaps to the Tapestry chooser or the invitation list.
 
-- The reference shows one thought at a time: its `x of y` position, its address,
-  and its authored text, read live-editor-first from the recognised notes. `↑`/`↓`
-  move within the frozen sequence, `/` opens a scoped search, `Enter` accepts a
-  match or edits the selected original, and `Esc` cancels the search before
-  hiding. Reading never travels the workspace, opens a note or moves the caret.
+- The reference shows one thought at a time: position, colour-coded address and
+  authored Markdown. In its navigation toolbar, `↑`/`↓` move, `/` starts search,
+  and `Enter` opens the selected original. Enter in the search field accepts a
+  match; Escape cancels before closing the panel. Prose selection keeps its own
+  arrow keys. Browsing itself never opens or changes a note.
 - The Tapestry chooser lists every destination with `Write here` (retarget the open
   draft) and `Open workspace` (a deliberate travel). Choosing a row for writing
   does not move the screen.
 - The invitation list and idle invitation row read the same outstanding offers.
   Neither inserts a second action into an active draft.
-- Rows carry address, recorded time and the first words; a thought with no
-  recorded moment is labelled `Time not recorded`, never a fabricated midnight.
 
 ### The close mark
 

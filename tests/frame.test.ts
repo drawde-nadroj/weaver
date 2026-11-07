@@ -8,6 +8,7 @@ import {
   loomAnchor,
   loomLayout,
   loomWidth,
+  revealScrollDelta,
   type FrameColumn,
   type FrameSpan
 } from "../src/core/frame";
@@ -388,5 +389,18 @@ describe("the Loom's visual viewport anchor", () => {
     const occluded = loomAnchor(viewport, { left: 0, right: 844, top: 0, bottom: 200 });
     expect(occluded.maxHeight).toBe(0);
     expect(occluded.bottom).toBe(viewport.top);
+  });
+});
+
+describe("revealing a caret within a scroller", () => {
+  it.each([
+    { targetTop: 110, targetBottom: 129, delta: 0 },
+    { targetTop: 90, targetBottom: 109, delta: -10 },
+    { targetTop: 170, targetBottom: 189, delta: 9 }
+  ])("moves only the clipped amount: $delta", ({ targetTop, targetBottom, delta }) => {
+    const result = revealScrollDelta(100, 180, targetTop, targetBottom);
+    expect(result).toBe(delta);
+    expect(targetTop - result).toBeGreaterThanOrEqual(100);
+    expect(targetBottom - result).toBeLessThanOrEqual(180);
   });
 });

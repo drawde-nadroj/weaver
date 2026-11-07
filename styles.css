@@ -613,16 +613,6 @@ body.weaver-phone.weaver-frame-fixed .markdown-rendered .weaver-frame.is-static 
   outline-offset: 2px;
 }
 
-/* The writing field is the surface itself, not another framed control. */
-.weaver-composer textarea.weaver-composer-input:focus-visible {
-  outline: none;
-}
-
-.weaver-composer[data-phase="resting"] .weaver-composer-moment {
-  margin-left: auto;
-}
-
-
 /* ── The composer's own surface ────────────────────────────────────────── */
 
 /* `ui/loom.ts` anchors the root to the visual viewport's bottom edge. The card
@@ -707,22 +697,7 @@ body.is-mobile .weaver-composer {
 }
 
 
-.weaver-composer-duration {
-  color: var(--text-muted);
-}
-
-.weaver-composer-moment {
-  color: var(--text-faint);
-}
-.weaver-composer-duration.weaver-frame-label, 
-.weaver-composer-moment.weaver-frame-label {
-  display: inline-flex;
-  padding: 0 6px;
-}
-
-/* The reference and the chooser take focus as containers so the Loom's keys keep
- * working when they replace the prose field; their boxes are not the target, so
- * they draw no ring of their own. */
+/* Containers identify the active area without framing the prose a second time. */
 .weaver-composer-reference:focus,
 .weaver-composer-chooser:focus {
   outline: none;
@@ -740,7 +715,10 @@ body.is-mobile .weaver-composer {
 
 /* Saving is the draft's own colour,  not a second product's purple: the button
  * belongs to the frame it sits in. */
-.weaver-composer button.weaver-composer-save {
+.weaver-composer button.weaver-composer-save,
+.weaver-composer button.weaver-composer-use,
+.weaver-composer button.weaver-composer-retry,
+.weaver-composer button.weaver-composer-check {
   border-color: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 70%, transparent);
   background: color-mix(in oklab, var(--weaver-dcolor, var(--text-accent)) 18%, var(--background-primary));
   color: var(--text-normal);
@@ -769,99 +747,114 @@ body.weaver-phone .weaver-composer-card {
   color: var(--text-faint);
 }
 
-/* ── The navigator ─────────────────────────────────────────────────────── */
-
-/* One card over the note on a desk, one full-height sheet on a phone: the same
- * component, the same rows, the same three gestures. The phone's differences are
- * geometry and row height, never behaviour. */
-
-
-
-/* Tabs, filter and day: one row of controls, and only the History tab has all
- * three. The arrows move between tabs; the picker keeps its own keys. */
-
-
-
-
-
-
-
-/* Rows carry the selection, the focus and the action together: one row, one
- * meaning. The selected row is the roving tabindex holder. */
-
-
-
-
-
-
-
-/* Writing keeps the neutral background here too: one accent per surface is
- * enough, and the accent belongs to selection. */
-
-
-
-
-
-/* Openings: the opening once, its Realm, and what is left of it. */
-
-
-
-
-
-
-/* The selected row's acts, and none other: a list of buttons per row would be a
- * second keyboard model to keep in step. */
-
-
-
-
-
-
-
-
-
-
-
 /* ── Settings tab ──────────────────────────────────────────────────────── */
 
 .weaver-settings h3 {
   margin-top: var(--size-4-5);
 }
 
-/* The upper reference panel: one thought, its position, and its authored text. */
+/* Each reading owns its dimension; it never inherits the draft's colour. */
 .weaver-composer-reference {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-bottom: 8px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.weaver-composer-reference-head {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.85em;
+.weaver-composer[data-phase="closed"] .weaver-composer-reference {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* A short keyboard viewport scrolls between contexts, never shrinks a reading to zero. */
+.weaver-composer-body[data-layout="stacked"] > .weaver-composer-reference {
+  flex-shrink: 0;
+}
+
+.weaver-composer-reference-tools,
+.weaver-composer-reference-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.weaver-composer-reference-tools:focus-visible {
+  outline: 1px solid var(--weaver-dcolor);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.weaver-composer-reference-position {
   color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+  font-variant-numeric: tabular-nums;
 }
 
-.weaver-composer-reference-body {
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size, 1em);
-  line-height: var(--weaver-entry-line-height, 1.35);
+.weaver-composer-reference-address,
+.weaver-composer-identity {
+  min-height: 1.4em;
+  font-size: var(--font-ui-small, 14px);
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-reference-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.weaver-composer .weaver-composer-reference-tabs > button[aria-selected="true"] {
   color: var(--text-normal);
-  white-space: pre-wrap;
-  max-height: 30vh;
-  overflow-y: auto;
+  border-bottom-color: var(--weaver-dcolor);
+  border-radius: 4px 4px 0 0;
 }
 
-.weaver-composer-reference-search {
+.weaver-composer-keyhint {
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.weaver-composer-reference-notice {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 14px);
+  overflow-wrap: anywhere;
+}
+
+.weaver-composer-reference-notice[data-kind="error"] {
+  color: var(--text-error);
+}
+
+.weaver-composer-identity-label + .weaver-composer-identity-address:not(:empty) {
+  margin-left: 6px;
+}
+
+.weaver-composer-reference-prose {
+  max-height: min(16em, calc(var(--weaver-composer-max-height, 70vh) * .45));
+}
+
+.weaver-composer input.weaver-composer-reference-search {
+  box-sizing: border-box;
+  flex: 1 1 160px;
   width: 100%;
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size, 1em);
+  min-width: 0;
+  height: var(--weaver-control-height);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small, 14px);
   color: var(--text-normal);
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding: 2px 0;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  border-radius: 6px;
+  padding: 0 8px;
 }
 
 .weaver-composer-reference-search:focus-visible {
@@ -869,28 +862,6 @@ body.weaver-phone .weaver-composer-card {
   border-bottom-color: var(--interactive-accent);
 }
 
-/* Held-modifier hints: above the chrome, never over prose, never interactive. */
-.weaver-hint-layer {
-  position: absolute;
-  right: 12px;
-  bottom: calc(100% + 8px);
-  pointer-events: none;
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-small, 14px);
-  color: var(--text-muted);
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 4px 8px;
-  white-space: nowrap;
-  transition: opacity 120ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .weaver-hint-layer {
-    transition: none;
-  }
-}
 
 /* The compact Loom: one header, dominant prose, one footer. */
 .weaver-composer-header {
@@ -995,23 +966,157 @@ body.weaver-phone .weaver-composer-card {
   font-size: var(--weaver-entry-size, 1em);
 }
 
-.weaver-composer textarea.weaver-composer-input {
-  flex: 1 1 auto;
-  margin: 0;
-  padding: 0;
-  min-height: 3.2em;
-  overflow-y: auto;
-  resize: none;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-  /* The prose wears the draft's own dimension colour: the surface says, before
-   * anything is written, which entry it is about to become. */
+/* One typographic surface from empty draft through the saved reading. */
+.weaver-composer-writing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  /* Even beside an expanded reference, the identity and one full line must fit.
+   * Excess context scrolls in the body instead of squeezing the caret away. */
+  min-height: calc(1.4 * var(--font-ui-small, 14px) + 8px + 1.35 * var(--weaver-entry-size, 1em));
+}
+
+.weaver-composer-prose,
+.weaver-composer-reference-prose {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   color: var(--weaver-dcolor, var(--text-normal));
   font-family: var(--font-text);
   font-size: var(--weaver-entry-size, 1em);
   line-height: var(--weaver-entry-line-height, 1.35);
+}
+
+.weaver-composer .weaver-composer-editor {
+  min-height: 1.35em;
+  max-height: inherit;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+
+.weaver-composer .weaver-composer-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.weaver-composer-editor .weaver-markdown-editor {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.weaver-composer-editor .weaver-markdown-reading {
+  max-height: inherit;
+  overflow: auto;
+}
+
+.weaver-composer-editor .cm-scroller {
+  font: inherit;
+  line-height: inherit;
+  max-height: inherit;
+  overflow: auto;
+}
+
+.weaver-composer-editor .cm-content {
+  padding: 0;
+  min-height: 1.35em;
+  caret-color: var(--text-normal);
+}
+
+.weaver-composer-editor .cm-line {
+  padding: 0;
+}
+
+.weaver-composer-editor .markdown-rendered {
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+
+.weaver-composer-editor .markdown-rendered :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, strong, em) {
+  color: inherit;
+}
+
+.weaver-composer-editor .markdown-rendered > :first-child {
+  margin-top: 0;
+}
+
+.weaver-composer-editor .markdown-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+.weaver-composer-editor .markdown-rendered p {
+  margin-block: 0 .5em;
+}
+
+/* Editing decorates the same Markdown, rather than adding a second preview. */
+.weaver-markdown [hidden] {
+  display: none !important;
+}
+
+.weaver-composer-editor .weaver-md-h1 { font-size: var(--h1-size, 1.8em); font-weight: var(--h1-weight, 700); }
+.weaver-composer-editor .weaver-md-h2 { font-size: var(--h2-size, 1.6em); font-weight: var(--h2-weight, 650); }
+.weaver-composer-editor .weaver-md-h3 { font-size: var(--h3-size, 1.4em); font-weight: var(--h3-weight, 600); }
+.weaver-composer-editor .weaver-md-h4 { font-size: var(--h4-size, 1.2em); font-weight: var(--h4-weight, 600); }
+.weaver-composer-editor .weaver-md-h5 { font-size: var(--h5-size, 1.1em); font-weight: var(--h5-weight, 600); }
+.weaver-composer-editor .weaver-md-h6 { font-size: var(--h6-size, 1em); font-weight: var(--h6-weight, 600); }
+.weaver-composer-editor .cm-strong { font-weight: var(--bold-weight, 700); }
+.weaver-composer-editor .cm-em { font-style: italic; }
+.weaver-composer-editor .cm-strikethrough { text-decoration: line-through; }
+
+.weaver-composer-editor .cm-inline-code,
+.weaver-composer-editor .weaver-md-codeblock {
+  font-family: var(--font-monospace);
+  background: var(--background-secondary);
+  border-radius: 3px;
+}
+
+.weaver-composer-editor .weaver-md-codeblock {
+  padding-inline: 8px;
+}
+
+.weaver-composer-editor .weaver-md-quote {
+  border-left: 2px solid color-mix(in oklab, var(--weaver-dcolor) 45%, transparent);
+  padding-left: 10px;
+}
+
+.weaver-composer-editor .weaver-md-list-item {
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+
+.weaver-composer-editor :is(.cm-link, .weaver-md-wikilink) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.weaver-composer-editor :is(.cm-url, .weaver-md-mark, .weaver-md-table-delimiter, .weaver-md-table-pipe) {
+  color: var(--text-muted);
+}
+
+.weaver-composer-editor .weaver-md-image {
+  color: var(--text-muted);
+}
+
+.weaver-composer-editor .weaver-md-table-row {
+  font-variant-numeric: tabular-nums;
+}
+
+.weaver-composer-editor .weaver-md-table-cell {
+  padding-right: 1em;
+}
+
+.weaver-composer-editor .weaver-md-hr {
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-block: .6em;
+}
+
+.weaver-composer-editor .weaver-markdown-error {
+  color: var(--text-error);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small, 14px);
 }
 
 .weaver-composer-status {
@@ -1070,30 +1175,77 @@ body.weaver-phone .weaver-composer-card {
   font-size: var(--font-ui-small, 14px);
 }
 
-.weaver-composer-saved {
+.weaver-composer-state {
+  flex: 1 1 100px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  min-height: var(--weaver-control-height);
+  padding-bottom: max(0px, calc((var(--weaver-control-height) - 1.4 * var(--font-ui-smaller, 12px)) / 2));
+}
+
+.weaver-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.weaver-composer-elapsed {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.weaver-composer-shortcuts {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  z-index: 3;
+  box-sizing: border-box;
+  width: min(340px, calc(100% - 32px));
+  max-height: max(0px, calc(var(--weaver-composer-max-height, 45vh) - 64px));
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small, 14px);
+}
+
+.weaver-composer-shortcuts-title {
+  margin-bottom: 8px;
+}
+
+.weaver-composer-shortcuts-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.weaver-composer-saved-address {
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-small, 14px);
-  font-variant-numeric: tabular-nums;
-}
-
-.weaver-composer-saved-prose {
-  color: var(--text-normal);
-  font-family: var(--font-text);
-  font-size: var(--weaver-entry-size, 1em);
-  line-height: var(--weaver-entry-line-height, 1.35);
-}
-
-.weaver-composer-saved-actions {
-  display: flex;
-  flex-wrap: wrap;
+.weaver-composer-shortcut {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  align-items: start;
   gap: 8px;
+}
+
+.weaver-composer-shortcut kbd {
+  font-family: var(--font-interface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.weaver-composer button.weaver-composer-shortcuts-close {
+  margin-top: 8px;
 }
 
 .weaver-composer button.weaver-composer-branch,
@@ -1108,17 +1260,21 @@ body.weaver-phone .weaver-composer-card {
 
 .weaver-composer-footer {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in oklab, var(--background-modifier-border) 65%, transparent);
   min-height: var(--weaver-control-height);
 }
 
-.weaver-composer .weaver-composer-footer > button.weaver-composer-save {
-  margin-left: auto;
+.weaver-composer button.weaver-composer-save-alt {
+  border-color: color-mix(in oklab, var(--text-error) 45%, transparent);
+  color: var(--text-error);
 }
 
-.weaver-composer-save:disabled {
+.weaver-composer button:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -1168,6 +1324,13 @@ body.weaver-phone .weaver-composer-card {
 }
 
 .weaver-composer-body[data-layout="split"] > .weaver-composer-context,
-.weaver-composer-body[data-layout="split"] > .weaver-composer-status {
+.weaver-composer-body[data-layout="split"] > .weaver-composer-chooser {
   grid-column: 1 / -1;
+}
+
+.weaver-composer-body[data-layout="split"] > .weaver-composer-reference {
+  border-bottom: none;
+  border-right: 1px solid var(--background-modifier-border);
+  padding-bottom: 0;
+  padding-right: 16px;
 }

@@ -53,13 +53,14 @@ pixel. The manual checks they need are at the end of this file.
    transaction writes the address, the prose and a finished clock row into the
    daily note for the day the thought *began* — which may be yesterday if you
    started before midnight — and `Saving…` becomes the saved thought.
-4. **Return.** The Loom keeps the saved thought visible, read from its note, and
-   offers **Branch** and **New Thread**. Save disappears; **Hide**, one more `⏎`,
-   or `Esc` puts it away without travelling or creating another entry.
+4. **Return.** The same prose pane becomes a rendered reading. Its draft identity
+   becomes the real address; **Branch** and **New Thread** replace Save in the same
+   action rail. **Hide**, another `⏎`, or `Esc` puts it away without another write.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
    asked; reference context is optional and starts collapsed.
-6. **Browse** with `⌘⇧P`: the Loom's reference opens on the day's thoughts, with
-   Tapestries and Invitations in the same surface.
+6. **Browse** with `⌘⇧P`: the Loom's reference opens on your thoughts without
+   starting a draft. Invitations live beside the reading; the writing destination
+   stays in the header's chooser.
 7. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
 Writing inside a note is unchanged, and it is where an entry is still begun in
@@ -166,14 +167,14 @@ in the editor keymap, and Vim's own normal-mode map runs before it.
 
 ## The Loom and its reference
 
-`⌘⇧P` opens the Loom's reference over the workspace. It is one non-modal dialog:
-the note stays visible and editable behind it. The reference starts collapsed;
-expand it from the header's Reference control or the More menu. On a wide pane it
-may sit beside the prose; on a narrow pane it stacks above it.
+`⌘⇧P` opens the Loom's rendered reference over the workspace without starting a
+draft. While writing, the header's Reference control opens the same reading beside
+or above the draft. The note stays visible and editable behind this non-modal surface.
 
-The reference shows one thought at a time — its position `x of y`, its address, and
-its authored text — read live-editor-first from the recognised notes. Browsing
-never travels the workspace, opens a note or moves the caret.
+The reference shows one thought at a time with its own dimension colour,
+digit-and-ink address, formatted Markdown and position in the sequence. Previous,
+Next, Search and Open in note are visible; the following navigation keys apply
+when the reference toolbar has focus, not when selecting prose in its editor.
 
 | Key | Effect |
 | --- | --- |
@@ -184,11 +185,13 @@ never travels the workspace, opens a note or moves the caret.
 | `⌘⌥←` / `⌘⌥→` | previous / next Tapestry |
 | `⌘⌥↑` / `⌘⌥↓` | show the reference / return to writing |
 
-The header's destination control opens the chooser in place of the content area —
-it never adds a row above the words. `Write here` retargets the draft without
-travelling; `Open workspace` is the separate travel action. The invitation list and
-the Tapestry chooser use the same area. The Loom never takes an Obsidian key scope,
-so `⌘,` and every other chord reach the app while it is open.
+The destination control opens the chooser without travelling; Write here changes
+the draft's destination only after any required confirmation. Open workspace is
+separate. Invitations is accessible from the reference area. Both panels have
+Back and preserve the draft and its editing history. More contains Copy text,
+Discard draft and Keyboard shortcuts—not another navigation menu. Copy follows
+the draft, saved prose or reference-only reading. Discard confirmation defaults
+to Keep writing, and returning from it restores editor focus.
 
 ## Record formats
 
@@ -450,12 +453,21 @@ These need a live Obsidian and are not covered by `npm test`:
   thought and press `⏎`: the note for the day the thought *began* gains one entry —
   address, prose, and a `+ 00:00:07 <day> <moment>` row — in one transaction, and
   the second `⏎` closes the composer without writing again.
-- Composer controls: destination, Reference, Hide and More are quiet text controls,
-  not native raised buttons. Save is accented only while editing; after saving,
-  only Branch and New Thread remain below the prose.
+- Composer structure: a short empty draft is compact. Identity, prose and action
+  rail keep their positions through saving and reading. One muted bottom-left label
+  shows duration and start time while writing, then recorded duration and creation
+  time after saving. An empty draft keeps the footer height without numbers.
+  Address digits are normal text, punctuation dimension-coloured.
+  Copy text on a saved thought copies its Markdown, not an empty draft.
 - Composer, phone: open the keyboard, select text, rotate, then dismiss it. The
   same draft and selection remain; Save stays above the keyboard and any visible
   toolbar. With a long draft or parent excerpt, the body scrolls, not the footer.
+- Rich Markdown: compose emphasis, a heading, a list and code; keep typing after
+  moving the caret, then undo and redo. Save and read the result. References render
+  tables and internal links rather than raw Markdown, in their own dimension colour.
+- Reference controls: arrows navigate only from the navigation toolbar. They must
+  not change the selected thought while selecting prose or editing the draft.
+  Search, cancel and return: query, prior reading place and draft selection survive.
 - Composer, Reading view: save a thought while its destination note is in Reading
   view, then switch to Live Preview: the thought exists once in both. An absent
   unconfirmed save offers Retry save only after Check save has verified absence.

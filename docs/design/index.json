@@ -2,9 +2,9 @@
   "generatedBy": "scripts/design-index.mjs",
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
-    "modules": 61,
-    "exports": 488,
-    "classes": 69,
+    "modules": 62,
+    "exports": 493,
+    "classes": 117,
     "testFiles": 53
   },
   "modules": [
@@ -566,9 +566,10 @@
             "src/core/capture-state.ts",
             "src/entries/capture-model-controller.ts",
             "src/entries/capture-store.ts",
-            "src/entries/capture.ts"
+            "src/entries/capture.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 17,
+          "refCount": 19,
           "testedBy": []
         },
         {
@@ -635,7 +636,7 @@
             "src/main.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 94,
+          "refCount": 95,
           "testedBy": [
             "tests/capture-model-controller.test.ts",
             "tests/capture-state.test.ts",
@@ -1023,13 +1024,9 @@
           "doc": "One saved Thread as a surface reads it: its root, the path down to the thought\nin hand, and every thought in the root's subtree.\n\nA Thread *includes* its descendants, so \"view the thread\" is the root's own\nsubtree rather than a second navigation surface: `nodes` is the whole of it in\ndocument preorder, which is the same order the note draws and therefore the\nonly order a \"next thought\" can mean.",
           "hash": "4bb0c71ca0",
           "bytes": 140,
-          "refs": [
-            "src/ui/loom.ts"
-          ],
-          "refCount": 2,
-          "testedBy": [
-            "tests/loom.test.ts"
-          ]
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
         },
         {
           "name": "ThreadMove",
@@ -1051,10 +1048,8 @@
           "doc": "The view of the Thread `target` belongs to, or null when it is stale.\n\nStaleness is decided by {@link resolveThought}: a reference whose entry was\ndeleted, renumbered or edited no longer describes a thought, and no surface may\ndraw one from it.",
           "hash": "c0d8ca657a",
           "bytes": 800,
-          "refs": [
-            "src/main.ts"
-          ],
-          "refCount": 2,
+          "refs": [],
+          "refCount": 0,
           "testedBy": []
         },
         {
@@ -1149,7 +1144,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 22,
+          "refCount": 21,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -1340,7 +1335,7 @@
             "src/editor/entry-frame.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 6,
+          "refCount": 8,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -1358,7 +1353,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 11,
+          "refCount": 14,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -1566,9 +1561,10 @@
           "bytes": 162,
           "refs": [
             "src/entries/context-workspaces.ts",
-            "src/entries/day-note.ts"
+            "src/entries/day-note.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 4,
+          "refCount": 6,
           "testedBy": [
             "tests/contexts.test.ts"
           ]
@@ -1820,9 +1816,10 @@
             "src/core/portals.ts",
             "src/entries/context-workspaces.ts",
             "src/entries/engine.ts",
-            "src/main.ts"
+            "src/main.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 12,
+          "refCount": 14,
           "testedBy": [
             "tests/day-note.test.ts",
             "tests/entry-plans.test.ts"
@@ -2041,7 +2038,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 20,
+          "refCount": 19,
           "testedBy": [
             "tests/clock.test.ts",
             "tests/duration.test.ts",
@@ -2226,7 +2223,7 @@
             "src/main.ts",
             "src/reading/entry-processor.ts"
           ],
-          "refCount": 43,
+          "refCount": 42,
           "testedBy": [
             "tests/capture-end-to-end.test.ts",
             "tests/capture.test.ts",
@@ -2414,7 +2411,7 @@
     {
       "file": "src/core/frame.ts",
       "layer": "core",
-      "lines": 362,
+      "lines": 369,
       "doc": "The frame around one entry: a box, and nothing else.\n\nThe layer that uses this draws a border and the live highlight. It draws no\ntext: the entry's own first row — the address line — is the box's top-left\nlabel, and its own clock row is the bottom edge, labelling the bottom-left\ncorner with the duration and the bottom-right with the moment. Every label is\nread once, from the file, in the place a label would sit. Nothing is hidden\nand nothing is duplicated.\n\nBoth rails run through the centre of the row that labels them, and the label's\nown background cuts the rail behind it, so the box reads as running into its\nown text rather than enclosing it. The box therefore spans from one label inset\noutside the address's ink to the right edge of the text column: a box that hugged\nits text could not put the duration at one bottom corner and the moment at the\nother without a second rendering of the row.\n\nPure — no DOM, no measurement — so the geometry is testable without a browser.",
       "obsidian": false,
       "imports": [],
@@ -2699,6 +2696,22 @@
           "bytes": 1544,
           "refs": [],
           "refCount": 0,
+          "testedBy": [
+            "tests/frame.test.ts"
+          ]
+        },
+        {
+          "name": "revealScrollDelta",
+          "kind": "function",
+          "line": 364,
+          "signature": "export function revealScrollDelta(top: number, bottom: number, targetTop: number, targetBottom: number): number",
+          "doc": "Scroll movement that brings a clipped caret or content edge back into its viewport.",
+          "hash": "e6f2f16a0a",
+          "bytes": 233,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 3,
           "testedBy": [
             "tests/frame.test.ts"
           ]
@@ -3310,6 +3323,7 @@
             "src/core/day.ts",
             "src/core/duration.ts",
             "src/core/entries.ts",
+            "src/core/frame.ts",
             "src/core/insert.ts",
             "src/core/loom.ts",
             "src/core/portals.ts",
@@ -3328,9 +3342,10 @@
             "src/model/whisper-runner.ts",
             "src/notices.ts",
             "src/settings.ts",
-            "src/ui/loom.ts"
+            "src/ui/loom.ts",
+            "src/ui/markdown-pane.ts"
           ],
-          "refCount": 81,
+          "refCount": 83,
           "testedBy": [
             "tests/capture-store.test.ts",
             "tests/context-workspaces.test.ts",
@@ -3995,9 +4010,10 @@
           "hash": "102f1f83fc",
           "bytes": 102,
           "refs": [
-            "src/entries/thought-index.ts"
+            "src/entries/thought-index.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 2,
+          "refCount": 6,
           "testedBy": []
         },
         {
@@ -5774,7 +5790,7 @@
           "refs": [
             "src/ui/loom.ts"
           ],
-          "refCount": 10,
+          "refCount": 15,
           "testedBy": []
         },
         {
@@ -6940,7 +6956,7 @@
             "src/main.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 7,
+          "refCount": 6,
           "testedBy": [
             "tests/reference-controller.test.ts"
           ]
@@ -7080,6 +7096,7 @@
           ],
           "refCount": 5,
           "testedBy": [
+            "tests/loom.test.ts",
             "tests/reference-controller.test.ts",
             "tests/thought-index.test.ts"
           ]
@@ -7091,7 +7108,7 @@
     {
       "file": "src/entries/writer.ts",
       "layer": "entries",
-      "lines": 238,
+      "lines": 250,
       "doc": "The one writer of a day note.\n\nA note has exactly one writer at a time: an active editing buffer, or\n`Vault.process` otherwise — never both. Reading view's dormant buffer is not a\nwriter. Two writers is what made\nObsidian report the file as modified externally: the day-stats pass landed on\ndisk behind an editor holding the same note, and the editor's next keystroke\nwrote over it (or lost the race the other way round).\n\nThe second rule is that a plan is built from the text being written. The\nrewrite callback is handed the exact string that will be replaced, inside the\nwriter, so an append cannot land on a document that moved since it was read.",
       "obsidian": true,
       "imports": [
@@ -7099,13 +7116,28 @@
         "src/editor/entry-field",
         "src/editor/view-registry",
         "@codemirror/state",
+        "@codemirror/view",
         "obsidian"
       ],
       "exports": [
         {
+          "name": "dispatchDraftChange",
+          "kind": "function",
+          "line": 36,
+          "signature": "export function dispatchDraftChange(view: EditorView, transaction: TransactionSpec): void",
+          "doc": "Dispatches a change to the composer's owned, fileless editor buffer.\n\nThis is not a note write: it accepts no file or vault, and preserves the\ncaller's input/history annotations. Publishing a draft still uses a capture\nplan through the ordinary note writer.",
+          "hash": "f178171dce",
+          "bytes": 123,
+          "refs": [
+            "src/ui/markdown-pane.ts"
+          ],
+          "refCount": 3,
+          "testedBy": []
+        },
+        {
           "name": "RewriteResult",
           "kind": "interface",
-          "line": 29,
+          "line": 41,
           "signature": "export interface RewriteResult",
           "doc": "One write: its changes, the resulting text, and where the caret belongs.",
           "hash": "70bb09b95a",
@@ -7119,7 +7151,7 @@
         {
           "name": "Rewrite",
           "kind": "type",
-          "line": 37,
+          "line": 49,
           "signature": "export type Rewrite = (source: string) => RewriteResult | null",
           "doc": "Builds a rewrite against the text it is given; `null` means \"nothing to do\".",
           "hash": "c4857fbb1f",
@@ -7133,7 +7165,7 @@
         {
           "name": "RewriteRefused",
           "kind": "class",
-          "line": 46,
+          "line": 58,
           "signature": "export class RewriteRefused extends Error",
           "doc": "A rewrite that was refused before the document was touched.\n\nThe distinction matters to a capture: a refusal means the note is exactly as\nit was, so the writer may submit again, while a failure after the dispatch\nmeans the answer is unknown and nothing may be written twice.",
           "hash": "299528b003",
@@ -7147,7 +7179,7 @@
         {
           "name": "RewriteOptions",
           "kind": "interface",
-          "line": 49,
+          "line": 61,
           "signature": "export interface RewriteOptions",
           "doc": "Hooks that let a caller observe — or veto — one write before it happens.",
           "hash": "d71b22e2e0",
@@ -7159,7 +7191,7 @@
         {
           "name": "rewriteDay",
           "kind": "function",
-          "line": 71,
+          "line": 83,
           "signature": "export async function rewriteDay( app: App, file: TFile, rewrite: Rewrite, undoable: boolean, options: RewriteOptions =",
           "doc": "Writes one rewrite to a file: through the editor that holds it, or through the\nvault when none does.\n\n`undefined` back means nothing was written — either the rewrite declined, or\nit planned no change at all.",
           "hash": "ed29801c71",
@@ -7176,7 +7208,7 @@
         {
           "name": "planRewrite",
           "kind": "function",
-          "line": 143,
+          "line": 155,
           "signature": "export function planRewrite(build: (source: string) => InsertPlan | null): Rewrite",
           "doc": "Adapts an `InsertPlan` builder, so a plan is always built from the live text.",
           "hash": "b52e9a19bf",
@@ -7192,7 +7224,7 @@
         {
           "name": "minimalChange",
           "kind": "function",
-          "line": 156,
+          "line": 168,
           "signature": "export function minimalChange(before: string, after: string): TextChange[]",
           "doc": "The single change spanning everything that differs; `[]` when nothing does.",
           "hash": "8785cbac11",
@@ -7209,7 +7241,7 @@
         {
           "name": "confirmExistingWrite",
           "kind": "function",
-          "line": 179,
+          "line": 191,
           "signature": "export async function confirmExistingWrite( app: App, file: TFile, expected: string ): Promise<boolean>",
           "doc": "Confirms an already-written submission without writing it again.\n\nWhen the live editor holds the expected bytes but the file does not, the\neditor is the truth and the recovery is to let it save — then read the file.\nIt never dispatches an old plan and never replaces newer text: if no editor\nholds exactly `expected`, it does nothing and reports false.",
           "hash": "06da6529d1",
@@ -7223,7 +7255,7 @@
         {
           "name": "registerWrite",
           "kind": "function",
-          "line": 225,
+          "line": 237,
           "signature": "export function registerWrite(operationId: string, promise: Promise<unknown>): () => void",
           "doc": "Registers one in-flight Loom write so a Check or Retry can await it.\n\nA check that read the note while an old attempt could still commit would draw\nthe wrong conclusion; registering before the write and removing in `finally`\nis the IO-lifetime guard, not stored product state. Returns a release function.",
           "hash": "f7872477bb",
@@ -7239,7 +7271,7 @@
         {
           "name": "waitForWrite",
           "kind": "function",
-          "line": 234,
+          "line": 246,
           "signature": "export async function waitForWrite(_app: App, operationId: string): Promise<void>",
           "doc": "Awaits one registered write, if it is still running; a no-op once gone.",
           "hash": "185c4c4c6d",
@@ -7259,7 +7291,7 @@
     {
       "file": "src/main.ts",
       "layer": "root",
-      "lines": 1157,
+      "lines": 1129,
       "doc": "Weaver: a day note is a linear list of entries, and a thought may be written\nfrom anywhere.\n\nAn entry is `{ B.D.N }`, its prose, and one clock row `[+-=] HH:MM:SS YYYY-MM-DD\nHH:MM:SS`. Writing happens in two places that share one writer: inside a note,\nwhere the entry is the note's own text, and in the floating composer, which\nholds one unsaved thought until it is settled. The navigator is the only list\nand the only navigation.\n\nThis module is wiring, and only wiring: settings, the one writer, the one clock,\nthe composer, the invitation dock, the workspace service, commands, and the two\nlisteners that keep derived facts (day counters, portal association) true.",
       "obsidian": true,
       "imports": [
@@ -7313,8 +7345,8 @@
           "line": 91,
           "signature": "export default class WeaverPlugin extends Plugin",
           "doc": "Wiring only: settings, editor extensions, commands, and the two derived facts.",
-          "hash": "1e336eb9ca",
-          "bytes": 30938,
+          "hash": "4f1cc8140d",
+          "bytes": 30164,
           "refs": [
             "src/entries/engine.ts",
             "src/settings-tab.ts"
@@ -8357,9 +8389,10 @@
           "hash": "8bdf870a09",
           "bytes": 271,
           "refs": [
-            "src/reading/entry-processor.ts"
+            "src/reading/entry-processor.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 2,
+          "refCount": 7,
           "testedBy": []
         },
         {
@@ -8464,20 +8497,23 @@
     {
       "file": "src/ui/loom.ts",
       "layer": "ui",
-      "lines": 1427,
-      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header, a dominant prose area, and\none footer for timing and Save. The destination control opens a chooser that\ntemporarily replaces the content area, so the writer never scrolls past\ndestination machinery to reach the words. Reference context is optional and\nstarts collapsed; the saved thought replaces the editor and offers Branch and\nNew Thread, while the header's Hide remains the one dismissal.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM, the\ncomposing flag, measurements and a hint overlay. Every semantic action is a\ncommand on the controller or the reference owner, so the note is never written\nby opening, browsing, hiding or resizing this surface.",
+      "lines": 2115,
+      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header, one identity line, a\npersistent rich-Markdown writing pane, and one footer rail that always holds\nthe same two things: what the surface is saying on the left, and the actions\nit is offering on the right. The destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
       "obsidian": true,
       "imports": [
         "src/core/capture",
-        "src/core/clock",
         "src/core/color",
         "src/core/contexts",
+        "src/core/day",
         "src/core/duration",
         "src/core/entries",
         "src/core/frame",
+        "src/core/reference",
         "src/entries/capture-model-controller",
         "src/entries/clock",
         "src/entries/reference",
+        "src/ui/dcn",
+        "src/ui/markdown-pane",
         "src/ui/platform",
         "obsidian"
       ],
@@ -8485,11 +8521,11 @@
         {
           "name": "CaptureSurface",
           "kind": "interface",
-          "line": 32,
+          "line": 38,
           "signature": "export interface CaptureSurface",
           "doc": "The lower surface the Loom reads and commands; either controller satisfies it.",
-          "hash": "56b8a69804",
-          "bytes": 651,
+          "hash": "c413ad90ee",
+          "bytes": 596,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -8497,11 +8533,11 @@
         {
           "name": "LoomHost",
           "kind": "interface",
-          "line": 54,
+          "line": 59,
           "signature": "export interface LoomHost",
           "doc": "What the Loom needs from the plugin.",
-          "hash": "16f90ec491",
-          "bytes": 686,
+          "hash": "68f7467b64",
+          "bytes": 511,
           "refs": [],
           "refCount": 0,
           "testedBy": []
@@ -8509,7 +8545,7 @@
         {
           "name": "LoomInvitation",
           "kind": "interface",
-          "line": 90,
+          "line": 84,
           "signature": "export interface LoomInvitation",
           "doc": "An opening offered by the scheduler: upcoming, or in its available minute.",
           "hash": "6ff4410ba1",
@@ -8523,11 +8559,11 @@
         {
           "name": "Loom",
           "kind": "class",
-          "line": 134,
+          "line": 170,
           "signature": "export class Loom",
           "doc": "The one compact Loom surface.",
-          "hash": "acc8b50d84",
-          "bytes": 46444,
+          "hash": "050280cdfa",
+          "bytes": 71397,
           "refs": [
             "src/core/capture-state.ts",
             "src/core/frame.ts",
@@ -8548,44 +8584,154 @@
       ],
       "classes": [
         "weaver-composer",
+        "weaver-composer-actions",
         "weaver-composer-body",
         "weaver-composer-branch",
         "weaver-composer-card",
+        "weaver-composer-check",
         "weaver-composer-chooser",
+        "weaver-composer-chooser-empty",
         "weaver-composer-chooser-here",
         "weaver-composer-chooser-row",
         "weaver-composer-chooser-title",
         "weaver-composer-chooser-travel",
         "weaver-composer-chooser-write",
         "weaver-composer-context",
+        "weaver-composer-context-label",
         "weaver-composer-dest",
-        "weaver-composer-duration",
+        "weaver-composer-editor",
+        "weaver-composer-elapsed",
         "weaver-composer-footer",
         "weaver-composer-header",
         "weaver-composer-hide",
-        "weaver-composer-input",
+        "weaver-composer-identity",
+        "weaver-composer-identity-address",
+        "weaver-composer-identity-label",
+        "weaver-composer-keyhint",
         "weaver-composer-menu",
         "weaver-composer-menu-item",
-        "weaver-composer-moment",
         "weaver-composer-more",
         "weaver-composer-new",
+        "weaver-composer-newline",
+        "weaver-composer-prose",
         "weaver-composer-quiet-close",
         "weaver-composer-ref-toggle",
         "weaver-composer-reference",
-        "weaver-composer-reference-body",
-        "weaver-composer-reference-head",
+        "weaver-composer-reference-address",
+        "weaver-composer-reference-invitations",
+        "weaver-composer-reference-nav",
+        "weaver-composer-reference-next",
+        "weaver-composer-reference-notice",
+        "weaver-composer-reference-open",
+        "weaver-composer-reference-position",
+        "weaver-composer-reference-prev",
+        "weaver-composer-reference-prose",
         "weaver-composer-reference-search",
+        "weaver-composer-reference-search-toggle",
+        "weaver-composer-reference-tab",
+        "weaver-composer-reference-tabs",
+        "weaver-composer-reference-tools",
         "weaver-composer-resume",
         "weaver-composer-resume-dismiss",
         "weaver-composer-resume-open",
+        "weaver-composer-retry",
         "weaver-composer-save",
-        "weaver-composer-saved",
-        "weaver-composer-saved-actions",
-        "weaver-composer-saved-address",
-        "weaver-composer-saved-prose",
+        "weaver-composer-save-alt",
+        "weaver-composer-shortcut",
+        "weaver-composer-shortcuts",
+        "weaver-composer-shortcuts-close",
+        "weaver-composer-shortcuts-list",
+        "weaver-composer-shortcuts-title",
+        "weaver-composer-state",
         "weaver-composer-status",
+        "weaver-composer-use",
         "weaver-composer-viewing",
-        "weaver-hint-layer"
+        "weaver-composer-writing",
+        "weaver-markdown-content",
+        "weaver-markdown-reading"
+      ],
+      "dataAttrs": []
+    },
+    {
+      "file": "src/ui/markdown-pane.ts",
+      "layer": "ui",
+      "lines": 879,
+      "doc": "One persistent Markdown surface, rich while editing and natively rendered while\nreading.\n\nThe pane owns exactly one CodeMirror 6 view for its whole life. Editing shows\nthat view with Markdown formatting applied in place — headings, emphasis,\nstrong text, inline code, links, quotes and lists are styled while their source\nmarks stay honest, and the line the caret is on always reveals its own syntax,\nthe way live preview does. Read-only presentation replaces the visible body\nwith real HTML rendered by Obsidian's `MarkdownRenderer`, so links resolve\nagainst the pane's source path, tables become tables, and text can be selected\nand copied naturally.\n\nThe editor is never thrown away to switch modes. Hiding it keeps its document,\nhistory, selection and DOM identity intact, which is what lets a saved thought\nbecome read-only and then be branched from without losing undo.\n\nThe pane is deliberately a leaf: it never writes a note, never opens an editor\nfor a file and never reaches into Obsidian's file or view machinery. Typing is\nreported to the caller through `onChange`; saving is the caller's decision.",
+      "obsidian": true,
+      "imports": [
+        "src/entries/writer",
+        "@codemirror/commands",
+        "@codemirror/state",
+        "@codemirror/view",
+        "@lezer/markdown",
+        "obsidian"
+      ],
+      "exports": [
+        {
+          "name": "PaneSelection",
+          "kind": "interface",
+          "line": 57,
+          "signature": "export interface PaneSelection",
+          "doc": "A caret or a selected range in the pane's document.",
+          "hash": "e1c2f61878",
+          "bytes": 70,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 3,
+          "testedBy": []
+        },
+        {
+          "name": "MarkdownPaneOptions",
+          "kind": "interface",
+          "line": 65,
+          "signature": "export interface MarkdownPaneOptions",
+          "doc": "Everything a pane needs to mount and report back.",
+          "hash": "020bdceafe",
+          "bytes": 292,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "MarkdownPane",
+          "kind": "class",
+          "line": 437,
+          "signature": "export class MarkdownPane",
+          "doc": "The persistent rich Markdown editor and read-only renderer.",
+          "hash": "7d70767425",
+          "bytes": 13803,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 6,
+          "testedBy": []
+        }
+      ],
+      "classes": [
+        "weaver-markdown",
+        "weaver-markdown-content",
+        "weaver-markdown-editor",
+        "weaver-markdown-editor-host",
+        "weaver-markdown-error",
+        "weaver-markdown-reading",
+        "weaver-md-codeblock",
+        "weaver-md-h1",
+        "weaver-md-h2",
+        "weaver-md-h3",
+        "weaver-md-h4",
+        "weaver-md-h5",
+        "weaver-md-h6",
+        "weaver-md-hr",
+        "weaver-md-image",
+        "weaver-md-list-item",
+        "weaver-md-mark",
+        "weaver-md-quote",
+        "weaver-md-table-cell",
+        "weaver-md-table-delimiter",
+        "weaver-md-table-pipe",
+        "weaver-md-table-row",
+        "weaver-md-wikilink"
       ],
       "dataAttrs": []
     },
@@ -8610,10 +8756,9 @@
           "refs": [
             "src/editor/entry-keys.ts",
             "src/entries/context-workspaces.ts",
-            "src/main.ts",
-            "src/ui/loom.ts"
+            "src/main.ts"
           ],
-          "refCount": 8,
+          "refCount": 6,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -8630,7 +8775,7 @@
             "src/main.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 5,
+          "refCount": 6,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -8954,9 +9099,11 @@
       "weaver-close-mark",
       "weaver-close-mark-line",
       "weaver-composer",
+      "weaver-composer-actions",
       "weaver-composer-body",
       "weaver-composer-branch",
       "weaver-composer-card",
+      "weaver-composer-check",
       "weaver-composer-chooser",
       "weaver-composer-chooser-here",
       "weaver-composer-chooser-row",
@@ -8965,32 +9112,47 @@
       "weaver-composer-chooser-write",
       "weaver-composer-context",
       "weaver-composer-dest",
-      "weaver-composer-duration",
+      "weaver-composer-editor",
+      "weaver-composer-elapsed",
       "weaver-composer-footer",
       "weaver-composer-header",
       "weaver-composer-hide",
-      "weaver-composer-input",
+      "weaver-composer-identity",
+      "weaver-composer-identity-address",
+      "weaver-composer-identity-label",
+      "weaver-composer-keyhint",
       "weaver-composer-menu",
       "weaver-composer-menu-item",
-      "weaver-composer-moment",
       "weaver-composer-more",
       "weaver-composer-new",
+      "weaver-composer-prose",
       "weaver-composer-quiet-close",
       "weaver-composer-ref-toggle",
       "weaver-composer-reference",
-      "weaver-composer-reference-body",
-      "weaver-composer-reference-head",
+      "weaver-composer-reference-address",
+      "weaver-composer-reference-nav",
+      "weaver-composer-reference-notice",
+      "weaver-composer-reference-position",
+      "weaver-composer-reference-prose",
       "weaver-composer-reference-search",
+      "weaver-composer-reference-tabs",
+      "weaver-composer-reference-tools",
       "weaver-composer-resume",
       "weaver-composer-resume-dismiss",
       "weaver-composer-resume-open",
+      "weaver-composer-retry",
       "weaver-composer-save",
-      "weaver-composer-saved",
-      "weaver-composer-saved-actions",
-      "weaver-composer-saved-address",
-      "weaver-composer-saved-prose",
+      "weaver-composer-save-alt",
+      "weaver-composer-shortcut",
+      "weaver-composer-shortcuts",
+      "weaver-composer-shortcuts-close",
+      "weaver-composer-shortcuts-list",
+      "weaver-composer-shortcuts-title",
+      "weaver-composer-state",
       "weaver-composer-status",
+      "weaver-composer-use",
       "weaver-composer-viewing",
+      "weaver-composer-writing",
       "weaver-dcn-ink",
       "weaver-dcn-num",
       "weaver-duration",
@@ -9008,7 +9170,27 @@
       "weaver-frame-fixed",
       "weaver-frame-label",
       "weaver-frame-layer",
-      "weaver-hint-layer",
+      "weaver-markdown",
+      "weaver-markdown-editor",
+      "weaver-markdown-error",
+      "weaver-markdown-reading",
+      "weaver-md-codeblock",
+      "weaver-md-h1",
+      "weaver-md-h2",
+      "weaver-md-h3",
+      "weaver-md-h4",
+      "weaver-md-h5",
+      "weaver-md-h6",
+      "weaver-md-hr",
+      "weaver-md-image",
+      "weaver-md-list-item",
+      "weaver-md-mark",
+      "weaver-md-quote",
+      "weaver-md-table-cell",
+      "weaver-md-table-delimiter",
+      "weaver-md-table-pipe",
+      "weaver-md-table-row",
+      "weaver-md-wikilink",
       "weaver-phone",
       "weaver-settings",
       "weaver-thread-start"
@@ -9029,7 +9211,18 @@
     ],
     "unstyled": [
       "weaver-alignments",
+      "weaver-composer-chooser-empty",
+      "weaver-composer-context-label",
+      "weaver-composer-newline",
+      "weaver-composer-reference-invitations",
+      "weaver-composer-reference-next",
+      "weaver-composer-reference-open",
+      "weaver-composer-reference-prev",
+      "weaver-composer-reference-search-toggle",
+      "weaver-composer-reference-tab",
       "weaver-duration-clock",
+      "weaver-markdown-content",
+      "weaver-markdown-editor-host",
       "weaver-platform-mobile",
       "weaver-style",
       "weaver-tablet"
