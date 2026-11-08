@@ -471,8 +471,8 @@ while closed, never writes prose, and reads the recognised notes through
 `shouldPinStopwatch`, true only when all four of phone, live session, caret on
 the last prose line, and a clock row exist.
 
-The upper area has the reference (`ReferenceController`) and Tapestry chooser;
-invitations remain idle offers, not a browsing panel.
+The upper area has the browser — the scoped reading as one list — and the
+destination popover; invitations remain idle offers, not a browsing panel.
 `src/core/portal-history.ts#portalHistoryRows` returns recorded facts only — a list
 of upcoming openings is the live controller's, never reconstructed from a note —
 and `src/core/portal-history.ts#linkedPortalEntry` checks sequence, day and moment
@@ -513,9 +513,11 @@ The reference's loaded snapshot supplies its clocks directly; a reference beside
 a draft keeps its timing attached to its own prose. Browsing alone uses the common
 fixed rail, never duplicates those values. `src/ui/dcn.ts#appendDigitRuns` gives
 the real address the same digit grammar as a note frame.
-Navigation controls appear once, below the content; up/down and slash belong to
-the focusable toolbar, while text keeps native arrows. `src/main.ts#openReference`
-shows a reading without beginning a draft.
+The reading is one list, so its controls are the list: up/down and Home/End walk
+its rows, slash opens the search field in its head, and Enter opens a row into the
+whole rendered Markdown, whose own controls are Branch and Open in note. The keys
+belong to the focused list; the search field and both editors keep native arrows.
+`src/main.ts#openReference` shows a reading without beginning a draft.
 `src/main.ts#openLoom` retrieves the existing draft or saved reading on an unnamed
 open, restores the writing pane and its selection, and focuses it without starting
 another Thread. `src/ui/loom.ts#rememberFocus` retains the last outside focus
@@ -528,7 +530,7 @@ Enter branches from a saved or browsed thought; modified Enter threads a draft o
 starts a new Thread in the displayed thought's destination. Search Enter only
 accepts the match. A retained draft is resumed, never replaced or re-parented.
 Pending saves and held-key repeats cannot queue a continuation. Escape cancels
-search, returns from the chooser, or hides without discarding. Mobile offers
+search, closes the destination popover, or hides without discarding. Mobile offers
 Hide / Done and omits desktop shortcut prefixes and the beginning clock.
 Desktop destination headers carry a thread emoji; mobile shows just the name.
 The Loom adds no formatting toolbar. Its fileless native editor supplies the
@@ -647,7 +649,7 @@ That is the point: the document is not maintained by memory, it is maintained by
 
 ### Modules
 
-63 files, 499 exported symbols, 53 test files.
+64 files, 504 exported symbols, 54 test files.
 
 | file | layer | lines | exports | imports `obsidian` |
 | --- | --- | --- | --- | --- |
@@ -710,8 +712,9 @@ That is the point: the document is not maintained by memory, it is maintained by
 | `src/ui/day-link.ts` | ui | 62 | 2 | no |
 | `src/ui/dcn.ts` | ui | 74 | 6 | no |
 | `src/ui/invitation.ts` | ui | 44 | 5 | no |
+| `src/ui/loom-motion.ts` | ui | 394 | 5 | no |
 | `src/ui/loom-timing.ts` | ui | 183 | 4 | yes |
-| `src/ui/loom.ts` | ui | 2168 | 4 | yes |
+| `src/ui/loom.ts` | ui | 2290 | 4 | yes |
 | `src/ui/markdown-pane.ts` | ui | 372 | 3 | yes |
 | `src/ui/platform.ts` | ui | 38 | 4 | yes |
 
@@ -775,28 +778,42 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-close-mark-line` | styled | `editor/close-decorations.ts` |
 | `weaver-composer` | styled | `ui/loom.ts` |
 | `weaver-composer-actions` | styled | `ui/loom.ts` |
-| `weaver-composer-body` | styled | `ui/loom.ts` |
+| `weaver-composer-body` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
 | `weaver-composer-branch` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-actions` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-address` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
+| `weaver-composer-browse-branch` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-count` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-detail` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-head` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-list` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
+| `weaver-composer-browse-open` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-reading` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-row` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
+| `weaver-composer-browse-search` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-text` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-thread` | styled | `ui/loom.ts` |
+| `weaver-composer-browse-time` | styled | `ui/loom.ts` |
 | `weaver-composer-card` | styled | `ui/loom.ts` |
 | `weaver-composer-check` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-here` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-row` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-title` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-travel` | styled | `ui/loom.ts` |
-| `weaver-composer-chooser-write` | styled | `ui/loom.ts` |
-| `weaver-composer-context` | styled | `ui/loom.ts` |
+| `weaver-composer-context` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
 | `weaver-composer-context-label` | styled | `ui/loom.ts` |
 | `weaver-composer-controls` | styled | `ui/loom.ts` |
 | `weaver-composer-dest` | styled | `ui/loom.ts` |
+| `weaver-composer-dest-here` | styled | `ui/loom.ts` |
+| `weaver-composer-dest-name` | styled | `ui/loom.ts` |
+| `weaver-composer-dest-popover` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
+| `weaver-composer-dest-row` | styled | `ui/loom.ts` |
+| `weaver-composer-dest-travel` | styled | `ui/loom.ts` |
+| `weaver-composer-dest-write` | styled | `ui/loom.ts` |
 | `weaver-composer-editor` | styled | `ui/loom.ts` |
 | `weaver-composer-footer` | styled | `ui/loom.ts` |
 | `weaver-composer-header` | styled | `ui/loom.ts` |
 | `weaver-composer-hide` | styled | `ui/loom.ts` |
 | `weaver-composer-identity` | styled | `ui/loom.ts` |
-| `weaver-composer-identity-address` | styled | `ui/loom.ts` |
-| `weaver-composer-identity-label` | styled | `ui/loom.ts` |
-| `weaver-composer-menu` | styled | `ui/loom.ts` |
+| `weaver-composer-identity-address` | hook | `ui/loom.ts` |
+| `weaver-composer-identity-label` | hook | `ui/loom.ts` |
+| `weaver-composer-menu` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
 | `weaver-composer-menu-item` | styled | `ui/loom.ts` |
 | `weaver-composer-more` | styled | `ui/loom.ts` |
 | `weaver-composer-new` | styled | `ui/loom.ts` |
@@ -805,16 +822,7 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-quiet-close` | styled | `ui/loom.ts` |
 | `weaver-composer-ref-toggle` | styled | `ui/loom.ts` |
 | `weaver-composer-reference` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-address` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-nav` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-next` | hook | `ui/loom.ts` |
-| `weaver-composer-reference-notice` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-position` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-prev` | hook | `ui/loom.ts` |
 | `weaver-composer-reference-prose` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-search` | styled | `ui/loom.ts` |
-| `weaver-composer-reference-search-toggle` | hook | `ui/loom.ts` |
-| `weaver-composer-reference-tools` | styled | `ui/loom.ts` |
 | `weaver-composer-resume` | styled | `ui/loom.ts` |
 | `weaver-composer-resume-dismiss` | styled | `ui/loom.ts` |
 | `weaver-composer-resume-open` | styled | `ui/loom.ts` |
@@ -822,10 +830,11 @@ A name is a contract: a user's snippet may hang off any of them, so a rename is 
 | `weaver-composer-save` | styled | `ui/loom.ts` |
 | `weaver-composer-save-alt` | styled | `ui/loom.ts` |
 | `weaver-composer-shortcut` | styled | `ui/loom.ts` |
-| `weaver-composer-shortcuts` | styled | `ui/loom.ts` |
+| `weaver-composer-shortcuts` | styled | `ui/loom-motion.ts`<br>`ui/loom.ts` |
 | `weaver-composer-shortcuts-close` | styled | `ui/loom.ts` |
 | `weaver-composer-shortcuts-list` | styled | `ui/loom.ts` |
 | `weaver-composer-shortcuts-title` | styled | `ui/loom.ts` |
+| `weaver-composer-stage` | styled | `ui/loom.ts` |
 | `weaver-composer-state` | styled | `ui/loom.ts` |
 | `weaver-composer-status` | styled | `ui/loom.ts` |
 | `weaver-composer-timing` | styled | `ui/loom-timing.ts` |
@@ -1236,7 +1245,7 @@ Where you have been: a real history, with a cursor, not a stack that eats itself
 | `HISTORY_LIMIT` | const | 76 | `export const HISTORY_LIMIT = 64` | — | `tests/navigation.test.ts` |
 | `initialHistory` | function | 79 | `export function initialHistory(): NavigationHistory` | `main.ts` | `tests/navigation.test.ts` |
 | `record` | function | 91 | `export function record(history: NavigationHistory, stop: Stop, limit = HISTORY_LIMIT): NavigationHistory` | `core/alignments.ts`<br>`core/capture.ts`<br>`core/insert.ts`<br>`core/portal-history.ts`<br>`core/portals.ts`<br>`core/reference.ts`<br>`core/reviews.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-keys.ts`<br>`editor/stopwatch-widget.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/engine.ts`<br>`entries/local-state.ts`<br>`entries/loom.ts`<br>`entries/plugin-data.ts`<br>`entries/portals.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts`<br>`main.ts`<br>`model/whisper-model.ts`<br>`reading/close-processor.ts`<br>`ui/loom-timing.ts`<br>`ui/loom.ts` | `tests/alignments.test.ts`<br>`tests/capture-model-controller.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/capture.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/day-stats.test.ts`<br>`tests/duration.test.ts`<br>`tests/entry-keys.test.ts`<br>`tests/entry-plans.test.ts`<br>`tests/local-state.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/portal-controller.test.ts`<br>`tests/portal-history.test.ts`<br>`tests/portals.test.ts`<br>`tests/record-format.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/reference.test.ts`<br>`tests/reviews.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/writer.test.ts` |
-| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom.ts` | `tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
+| `back` | function | 108 | `export function back(history: NavigationHistory):` | `core/capture-state.ts`<br>`core/capture.ts`<br>`core/color.ts`<br>`core/contexts.ts`<br>`core/day.ts`<br>`core/duration.ts`<br>`core/entries.ts`<br>`core/frame.ts`<br>`core/insert.ts`<br>`core/loom.ts`<br>`core/portals.ts`<br>`core/whisper.ts`<br>`editor/entry-decorations.ts`<br>`editor/entry-frame.ts`<br>`entries/capture-model-controller.ts`<br>`entries/capture-store.ts`<br>`entries/capture.ts`<br>`entries/context-workspaces.ts`<br>`entries/day-note.ts`<br>`entries/engine.ts`<br>`entries/reference.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`model/whisper-runner.ts`<br>`notices.ts`<br>`settings.ts`<br>`ui/loom-motion.ts`<br>`ui/loom.ts` | `tests/capture-end-to-end.test.ts`<br>`tests/capture-store.test.ts`<br>`tests/context-workspaces.test.ts`<br>`tests/contexts.test.ts`<br>`tests/day-note.test.ts`<br>`tests/entry-decorations.test.ts`<br>`tests/loom-surface.test.ts`<br>`tests/loom.test.ts`<br>`tests/navigation.test.ts`<br>`tests/plugin.test.ts`<br>`tests/reference-controller.test.ts`<br>`tests/settings.test.ts`<br>`tests/thought-index.test.ts`<br>`tests/whisper-act.test.ts`<br>`tests/writer.test.ts` |
 | `forward` | function | 115 | `export function forward(history: NavigationHistory):` | `core/capture-state.ts`<br>`entries/loom.ts`<br>`main.ts`<br>`notices.ts` | `tests/navigation.test.ts`<br>`tests/plugin.test.ts` |
 | `canGoBack` | function | 124 | `export function canGoBack(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
 | `canGoForward` | function | 129 | `export function canGoForward(history: NavigationHistory): boolean` | `main.ts` | `tests/navigation.test.ts` |
@@ -1299,7 +1308,7 @@ Reading a note's thoughts: the values a reference is drawn from and walked by.
 | `ThoughtSnapshot` | interface | 79 | `export interface ThoughtSnapshot` | `core/capture-state.ts`<br>`entries/reference.ts`<br>`entries/thought-index.ts` | `tests/capture-model-controller.test.ts`<br>`tests/capture-state.test.ts`<br>`tests/reference-controller.test.ts` |
 | `ThoughtSnapshotResult` | type | 92 | `export type ThoughtSnapshotResult = \|` | `entries/thought-index.ts`<br>`ui/loom.ts` | — |
 | `ReferenceReadError` | interface | 97 | `export interface ReferenceReadError` | `entries/reference.ts`<br>`entries/thought-index.ts` | — |
-| `ThoughtRecord` | interface | 106 | `export interface ThoughtRecord` | `entries/reference.ts`<br>`entries/thought-index.ts` | `tests/reference-controller.test.ts`<br>`tests/reference.test.ts` |
+| `ThoughtRecord` | interface | 106 | `export interface ThoughtRecord` | `entries/reference.ts`<br>`entries/thought-index.ts`<br>`ui/loom.ts` | `tests/reference-controller.test.ts`<br>`tests/reference.test.ts` |
 | `ReferenceSequence` | interface | 129 | `export interface ReferenceSequence` | `entries/reference.ts`<br>`entries/thought-index.ts` | `tests/reference-controller.test.ts` |
 | `ReferenceMove` | type | 135 | `export type ReferenceMove = "previous" \| "next" \| "parent" \| "child" \| "first" \| "last"` | `entries/reference.ts` | — |
 | `recognisePath` | function | 138 | `export function recognisePath( path: string, contexts: readonly WeavingContext[] ):` | `entries/thought-index.ts` | `tests/thought-index.test.ts` |
@@ -1828,6 +1837,18 @@ How an invitation is named, in the words a writer reads.
 | `arrivalLabel` | function | 35 | `export function arrivalLabel(occurrence: PortalOccurrence, contextName?: string): string` | — | — |
 | `invitationName` | function | 41 | `export function invitationName(occurrence: PortalOccurrence): string` | — | — |
 
+#### `src/ui/loom-motion.ts`
+
+The Loom's one motion director: the gestures a surface change earns.
+
+| symbol | kind | line | signature | used by | tested by |
+| --- | --- | --- | --- | --- | --- |
+| `MotionSurface` | type | 24 | `export type MotionSurface = "card" \| "strip" \| "none"` | — | — |
+| `MotionLayer` | type | 27 | `export type MotionLayer = "none" \| "menu" \| "shortcuts" \| "dest"` | — | — |
+| `MotionGesture` | type | 30 | `export type MotionGesture = \| "rise" \| "sink" \| "seal" \| "pop" \| "panel-up" \| "panel-down" \| "walk-fwd" \| "walk-back" \| "row-open" \| "nav-fade"` | — | — |
+| `MotionFeatures` | interface | 43 | `export interface MotionFeatures` | — | — |
+| `LoomMotion` | class | 98 | `export class LoomMotion` | `ui/loom.ts` | `tests/loom-motion.test.ts` |
+
 #### `src/ui/loom-timing.ts`
 
 The loom's timing group: a clock half and a writing duration, in the shared
@@ -1845,10 +1866,10 @@ The Loom: the one compact surface a thought is written in, from anywhere.
 
 | symbol | kind | line | signature | used by | tested by |
 | --- | --- | --- | --- | --- | --- |
-| `CaptureSurface` | interface | 37 | `export interface CaptureSurface` | — | — |
-| `LoomHost` | interface | 58 | `export interface LoomHost` | — | — |
-| `LoomInvitation` | interface | 83 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
-| `Loom` | class | 169 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts` | `tests/frame.test.ts`<br>`tests/loom.test.ts` |
+| `CaptureSurface` | interface | 43 | `export interface CaptureSurface` | — | — |
+| `LoomHost` | interface | 64 | `export interface LoomHost` | — | — |
+| `LoomInvitation` | interface | 89 | `export interface LoomInvitation` | — | `tests/loom.test.ts` |
+| `Loom` | class | 172 | `export class Loom` | `core/capture-state.ts`<br>`core/frame.ts`<br>`core/loom.ts`<br>`core/reference.ts`<br>`entries/context-workspaces.ts`<br>`entries/loom.ts`<br>`entries/portals.ts`<br>`entries/writer.ts`<br>`main.ts`<br>`ui/loom-motion.ts` | `tests/frame.test.ts`<br>`tests/loom-motion.test.ts`<br>`tests/loom.test.ts` |
 
 #### `src/ui/markdown-pane.ts`
 

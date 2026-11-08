@@ -47,7 +47,7 @@ replaces the outline — one thought at a time, walked and searched without writ
 | **Opening** | A minute a schedule offers, `[04:33:00, 04:34:00)`. Writing that *begins* inside it was written through it; a minute nobody entered is gone. | A lock, a permission, a gate. |
 | **Loom** | The one compact, non-modal surface a thought is written in from anywhere: a destination control, a dominant prose field, and one explicit Save. Its reference is optional and starts collapsed. It holds one unsaved draft and writes nothing until Save. | A modal, a second editor, a note. |
 | **Invitation** | A schedule's call to action, one strip in the same surface. It never writes and never takes focus; whether writing counts is decided by the beginning, not by a click. | A locked window, a prepared slot, an obligation. |
-| **Reference** | The Loom's optional upper panel: one thought at a time, its position and authored text, searched and walked without writing. | A second editor, the outline, a modal. |
+| **Reference** | The Loom's optional upper panel: the scoped Tapestry as one woven list — every thought a row with its address, excerpt and moment — walked, searched and opened into a full reading without writing. | A second editor, the outline, a modal. |
 | **Stop** | The place a move left: a thought, a caret and a scroll offset — or a whole workspace — remembered in the history. | A bookmark in the file, a link. |
 | **Close** | `✓ HH:MM:SS`, one line, at most once per day. A decision, not attendance. | A required step, a streak. |
 | **Whisper** | The model's reading of an entry: one to three `~` rows above its prose — a name, then at most one each of `learn:`, `next:`, and the `ask:` question it leaves open. | A summary, a title, a heading, a second author. |

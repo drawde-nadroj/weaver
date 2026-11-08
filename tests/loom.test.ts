@@ -56,7 +56,6 @@ interface Run {
   root(): ShimElement;
   card(): ShimElement;
   resume(): ShimElement;
-  chooser(): ShimElement;
   menu(): ShimElement;
   status(): ShimElement;
   openings: string[];
@@ -118,7 +117,6 @@ function harness(source = NOTE_SOURCE, path = NOTE_PATH): Run {
     root: () => bodyQuery(".weaver-composer") as ShimElement,
     card: () => bodyQuery(".weaver-composer-card") as ShimElement,
     resume: () => bodyQuery(".weaver-composer-resume") as ShimElement,
-    chooser: () => bodyQuery(".weaver-composer-chooser") as ShimElement,
     menu: () => bodyQuery(".weaver-composer-menu") as ShimElement,
     status: () => bodyQuery(".weaver-composer-status") as ShimElement,
     openings,
@@ -446,36 +444,53 @@ describe("discarding", () => {
   });
 });
 
-describe("the destination chooser", () => {
-  it("replaces the content area, preserves the draft, and returns to it", () => {
+describe("the destination popover", () => {
+  it("stays an anchored layer over the draft and retargets it in place", () => {
     const run = harness();
-    type(run, "kept through the chooser");
+    type(run, "kept through the popover");
     run.body().scrollTop = 120;
     run.body().dispatch("scroll");
-
     run.button(".weaver-composer-dest")!.click();
 
-    expect(run.chooser().hasAttribute("hidden")).toBe(false);
-    expect(run.controller.state.text).toBe("kept through the chooser");
+    const popover = run.button(".weaver-composer-dest-popover");
+    expect(popover?.hasAttribute("hidden")).toBe(false);
+    expect(run.controller.state.text).toBe("kept through the popover");
+    expect(run.button(".weaver-composer-dest")?.getAttribute("aria-expanded")).toBe("true");
 
-    const rows = run.chooser().querySelectorAll(".weaver-composer-chooser-row");
-    const spanish = rows[1];
-    expect(spanish).toBeDefined();
-    spanish?.querySelector(".weaver-composer-chooser-write")?.click();
+    const rows = popover?.querySelectorAll(".weaver-composer-dest-row") ?? [];
+    expect(rows).toHaveLength(2);
+    // The current Realm states where the draft is; it offers no second opinion.
+    expect(rows[0]?.querySelector(".weaver-composer-dest-here")?.textContent).toBe("Writing here");
+    rows[1]?.querySelector(".weaver-composer-dest-write")?.click();
 
     expect(run.writes).toEqual(["ctx-spanish"]);
-    expect(run.chooser().hasAttribute("hidden")).toBe(true);
-    expect(run.input().value).toBe("kept through the chooser");
+    expect(popover?.hasAttribute("hidden")).toBe(true);
+    expect(run.input().value).toBe("kept through the popover");
     expect(run.body().scrollTop).toBe(120);
   });
 
   it("keeps workspace travel a distinct secondary action", () => {
     const run = harness();
     run.button(".weaver-composer-dest")!.click();
-    const rows = run.chooser().querySelectorAll(".weaver-composer-chooser-row");
-    rows[0]?.querySelector(".weaver-composer-chooser-travel")?.click();
+    const rows = run.button(".weaver-composer-dest-popover")?.querySelectorAll(".weaver-composer-dest-row") ?? [];
+    rows[0]?.querySelector(".weaver-composer-dest-travel")?.click();
     expect(run.travels).toEqual(["main"]);
     expect(run.writes).toEqual([]);
+  });
+
+  it("is one front layer at a time, and Escape hands the keys back to its chip", () => {
+    const run = harness();
+    run.button(".weaver-composer-dest")!.click();
+    expect(run.button(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(false);
+    run.button(".weaver-composer-more")!.click();
+    expect(run.button(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(true);
+    expect(run.menu().hasAttribute("hidden")).toBe(false);
+    run.button(".weaver-composer-dest")!.click();
+    expect(run.menu().hasAttribute("hidden")).toBe(true);
+    expect(run.button(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(false);
+    run.root().dispatch("keydown", { key: "Escape" });
+    expect(run.button(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(true);
+    expect(run.root().hasAttribute("hidden")).toBe(false);
   });
 });
 
@@ -598,57 +613,69 @@ describe("the saved state", () => {
 describe("browsing and composing one Loom", () => {
   const twoThoughts = `${NOTE_SOURCE}\n{ 2.1.2 }\nsecond thought\n+ 00:01:14 2026-11-05 10:15:36\n`;
 
-  it("reads both recorded clocks and branches from the displayed thought on Enter", async () => {
+  it("lists the reading in time order and opens the selected thought on Enter", async () => {
     const run = harness(twoThoughts);
     run.controller.discardDraft();
     await browse(run);
     expect(timing("beginning")).toBe("10:15:36");
     expect(timing("duration")).toBe("00:01:14");
-    run.root().dispatch("keydown", {
-      key: "Enter", target: run.button(".weaver-composer-reference-tools")
-    });
+
+    const list = run.button(".weaver-composer-browse-list");
+    const rows = list?.querySelectorAll(".weaver-composer-browse-row") ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.querySelector(".weaver-composer-browse-address")?.textContent).toBe("{ 2.1.2 }");
+    expect(rows[1]?.querySelector(".weaver-composer-browse-text")?.textContent).toBe("second thought");
+    expect(rows[1]?.querySelector(".weaver-composer-browse-time")?.textContent).toBe("10:15");
+    expect(rows[1]?.hasAttribute("data-selected")).toBe(true);
+
+    run.root().dispatch("keydown", { key: "Enter", target: list });
+    await flush();
+    const open = run.button(".weaver-composer-browse-row[data-expanded]");
+
+    const reading = open?.querySelector(".weaver-composer-reference-prose .cm-content");
+    expect(reading?.value).toBe("second thought");
+    expect(open?.querySelector(".weaver-composer-reference-prose .weaver-markdown")?.getAttribute("data-readonly")).toBe("true");
+    expect(run.requests).toEqual([]);
+
+    open?.querySelector(".weaver-composer-browse-branch")?.click();
     await flush();
     expect(run.controller.state.phase).toBe("editing");
     expect(run.controller.state.parent?.n).toBe(2);
     expect(run.controller.state.beginning).toBeNull();
-    expect(timing("duration")).toBe("00:00:00");
     expect(run.requests).toEqual([]);
   });
 
-  it("accepts a search result before a fresh Enter can branch", async () => {
+  it("accepts a search result, then reads it without branching", async () => {
     const run = harness(twoThoughts);
     run.controller.discardDraft();
     await browse(run);
-    run.button(".weaver-composer-reference-search-toggle")?.click();
+    run.root().dispatch("keydown", { key: "/", target: run.button(".weaver-composer-browse-list") });
+    const field = run.button(".weaver-composer-browse-search");
+    expect(field?.hasAttribute("hidden")).toBe(false);
     await run.reference.setSearchText("typed");
-    const field = run.button(".weaver-composer-reference-search");
     field?.dispatch("keydown", { key: "Enter" });
     expect(run.reference.model.search.kind).toBe("accepted");
-    expect(run.controller.state.phase).toBe("closed");
     expect(run.reference.model.selection?.n).toBe(1);
-    run.root().dispatch("keydown", {
-      key: "Enter", target: run.button(".weaver-composer-reference-tools")
-    });
+    run.root().dispatch("keydown", { key: "Enter", target: run.button(".weaver-composer-browse-list") });
     await flush();
-    expect(run.controller.state.parent?.n).toBe(1);
+    expect(run.reference.model.selection?.n).toBe(1);
+    expect(run.controller.state.phase).toBe("closed");
     expect(run.requests).toEqual([]);
   });
 
-  it("resumes a hidden draft without replacing its words, selection or parent", async () => {
+  it("resumes a hidden draft from its own control without replacing its words", async () => {
     const run = harness(twoThoughts);
     type(run, "a draft to keep");
     run.controller.setSelection({ from: 2, to: 7 });
     run.input().dispatch("keydown", { key: "Escape" });
     await browse(run);
     run.root().dispatch("keydown", {
-      key: "Escape", target: run.button(".weaver-composer-reference-tools")
+      key: "Escape", target: run.button(".weaver-composer-browse-list")
     });
     expect(run.card().hasAttribute("hidden")).toBe(true);
     expect(run.controller.state.text).toBe("a draft to keep");
     await browse(run);
-    run.root().dispatch("keydown", {
-      key: "Enter", target: run.button(".weaver-composer-reference-tools")
-    });
+    run.button(".weaver-composer-branch")?.click();
     await flush();
     expect(run.controller.state.text).toBe("a draft to keep");
     expect(run.controller.state.selection).toEqual({ from: 2, to: 7 });
@@ -659,21 +686,24 @@ describe("browsing and composing one Loom", () => {
     expect(run.requests).toEqual([]);
   });
 
-  it("keeps reading clocks separate from the draft and arrows out of prose selection", async () => {
+  it("walks the list with arrows and leaves prose selection alone", async () => {
     const run = harness(twoThoughts);
     type(run, "the active draft");
     await browse(run);
     run.advance(2400);
     expect(timing("duration")).toBe("00:00:02");
-    // The draft's clock reads the shared present; the reference keeps its record.
+    // The draft's clock reads the shared present; the reading keeps its record.
     expect(timing("beginning")).toBe("09:00:02");
     expect(timing("duration", ".weaver-composer-reference")).toBe("00:01:14");
     expect(timing("beginning", ".weaver-composer-reference")).toBe("10:15:36");
-    const prose = run.button(".weaver-composer-reference-prose .cm-content");
+
+    run.root().dispatch("keydown", { key: "Enter", target: run.button(".weaver-composer-browse-list") });
+    const prose = run.button(".weaver-composer-browse-row[data-expanded] .cm-content");
     run.root().dispatch("keydown", { key: "ArrowUp", target: prose });
-    run.root().dispatch("keydown", { key: "ArrowLeft", target: run.button(".weaver-composer-reference-tools") });
     expect(run.reference.model.selection?.n).toBe(2);
-    run.root().dispatch("keydown", { key: "ArrowUp", target: run.button(".weaver-composer-reference-tools") });
+    run.root().dispatch("keydown", { key: "ArrowLeft", target: run.button(".weaver-composer-browse-list") });
+    expect(run.reference.model.selection?.n).toBe(2);
+    run.root().dispatch("keydown", { key: "ArrowUp", target: run.button(".weaver-composer-browse-list") });
     await flush();
     expect(run.reference.model.selection?.n).toBe(1);
     expect(run.controller.state.text).toBe("the active draft");
@@ -685,7 +715,7 @@ describe("browsing and composing one Loom", () => {
     run.controller.discardDraft();
     await browse(run);
     fireWindowEvent("keydown", {
-      key: "Enter", metaKey: true, target: run.button(".weaver-composer-reference-tools")
+      key: "Enter", metaKey: true, target: run.button(".weaver-composer-browse-list")
     });
     await flush();
     expect(run.controller.state.phase).toBe("editing");

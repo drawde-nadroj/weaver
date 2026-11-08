@@ -208,6 +208,13 @@ export class ShimElement {
     node.parentNode = parent;
   }
 
+  /** Replaces every child with the given nodes, as the native method does. */
+  replaceChildren(...nodes: ShimElement[]): void {
+    this.children = [];
+    this.text = "";
+    for (const node of nodes) this.appendChild(node);
+  }
+
   remove(): void {
     const parent = this.parentNode;
     if (parent === null) return;

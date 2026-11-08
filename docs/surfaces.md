@@ -284,10 +284,13 @@ and holds its displayed duration while the clock continues. Saved or browsed tim
 comes from the note; missing values remain unknown, never invented zero.
 When a reference and draft are visible together, each has its own timing group.
 
-- Header: a compact, left-aligned destination control (`🧵 Main ▾`), Reference and
-  More. The writing control opens the chooser; browsing shares the emoji and name
-  with a sequence position. There is no repeated branch label in the header;
-  when viewing differs from writing, one quiet line names the viewing Realm.
+- Header: a compact, left-aligned destination pill (`🧵 Main ▾`), Reference and
+  More. The pill opens the destination popover — one row per Realm, anchored under
+  it — and never swaps the prose for a panel. Browsing re-labels the same pill with
+  the reading's Realm and says `Reading destination`, so a scope change re-scopes
+  the list without pretending a draft is being written. There is no repeated
+  branch label in the header; when viewing differs from writing, one quiet line
+  names the viewing Realm.
 - Editing: one persistent native Obsidian Markdown editor grows with its content
   rather than reserving an empty field. It is a fileless native view: no note is
   bound, so native autosave cannot publish it. Native formatting and toolbar
@@ -327,24 +330,44 @@ When a reference and draft are visible together, each has its own timing group.
   excerpt — anchored above the visible bottom controls and the keyboard boundary.
   `Resume` restores the draft and caret *before* focusing. The strip measures itself,
   never a height retained from the expanded card.
-- Reference: rendered Markdown with its own dimension colour and frame-style
-  address. Its sequence position is in the header. Previous, Next and Search
-  appear once, in the bottom toolbar, with shortcut prefixes; there is no duplicate
-  instruction paragraph or Invitations tab. Unmodified up/down arrows and slash
-  apply only while navigation owns focus, never while selecting prose or typing.
-  Left/right retain native text behaviour; modified navigation shortcuts are listed
-  in More. Enter branches from the displayed thought; modified Enter starts a
-  red first-dimension Thread in that thought's destination. Search Enter accepts
-  the loaded match before a fresh Enter can branch. A retained draft takes
-  precedence: Resume draft restores its text, selection and original parent.
+- Reference: the scoped Tapestry as one woven list. A head carries the search
+  field and a live count; each row carries its dimension-coloured thread mark, its
+  address, its first line and its recorded moment, in reading order. Up/down walk
+  the selection with Home/End at the ends, `/` starts a scoped search, and Enter
+  opens the selected row into the whole rendered Markdown, with Branch and Open in
+  note beside it; a second Enter closes it. Nothing wraps, and nothing is walked
+  while prose selection, the search field or a draft has the keys. Modified Enter
+  starts a red first-dimension Thread in the selected thought's destination, and
+  Search Enter accepts the loaded match before anything else can act. A retained
+  draft is resumed by its own `Resume draft` control, which restores its text,
+  selection and original parent; browsing never consumes it.
 - More contains Open in note, Copy text, Discard draft and Keyboard shortcuts,
   not duplicate navigation. Open in note is offered for an available reference.
   Copy follows the displayed reading or draft; Discard is only for an editable
   unsaved draft. The menu supports arrows, Home/End and Escape. Destructive
   confirmation defaults to Keep writing and restores editor focus on cancellation.
-- The chooser has a visible Back action and preserves the mounted editor,
-  selection, undo history and scroll position. Escape still cancels search,
-  returns from the chooser or hides without discarding; its hint is not displayed.
+- The destination popover preserves the mounted editor, selection, undo history
+  and scroll position. It is one front layer at a time with the More menu and the
+  shortcut sheet, answers arrows, Home/End and Escape like the menu, and hands the
+  keys back to the pill when it closes. Escape cancels search, closes a front layer
+  or hides without discarding; its hint is not displayed.
+
+The surface's motion is one gesture per change, and it never moves a layout
+value: the root carries a single `data-motion` token that
+`src/ui/loom-motion.ts#LoomMotion` sets after the DOM drew and clears when the
+animation ends, so two animations never run over one element. A surface arriving
+rises from the bottom edge, a panel trades places with a fade, a walked row steps,
+an opened row grows by FLIP against the rects it had, and a settled save draws one
+dimension-coloured thread around the rounded edge as the dashed draft frame
+resolves solid. The exit is held for the sink's duration before `hidden` is
+applied, so a re-open inside that window cancels the hide and rises instead.
+Desktop material is frosted glass over the note, with an opaque fallback where
+`backdrop-filter` is unavailable; a phone's surface is opaque, because the
+keyboard slides it rather than revealing what is behind it. Typing growth never
+animates, and a reader who asked for reduced motion gets every final state at
+once — the director gates on `Element.animate` and the media query, and one
+stylesheet block draws no keyframe at all.
+<!-- claim: src/ui/loom-motion.ts#LoomMotion @1f21ebd76c -->
 
 Its box follows the content up to the usable viewport. `loomKeyboardViewport`
 in `src/core/frame.ts` intersects browser bounds with the native keyboard boundary;
@@ -420,18 +443,23 @@ is a child of the frame, not of the shrink-wrapped head.
 ### The Loom's upper panels
 
 The Loom is one non-modal, bottom-anchored dialog; its upper area is the reading
-surface, and the same area swaps to the Tapestry chooser or the invitation list.
+surface — the Tapestry browser — and the invitation strip when nothing else is
+open. The stage holds whatever trades places there, so the draft keeps its node,
+its scroll and its history while the reading comes and goes.
 
-- The reference shows one thought at a time: position, colour-coded address and
-  authored Markdown. In its navigation toolbar, `↑`/`↓` move, `/` starts search,
-  and `Enter` opens the selected original. Enter in the search field accepts a
-  match; Escape cancels before closing the panel. Prose selection keeps its own
-  arrow keys. Browsing itself never opens or changes a note.
-- The Tapestry chooser lists every destination with `Write here` (retarget the open
+- The browser lists the scoped reading in one woven column: thread mark, address,
+  excerpt and moment per row, with the head's search field and a live count above
+  it. It never writes: a walk selects, an expansion reads, and Open in note is the
+  one act that leaves the surface.
+- The selected row opens into the whole rendered Markdown — its own dimension
+  colour, address and timing — with Branch (the next dimension's colour) and Open
+  in note. Branch validates the row as a parent before the new draft appears, and
+  the parent excerpt then stays above the prose.
+- The destination popover lists every Realm with `Write here` (retarget the open
   draft) and `Open workspace` (a deliberate travel). Choosing a row for writing
-  does not move the screen.
-- The invitation list and idle invitation row read the same outstanding offers.
-  Neither inserts a second action into an active draft.
+  does not move the screen, and a completed visit leaves the popover behind.
+- The invitation row reads the same outstanding offers. It never inserts a second
+  action into an active draft.
 
 ### The close mark
 

@@ -4,17 +4,22 @@
  * It is a single non-modal dialog with a small header and persistent Markdown
  * writing pane. Desktop retains an identity line and footer actions; mobile
  * places circular actions beside the content-sized prose, with duration below.
- * The destination control opens a chooser in place
- * of the prose, so the writer never scrolls past destination machinery to reach
- * the words. Reference context is optional and starts collapsed; it is a second
- * persistent pane, read-only, with its own navigation. A saved thought keeps the
- * same editor node, its history and its scroll, and turns read-only instead of
- * being replaced by rendered HTML.
+ * The destination pill opens an anchored popover, so the writer never scrolls
+ * past destination machinery to reach the words and the prose is never replaced
+ * by a panel.
+ *
+ * Reading is optional and starts collapsed. It is the scoped Tapestry as one
+ * woven list — a row per thought — walked, searched and opened into a full
+ * read-only reading, in a second persistent pane that keeps its own timing. A
+ * saved thought keeps the same editor node, its history and its scroll, and
+ * turns read-only instead of being replaced by rendered HTML.
  *
  * The renderer owns only presentation and ephemeral interaction: mounted DOM,
  * the composing flag, measurements and a hint overlay. Every semantic action is
  * a command on the controller or the reference owner, so the note is never
- * written by opening, browsing, hiding or resizing this surface.
+ * written by opening, browsing, hiding or resizing this surface. Whatever a
+ * surface change animates is decided in one place, `ui/loom-motion.ts`; this
+ * class only publishes the state it drew.
  */
 
 import { type App } from "obsidian";
@@ -25,12 +30,13 @@ import { contextDayForPath, contextDayPath, type WeavingContext } from "../core/
 import { dayKey } from "../core/day";
 import { formatAddress } from "../core/entries";
 import { loomAnchor, loomKeyboardViewport, revealScrollDelta, type LoomAnchor, type LoomViewport } from "../core/frame";
-import type { ThoughtSnapshotResult } from "../core/reference";
+import type { ThoughtRecord, ThoughtSnapshotResult } from "../core/reference";
 import type { CaptureView } from "../entries/capture-model-controller";
 import type { EntryClock } from "../entries/clock";
 import type { ReferenceController, ReferenceModel } from "../entries/reference";
 import { appendDigitRuns } from "./dcn";
 import { MarkdownPane, type PaneSelection } from "./markdown-pane";
+import { LoomMotion } from "./loom-motion";
 import { LoomTiming, type ClockFace, type LoomTimingMode } from "./loom-timing";
 
 /** The lower surface the Loom reads and commands; either controller satisfies it. */
@@ -86,9 +92,6 @@ export interface LoomInvitation {
   opening: string;
   phase: "approaching" | "available";
 }
-
-/** A contextual panel that temporarily replaces the composition area. */
-type View = "write" | "chooser";
 
 /** One transient message, shown in the rail until it is replaced or expires. */
 interface Feedback {
@@ -179,18 +182,16 @@ export class Loom {
   private readonly shortcuts: HTMLElement;
   private readonly shortcutsClose: HTMLButtonElement;
   private readonly body: HTMLElement;
+  /** The part of the body whose panels trade places: reading, writing, chooser. */
+  private readonly stageEl: HTMLElement;
   private readonly contextEl: HTMLElement;
   private readonly referenceEl: HTMLElement;
-  private readonly referenceTools: HTMLElement;
-  private readonly refPrev: HTMLButtonElement;
-  private readonly refNext: HTMLButtonElement;
-  private readonly refPosition: HTMLElement;
-  private readonly refSearchButton: HTMLButtonElement;
-  private readonly referenceSearchField: HTMLInputElement;
-  private readonly referenceAddress: HTMLElement;
-  private readonly referenceNotice: HTMLElement;
+  private readonly browseHead: HTMLElement;
+  private readonly browseSearch: HTMLInputElement;
+  private readonly browseCount: HTMLElement;
+  private readonly browseList: HTMLElement;
   private readonly referenceProse: HTMLElement;
-  private readonly chooserEl: HTMLElement;
+  private readonly destPopover: HTMLElement;
   private readonly writingEl: HTMLElement;
   private readonly identityEl: HTMLElement;
   private readonly proseEl: HTMLElement;
@@ -213,6 +214,8 @@ export class Loom {
   private readonly resume: HTMLElement;
   private readonly resumeButton: HTMLButtonElement;
   private readonly resumeDismiss: HTMLButtonElement;
+  /** The one director of what a surface change animates. */
+  private readonly motion: LoomMotion;
 
   private pane: MarkdownPane | null = null;
   private refPane: MarkdownPane | null = null;
@@ -222,10 +225,11 @@ export class Loom {
   private unsubscribeClock: (() => void) | null = null;
   private composing = false;
   private measuredHeight = 0;
-  private view: View = "write";
   private referenceExpanded = false;
   private menuOpen = false;
   private shortcutsOpen = false;
+  /** True while the header's destination popover is the front layer. */
+  private destOpen = false;
   private discardArmed = false;
   private destroyed = false;
   private returnFocus: HTMLElement | null = null;
@@ -243,6 +247,8 @@ export class Loom {
   private composerReadOnly = false;
   /** The reading document currently installed in the reference pane. */
   private referenceKey = "";
+  /** True while the selected browse row carries its inline reading. */
+  private browseExpanded = false;
   /** The parent excerpt stays open while this same reading remains current. */
   private contextParent: ThoughtRef | null = null;
   /** Lookup identity also guards against late reads after another draft or save. */
@@ -253,6 +259,8 @@ export class Loom {
   private feedback: Feedback | null = null;
   private paintedDuration = 0;
   private feedbackTimer: number | null = null;
+  /** The direction a browse arrow just walked, spent by the next paint. */
+  private walk: "fwd" | "back" | null = null;
 
   private readonly onKeyDown = (event: KeyboardEvent): void => this.handleKey(event);
   /**
@@ -270,11 +278,11 @@ export class Loom {
     if (event.key !== "Enter" || event.altKey || event.shiftKey) return;
     if (!event.metaKey && !event.ctrlKey) return;
     if (event.isComposing || this.composing) return;
-    if (this.view !== "write" || this.mountedIn === null) return;
+    if (this.mountedIn === null) return;
     if (this.menuOpen || this.shortcutsOpen) return;
     const node = event.target;
     if (!isNode(node) || !this.root.contains(node)) return;
-    if (within(this.referenceSearchField, node)) return;
+    if (within(this.browseSearch, node)) return;
     event.preventDefault();
     event.stopPropagation();
     this.activateEnter(event);
@@ -291,6 +299,14 @@ export class Loom {
       !this.moreButton.contains(target as Node)
     ) {
       this.shortcutsOpen = false;
+      this.render();
+    }
+    if (
+      this.destOpen &&
+      !this.destPopover.contains(target as Node) &&
+      !this.destButton.contains(target as Node)
+    ) {
+      this.destOpen = false;
       this.render();
     }
   };
@@ -372,76 +388,50 @@ export class Loom {
     this.referenceEl.setAttribute("hidden", "");
     this.referenceEl.tabIndex = -1;
 
+    // The browser's head: one search field, one live count. The field is built
+    // once and never rebuilt, so typing a query is never interrupted by a
+    // render; the count speaks the empty, loading and failed states.
+    this.browseHead = doc.createElement("div");
+    this.browseHead.className = "weaver-composer-browse-head";
 
-    this.referenceTools = doc.createElement("div");
-    this.referenceTools.className = "weaver-composer-reference-tools";
-    this.referenceTools.setAttribute("role", "toolbar");
-    this.referenceTools.setAttribute("aria-label", "Thought navigation");
-    this.referenceTools.tabIndex = 0;
+    this.browseSearch = doc.createElement("input");
+    this.browseSearch.type = "search";
+    this.browseSearch.className = "weaver-composer-browse-search";
+    this.browseSearch.setAttribute("aria-label", "Search thoughts");
+    this.browseSearch.setAttribute("hidden", "");
 
-    const referenceNav = doc.createElement("div");
-    referenceNav.className = "weaver-composer-reference-nav";
+    this.browseCount = doc.createElement("div");
+    this.browseCount.className = "weaver-composer-browse-count";
+    this.browseCount.setAttribute("role", "status");
+    this.browseCount.setAttribute("aria-live", "polite");
 
-    this.refPrev = doc.createElement("button");
-    this.refPrev.type = "button";
-    this.refPrev.className = "weaver-composer-reference-prev";
-    this.refPrev.textContent = "↑ · Previous";
-    this.refPrev.setAttribute("aria-label", "Previous thought");
-    this.refPrev.title = "Previous thought (↑)";
+    this.browseHead.appendChild(this.browseSearch);
+    this.browseHead.appendChild(this.browseCount);
 
-    this.refNext = doc.createElement("button");
-    this.refNext.type = "button";
-    this.refNext.className = "weaver-composer-reference-next";
-    this.refNext.textContent = "↓ · Next";
-    this.refNext.setAttribute("aria-label", "Next thought");
-    this.refNext.title = "Next thought (↓)";
+    // The list is the one keyboard surface: arrows walk it, Enter reads a row.
+    this.browseList = doc.createElement("div");
+    this.browseList.className = "weaver-composer-browse-list";
+    this.browseList.setAttribute("role", "listbox");
+    this.browseList.setAttribute("aria-label", "Thoughts in this reading");
+    this.browseList.tabIndex = 0;
 
-    this.refPosition = doc.createElement("span");
-    this.refPosition.className = "weaver-composer-reference-position";
-    this.refPosition.setAttribute("aria-live", "polite");
-    this.header.insertBefore(this.refPosition, this.moreButton);
-
-    this.refSearchButton = doc.createElement("button");
-    this.refSearchButton.type = "button";
-    this.refSearchButton.className = "weaver-composer-reference-search-toggle";
-    this.refSearchButton.textContent = "/ · Search";
-    this.refSearchButton.setAttribute("aria-label", "Search thoughts");
-    this.refSearchButton.title = "Search (/)";
-
-    this.referenceSearchField = doc.createElement("input");
-    this.referenceSearchField.type = "search";
-    this.referenceSearchField.className = "weaver-composer-reference-search";
-    this.referenceSearchField.setAttribute("aria-label", "Search thoughts");
-    this.referenceSearchField.setAttribute("hidden", "");
-
-    referenceNav.appendChild(this.refPrev);
-    referenceNav.appendChild(this.refNext);
-    this.referenceTools.appendChild(referenceNav);
-    this.referenceTools.appendChild(this.refSearchButton);
-
-    this.referenceAddress = doc.createElement("div");
-    this.referenceAddress.className = "weaver-composer-reference-address";
-    this.referenceAddress.setAttribute("hidden", "");
-
-    this.referenceNotice = doc.createElement("div");
-    this.referenceNotice.className = "weaver-composer-reference-notice";
-    this.referenceNotice.setAttribute("role", "status");
-    this.referenceNotice.setAttribute("hidden", "");
-
+    // The expanded row's prose host is stable: the one read-only pane moves
+    // into whichever row is open, so its history and scroll survive the move.
     this.referenceProse = doc.createElement("div");
     this.referenceProse.className = "weaver-composer-reference-prose";
     this.referenceProse.setAttribute("hidden", "");
-    this.referenceEl.appendChild(this.referenceSearchField);
 
-    this.referenceEl.appendChild(this.referenceAddress);
-    this.referenceEl.appendChild(this.referenceNotice);
-    this.referenceEl.appendChild(this.referenceProse);
+    this.referenceEl.appendChild(this.browseHead);
+    this.referenceEl.appendChild(this.browseList);
     this.referenceTiming = new LoomTiming(this.referenceEl);
 
-    this.chooserEl = doc.createElement("div");
-    this.chooserEl.className = "weaver-composer-chooser";
-    this.chooserEl.setAttribute("hidden", "");
-    this.chooserEl.tabIndex = -1;
+    // The destination popover lives on the root, beside the menu: the card
+    // clips its children, and a list opened from the header must not be cut off.
+    this.destPopover = doc.createElement("div");
+    this.destPopover.className = "weaver-composer-dest-popover";
+    this.destPopover.setAttribute("role", "menu");
+    this.destPopover.setAttribute("aria-label", "Destination");
+    this.destPopover.setAttribute("hidden", "");
 
     this.writingEl = doc.createElement("div");
     this.writingEl.className = "weaver-composer-writing";
@@ -457,9 +447,14 @@ export class Loom {
     this.writingEl.appendChild(this.proseEl);
 
     this.body.appendChild(this.contextEl);
-    this.body.appendChild(this.referenceEl);
-    this.body.appendChild(this.writingEl);
-    this.body.appendChild(this.chooserEl);
+    // One stage holds the parts of the upper area that change places: the
+    // reading, the writing and (until it becomes a popover) the chooser. The
+    // context excerpt stays outside it, because it belongs to the draft.
+    this.stageEl = doc.createElement("div");
+    this.stageEl.className = "weaver-composer-stage";
+    this.body.appendChild(this.stageEl);
+    this.stageEl.appendChild(this.referenceEl);
+    this.stageEl.appendChild(this.writingEl);
     this.body.addEventListener("scroll", () => {
       this.bodyScroll = this.body.scrollTop;
     });
@@ -514,7 +509,6 @@ export class Loom {
 
     const controls = doc.createElement("div");
     controls.className = "weaver-composer-controls";
-    controls.appendChild(this.referenceTools);
     controls.appendChild(this.actionsEl);
     this.footer.appendChild(controls);
     this.footer.appendChild(this.stateEl);
@@ -544,11 +538,16 @@ export class Loom {
     // would be cut off on a short draft. The root lays these over the card.
     this.root.appendChild(this.menu);
     this.root.appendChild(this.shortcuts);
+    this.root.appendChild(this.destPopover);
 
     this.wirePanes();
     this.wireActions();
     this.wireReference();
     this.wireHeader();
+
+    // Motion is built last: it needs the finished tree, and it is the only
+    // thing that will ever read a rect for a FLIP.
+    this.motion = new LoomMotion(this.root, this.card, this.resume, this.stageEl, () => this.mountedIn?.window ?? window);
 
     // The resume strip's two buttons act on whatever it is showing right now, so
     // they are bound once, here, and read `renderResume`'s recorded intent.
@@ -668,9 +667,9 @@ export class Loom {
   focusInput(): void {
     const state = this.host.controller.state;
     if (state.phase === "closed") return;
-    if (this.view !== "write" || this.menuOpen || this.shortcutsOpen) {
-      this.view = "write";
+    if (this.menuOpen || this.shortcutsOpen || this.destOpen) {
       this.menuOpen = false;
+      this.destOpen = false;
       this.shortcutsOpen = false;
       this.render();
       this.body.scrollTop = this.bodyScroll;
@@ -703,35 +702,37 @@ export class Loom {
     this.pane.update(state.text, this.draftPath(state), false, state.selection);
   }
 
-  /** Opens a contextual panel, preserving the draft's scroll position. */
-  private beginPanel(view: View): void {
-    if (this.view === "write") this.bodyScroll = this.body.scrollTop;
-    this.view = view;
+  /**
+   * Opens the destination popover under the header chip.
+   *
+   * It is an anchored layer, not a panel: the draft keeps its place, its clock
+   * and its mounted editor, and one front layer is open at a time.
+   */
+  private openDestPopover(): void {
+    this.bodyScroll = this.body.scrollTop;
+    this.renderDestPopover();
+    this.destOpen = true;
     this.menuOpen = false;
     this.shortcutsOpen = false;
     this.render();
-    this.chooserEl.focus();
+    this.frontItems()[0]?.focus();
   }
 
-  /** Returns to the draft, restoring the scroll position it had before. */
-  private returnToWrite(focus = true): void {
-    this.view = "write";
+  /** Closes the popover, optionally handing the keys back to its chip. */
+  private closeDestPopover(restoreFocus: boolean): void {
+    this.destOpen = false;
     this.render();
     this.body.scrollTop = this.bodyScroll;
-    if (focus) this.focusInput();
+    if (restoreFocus) this.destButton.focus();
   }
 
-  /** Opens a contextual panel in place of the content area. */
-  showPanel(panel: "reference" | "tapestries"): void {
-    if (panel === "reference") {
-      this.referenceExpanded = true;
-      this.view = "write";
-      this.render();
-      this.body.scrollTop = this.bodyScroll;
-      this.focusReferenceTools();
-      return;
-    }
-    this.beginPanel("chooser");
+  /** Opens the reading above the prose, when a caller asks for it explicitly. */
+  showPanel(panel: "reference"): void {
+    if (panel !== "reference") return;
+    this.referenceExpanded = true;
+    this.render();
+    this.body.scrollTop = this.bodyScroll;
+    this.focusBrowse();
   }
 
   /**
@@ -745,17 +746,13 @@ export class Loom {
       this.collapseReference();
       return;
     }
-    if (this.view !== "write") {
-      this.view = "write";
-      this.body.scrollTop = this.bodyScroll;
-    }
     this.referenceExpanded = true;
     if (this.host.reference !== undefined) void this.host.reference.refresh();
     this.render();
     // Opening the reading hands it the keys; the draft keeps its text and clock,
     // and clicking back into the prose takes them back.
     if (this.host.reference !== undefined && this.host.reference.model.search.kind !== "editing") {
-      this.focusReferenceTools();
+      this.focusBrowse();
     }
   }
 
@@ -783,6 +780,7 @@ export class Loom {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.motion.dispose();
     const activeWindow = this.mountedIn?.window ?? window;
     if (this.feedbackTimer !== null) {
       activeWindow.clearTimeout(this.feedbackTimer);
@@ -800,6 +798,9 @@ export class Loom {
   /** Draws the surface from the controller and reference projections. */
   render(): void {
     if (this.destroyed || this.mountedIn === null) return;
+    // Everything below replaces the surface's one visible state. The director
+    // records what it is about to replace, and cancels stale gestures first.
+    this.motion.beforePaint();
     const state = this.host.controller.state;
     // Invitations can offer a beginning, never interrupt an existing draft.
     const invitation = state.phase === "closed" ? this.host.invitations?.()[0] ?? null : null;
@@ -815,30 +816,39 @@ export class Loom {
     this.root.removeAttribute("hidden");
     this.root.setAttribute("data-phase", state.phase);
     this.root.setAttribute("data-collapsed", String(state.collapsed));
-    this.root.setAttribute("data-view", this.view);
     this.root.setAttribute("data-reference", this.referenceExpanded ? "expanded" : "collapsed");
     this.root.setAttribute("data-browsing", String(referenceOnly));
 
     if (referenceOnly) {
       this.renderReferenceOnly(state);
       this.layout();
+      this.painted();
       return;
     }
 
     if (state.phase === "closed") {
       this.renderResume(invitation);
       this.layout();
+      this.painted();
       return;
     }
 
     if (state.collapsed) {
       this.renderResume(null, state);
       this.layout();
+      this.painted();
       return;
     }
 
     this.renderCard(state);
     this.layout();
+    this.painted();
+  }
+
+  /** Ends a paint: the director answers what changed, then the walk is spent. */
+  private painted(): void {
+    this.motion.afterPaint(this.walk);
+    this.walk = null;
   }
 
   /** Browsing and composing share the header and fixed timing/action rails. */
@@ -846,16 +856,21 @@ export class Loom {
     this.card.removeAttribute("hidden");
     this.resume.setAttribute("hidden", "");
     this.paintDimension(state);
-    this.setVisible(this.destButton, false);
-    this.setVisible(this.refButton, false);
+    // The chip names where the *reading* lives, so a scope change from the
+    // popover re-scopes the list without pretending a draft is being written.
     const target = this.host.reference?.model.selection ?? null;
     const contextId = target === null ? null : contextDayForPath(target.path, this.host.contexts())?.contextId;
     const name = this.host.contexts().find((context) => context.id === contextId)?.name ?? "Reading";
-    this.viewingEl.textContent = `🧵 ${name}`;
-    this.setVisible(this.viewingEl, true);
+    this.destButton.textContent = `${this.isMobile() ? name : `🧵 ${name}`} ▾`;
+    this.destButton.setAttribute("aria-label", `Reading destination: ${name}`);
+    this.setVisible(this.destButton, true);
+    this.setVisible(this.refButton, false);
+    this.setVisible(this.viewingEl, false);
     this.refButton.setAttribute("aria-expanded", String(this.referenceExpanded));
     this.setVisible(this.menu, this.menuOpen);
     this.setVisible(this.shortcuts, this.shortcutsOpen);
+    this.setVisible(this.destPopover, this.destOpen);
+    this.destButton.setAttribute("aria-expanded", String(this.destOpen));
     this.moreButton.setAttribute("aria-expanded", String(this.menuOpen));
     this.setVisible(this.contextEl, false);
     this.setVisible(this.writingEl, false);
@@ -866,18 +881,7 @@ export class Loom {
     this.paintElapsed();
     this.renderActions(state);
 
-    if (this.view !== "write") {
-      // Auxiliary panels return to the same reading, with the same New Thread offer.
-      this.setVisible(this.referenceEl, false);
-      this.setVisible(this.referenceTools, false);
-      this.setVisible(this.refPosition, false);
-      this.setVisible(this.chooserEl, true);
-      this.searching = false;
-      if (this.view === "chooser") this.renderChooser();
-      return;
-    }
-    this.setVisible(this.chooserEl, false);
-    this.renderReference();
+    this.renderBrowse();
   }
 
   private renderCard(state: CaptureView): void {
@@ -905,6 +909,8 @@ export class Loom {
     this.refButton.setAttribute("aria-expanded", String(this.referenceExpanded));
     this.setVisible(this.menu, this.menuOpen);
     this.setVisible(this.shortcuts, this.shortcutsOpen);
+    this.setVisible(this.destPopover, this.destOpen);
+    this.destButton.setAttribute("aria-expanded", String(this.destOpen));
     this.moreButton.setAttribute("aria-expanded", String(this.menuOpen));
 
     if (this.discardArmed && state.phase !== "editing") this.discardArmed = false;
@@ -918,20 +924,8 @@ export class Loom {
     this.paintElapsed();
     this.setVisible(this.footer, true);
 
-    if (this.view !== "write") {
-      this.setVisible(this.chooserEl, true);
-      this.setVisible(this.proseEl, false);
-      this.setVisible(this.referenceEl, false);
-      this.setVisible(this.referenceTools, false);
-      this.setVisible(this.refPosition, false);
-      this.searching = false;
-      if (this.view === "chooser") this.renderChooser();
-      return;
-    }
-
-    this.setVisible(this.chooserEl, false);
     this.setVisible(this.proseEl, true);
-    this.renderReference();
+    this.renderBrowse();
   }
 
   private destinationLabel(state: CaptureView): string {
@@ -1131,19 +1125,28 @@ export class Loom {
     return true;
   }
 
-  /** Every Enter route shares one state decision; repeats and pending saves do nothing. */
+  /**
+   * Every Enter route shares one state decision; repeats and pending saves do
+   * nothing.
+   *
+   * With the browser open, Enter is the list's own verb — open or close the
+   * selected row's reading — and modified Enter starts a Thread in that
+   * thought's destination. Elsewhere a draft threads, a saved or browsed
+   * thought branches, and a hidden draft is resumed by its own button.
+   */
   private activateEnter(event: KeyboardEvent): void {
     if (event.repeat) return;
     const state = this.host.controller.state;
-    const fromReference = this.referenceExpanded &&
-      (within(this.referenceTools, event.target) || (this.refPane !== null && within(this.refPane.dom, event.target)));
+    if (this.referenceExpanded) {
+      if (event.metaKey || event.ctrlKey) this.freshButton.click();
+      else this.toggleBrowseExpansion();
+      return;
+    }
     if (this.browsingOnly(state) && state.phase === "editing") {
       this.branchButton.click();
     } else if (this.browsingOnly(state) || state.phase === "resting") {
       if (event.metaKey || event.ctrlKey) this.freshButton.click();
       else this.branchButton.click();
-    } else if (state.phase === "editing" && fromReference) {
-      this.focusInput();
     } else if (state.phase === "editing") {
       void this.save();
     }
@@ -1185,6 +1188,9 @@ export class Loom {
     this.statusEl.textContent = message ?? "";
     if (error) this.statusEl.setAttribute("data-kind", "error");
     else this.statusEl.removeAttribute("data-kind");
+    // The spinner is the save's own arc: a notice or a failure never spins.
+    if (message === "Threading…" && !error) this.statusEl.setAttribute("data-spinner", "");
+    else this.statusEl.removeAttribute("data-spinner");
     this.setVisible(this.statusEl, message !== null);
   }
 
@@ -1206,8 +1212,9 @@ export class Loom {
         this.setVisible(button, false);
       }
       const resume = state.phase === "editing";
-      const target = this.host.reference?.model.body;
-      const thought = target?.kind === "ready" ? target.snapshot.thought : null;
+      // The selected row is what the footer's Branch acts on, so the tint and
+      // the disabled state follow the selection rather than the loaded body.
+      const thought = this.host.reference?.model.selection ?? null;
       this.branchButton.textContent = resume ? (mobile ? "Resume draft" : "↵ · Resume draft") : (mobile ? "Branch" : "↵ · Branch");
       this.branchButton.setAttribute("style", dimensionColorVars(resume ? (state.parent?.d ?? 0) + 1 : (thought?.d ?? 1) + 1));
       this.branchButton.disabled = !resume && (thought === null || this.host.reference?.editable !== true);
@@ -1318,146 +1325,136 @@ export class Loom {
     }
   }
 
-  private renderChooser(): void {
+  /**
+   * The destination popover: one row per Realm, built when it opens.
+   *
+   * A row names the Realm, states where the draft already is, and offers the
+   * two acts that mean something: write here (retarget, without moving the
+   * screen) or open the workspace (a deliberate travel). A completed visit
+   * leaves the map behind, because the writer is now somewhere on it.
+   */
+  private renderDestPopover(): void {
     const doc = this.doc();
-    this.chooserEl.textContent = "";
-    const title = doc.createElement("div");
-    title.className = "weaver-composer-chooser-title";
-    title.textContent = "Write into";
-    const back = doc.createElement("button");
-    back.type = "button";
-    back.className = "weaver-composer-quiet-close";
-    back.textContent = "Back";
-    back.addEventListener("click", () => this.returnToWrite());
-    title.appendChild(back);
-    this.chooserEl.appendChild(title);
+    const reading = this.browsingOnly(this.host.controller.state);
+    this.destPopover.textContent = "";
+    const current = reading
+      ? this.host.reference?.model.selection === null
+        ? null
+        : contextDayForPath(this.host.reference?.model.selection?.path ?? "", this.host.contexts())?.contextId
+      : this.host.controller.state.contextId;
 
-    const current = this.host.controller.state.contextId;
     for (const context of this.host.contexts()) {
       const row = doc.createElement("div");
-      row.className = "weaver-composer-chooser-row";
+      row.className = "weaver-composer-dest-row";
+      row.setAttribute("role", "none");
+
       const name = doc.createElement("span");
+      name.className = "weaver-composer-dest-name";
       name.textContent = context.name;
       row.appendChild(name);
+
       if (context.id === current) {
         // The draft is already here; a button that re-proposes the same
         // destination would only ask a question with one answer.
         const here = doc.createElement("span");
-        here.className = "weaver-composer-chooser-here";
-        here.textContent = "Writing here";
+        here.className = "weaver-composer-dest-here";
+        here.textContent = reading ? "Reading here" : "Writing here";
         row.appendChild(here);
       } else {
         const write = doc.createElement("button");
         write.type = "button";
-        write.className = "weaver-composer-chooser-write";
+        write.className = "weaver-composer-dest-write";
+        write.setAttribute("role", "menuitem");
         write.textContent = "Write here";
+        write.disabled = reading;
         write.addEventListener("click", () => {
+          if (context.id === this.host.controller.state.contextId) {
+            this.closeDestPopover(false);
+            this.focusInput();
+            return;
+          }
           this.host.writeHere?.(context.id);
-          this.returnToWrite();
+          this.closeDestPopover(false);
+          this.focusInput();
         });
         row.appendChild(write);
       }
+
       const travel = doc.createElement("button");
       travel.type = "button";
-      travel.className = "weaver-composer-chooser-travel";
+      travel.className = "weaver-composer-dest-travel";
+      travel.setAttribute("role", "menuitem");
       travel.textContent = "Open workspace";
       travel.addEventListener("click", () => {
         void this.host.travel(context.id).then((travelled) => {
-          // A completed visit leaves the chooser behind: it was a map, and the
-          // writer is now somewhere on it.
-          if (travelled) this.returnToWrite(false);
+          if (travelled) this.closeDestPopover(false);
         });
       });
       row.appendChild(travel);
-      this.chooserEl.appendChild(row);
+      this.destPopover.appendChild(row);
     }
   }
 
-  private renderReference(): void {
+  /**
+   * The Tapestry browser: the scoped reading as one woven list.
+   *
+   * Every record is a row — its thread mark, address, excerpt and moment, in
+   * reading order. The list is the single keyboard surface: arrows walk it,
+   * `/` searches, Enter opens the selected row's full reading, and the open row
+   * carries its own Branch and Open in note. Browsing reads the note; it never
+   * writes it, and it never starts or replaces a draft.
+   */
+  private renderBrowse(): void {
     const controller = this.host.reference;
     const active = this.referenceExpanded;
     this.setVisible(this.referenceEl, active);
-    this.setVisible(this.referenceTools, active && this.view === "write");
-    this.setVisible(this.refPosition, active);
     if (!active) {
       this.searching = false;
+      this.browseExpanded = false;
+      this.referenceKey = "";
       return;
     }
 
     const model = controller?.model ?? null;
-    const ready = model !== null && model.readiness.kind === "ready";
-    const selection = model?.selection ?? null;
     const search = model?.search ?? null;
     const editing = search !== null && search.kind === "editing";
-
-    this.setVisible(this.referenceSearchField, editing);
+    this.setVisible(this.browseSearch, editing);
     if (search !== null && search.kind === "editing") {
-      if (this.referenceSearchField.value !== search.text) this.referenceSearchField.value = search.text;
+      if (this.browseSearch.value !== search.text) this.browseSearch.value = search.text;
       // Focus once, on the way in. Focusing on every render would pull the caret
       // to the end of the query after every keystroke.
       if (!this.searching) {
         this.searching = true;
-        this.referenceSearchField.focus();
+        this.browseSearch.focus();
       }
     } else {
       this.searching = false;
     }
-    this.refSearchButton.setAttribute("aria-expanded", String(editing));
 
-    const empty = model !== null && model.readiness.kind === "ready" && model.readiness.sequence.members.length === 0;
-    this.refPrev.disabled = controller === undefined || !ready || empty;
-    this.refNext.disabled = controller === undefined || !ready || empty;
-    this.refSearchButton.disabled = controller === undefined || !ready;
+    const selection = model?.selection ?? null;
+    // The reading wears the dimension of the thought it is showing, so a walk
+    // is a tide rather than a repaint.
+    const dimension = selection?.d ?? 1;
+    this.referenceEl.style.setProperty("--weaver-dcolor", dimensionColor(dimension));
+    this.referenceEl.style.setProperty("--weaver-d", String(Math.max(1, dimension)));
 
-    this.refPosition.textContent = this.positionOf(model);
+    const records = model !== null && model.readiness.kind === "ready" ? model.readiness.sequence.members : [];
+    const notice = this.browseNotice(model);
+    const filtered = search !== null && search.kind !== "off" && search.text.trim() !== "";
+    this.browseCount.textContent = notice?.text ?? this.browseCountLabel(records.length, filtered);
+    if (notice !== null && notice.error) this.browseCount.setAttribute("data-kind", "error");
+    else this.browseCount.removeAttribute("data-kind");
 
-    this.setVisible(this.referenceAddress, selection !== null);
-    if (selection !== null) {
-      this.referenceEl.style.setProperty("--weaver-dcolor", dimensionColor(selection.d));
-      this.referenceEl.style.setProperty("--weaver-d", String(Math.max(1, selection.d)));
-      this.referenceAddress.setAttribute("style", dimensionColorVars(selection.d));
-      this.referenceAddress.textContent = "";
-      appendDigitRuns(this.referenceAddress, formatAddress(selection.b, selection.d, selection.n));
-    } else {
-      this.referenceEl.style.setProperty("--weaver-dcolor", dimensionColor(1));
-      this.referenceEl.style.setProperty("--weaver-d", "1");
+    // The prose host is detached first, then adopted by the open row: the one
+    // read-only pane is moved, never rebuilt, so its history survives.
+    this.referenceProse.remove();
+    this.browseList.textContent = "";
+    for (const record of records) {
+      this.browseList.appendChild(this.browseRow(record, selection));
     }
-
-    let notice: string | null = null;
-    let error = false;
-    if (controller === undefined) {
-      notice = "Reading is unavailable here.";
-    } else if (model === null) {
-      notice = "Reading…";
-    } else if (model.readiness.kind === "loading" || model.readiness.kind === "idle") {
-      notice = "Reading…";
-    } else if (model.readiness.kind === "failed") {
-      notice = model.readiness.message;
-      error = true;
-    } else if (model.readiness.sequence.members.length === 0) {
-      notice = "Nothing in this reading yet.";
-    } else if (model.body.kind === "loading") {
-      notice = "Reading…";
-    } else if (model.body.kind === "failed") {
-      notice = model.body.message;
-      error = true;
-    } else if (model.body.kind === "none") {
-      notice = model.selection === null ? "Choose a thought to read." : "Reading…";
-    }
-    this.referenceNotice.textContent = notice ?? "";
-    if (error) this.referenceNotice.setAttribute("data-kind", "error");
-    else this.referenceNotice.removeAttribute("data-kind");
-    this.setVisible(this.referenceNotice, notice !== null);
+    this.setVisible(this.browseList, records.length > 0);
 
     const body = model?.body ?? null;
-    if (body !== null && body.kind === "ready") {
-      this.setVisible(this.referenceProse, true);
-      this.syncReferencePane(body.snapshot.text, body.snapshot.thought.path);
-    } else {
-      this.setVisible(this.referenceProse, false);
-      this.referenceKey = "";
-    }
-
     const snapshot = body?.kind === "ready" ? body.snapshot : null;
     this.referenceTiming.update({
       clock: { kind: "moment", time: snapshot?.time ?? null },
@@ -1467,6 +1464,133 @@ export class Loom {
     this.setVisible(this.referenceTiming.dom, !this.browsingOnly(this.host.controller.state));
   }
 
+  /** What the count slot says when there is no list to count. */
+  private browseNotice(model: ReferenceModel | null): { text: string; error: boolean } | null {
+    if (this.host.reference === undefined) return { text: "Reading is unavailable here.", error: false };
+    if (model === null || model.readiness.kind === "idle" || model.readiness.kind === "loading") {
+      return { text: "Reading…", error: false };
+    }
+    if (model.readiness.kind === "failed") return { text: model.readiness.message, error: true };
+    if (model.readiness.sequence.members.length === 0) {
+      return { text: "Nothing in this reading yet.", error: false };
+    }
+    return null;
+  }
+
+  /** The list's own count, in words a reader already uses. */
+  private browseCountLabel(count: number, filtered: boolean): string {
+    if (count === 0) return "No thoughts";
+    if (!filtered) return count === 1 ? "1 thought" : `${count} thoughts`;
+    return count === 1 ? "1 thought matches" : `${count} thoughts match`;
+  }
+
+  /** One thought as a row, with its reading when it is the open selection. */
+  private browseRow(record: ThoughtRecord, selection: ThoughtRef | null): HTMLElement {
+    const doc = this.doc();
+    const thought = record.thought;
+    const selected = selection !== null && selection.path === thought.path && selection.n === thought.n;
+
+    const row = doc.createElement("div");
+    row.className = "weaver-composer-browse-row";
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(selected));
+    if (selected) row.setAttribute("data-selected", "");
+
+    const thread = doc.createElement("span");
+    thread.className = "weaver-composer-browse-thread";
+    thread.setAttribute("style", dimensionColorVars(thought.d));
+    thread.setAttribute("aria-hidden", "true");
+
+    const address = doc.createElement("span");
+    address.className = "weaver-composer-browse-address";
+    appendDigitRuns(address, formatAddress(thought.b, thought.d, thought.n));
+
+    const text = doc.createElement("span");
+    text.className = "weaver-composer-browse-text";
+    text.textContent = excerpt(thought.prose) || "Untitled draft";
+
+    const time = doc.createElement("span");
+    time.className = "weaver-composer-browse-time";
+    time.textContent = thought.time === null ? "—" : thought.time.slice(0, 5);
+
+    row.appendChild(thread);
+    row.appendChild(address);
+    row.appendChild(text);
+    row.appendChild(time);
+
+    if (selected && this.browseExpanded) {
+      row.setAttribute("data-expanded", "");
+      row.appendChild(this.browseDetail(thought));
+    }
+    return row;
+  }
+
+  /** The open row's reading: the whole Markdown, then the acts it permits. */
+  private browseDetail(thought: ThoughtRef): HTMLElement {
+    const doc = this.doc();
+    const detail = doc.createElement("div");
+    detail.className = "weaver-composer-browse-detail";
+
+    const body = this.host.reference?.model.body ?? null;
+    if (body !== null && body.kind === "ready") {
+      this.syncReferencePane(body.snapshot.text, body.snapshot.thought.path);
+      this.setVisible(this.referenceProse, true);
+      detail.appendChild(this.referenceProse);
+    } else {
+      const failed = body !== null && body.kind === "failed";
+      const notice = doc.createElement("div");
+      notice.className = "weaver-composer-browse-reading";
+      notice.textContent = failed && body !== null ? body.message : "Reading…";
+      if (failed) notice.setAttribute("data-kind", "error");
+      detail.appendChild(notice);
+      this.setVisible(this.referenceProse, false);
+      this.referenceKey = "";
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "weaver-composer-browse-actions";
+
+    const branch = doc.createElement("button");
+    branch.type = "button";
+    branch.className = "weaver-composer-browse-branch";
+    branch.textContent = "Branch";
+    branch.setAttribute("style", dimensionColorVars(thought.d + 1));
+    branch.disabled = this.host.reference?.editable !== true;
+    branch.addEventListener("click", () => this.branchFrom(thought));
+    actions.appendChild(branch);
+
+    const open = doc.createElement("button");
+    open.type = "button";
+    open.className = "weaver-composer-browse-open";
+    open.textContent = "Open in note";
+    open.disabled = this.host.reference?.editable !== true;
+    open.addEventListener("click", () => {
+      void this.host.controller.editInNote(thought);
+    });
+    actions.appendChild(open);
+
+    detail.appendChild(actions);
+    return detail;
+  }
+
+  /** Opens or closes the selected row's inline reading. */
+  private toggleBrowseExpansion(): void {
+    if (this.host.reference === undefined || this.host.reference.model.selection === null) return;
+    this.browseExpanded = !this.browseExpanded;
+    this.render();
+  }
+
+  /** Branches from a thought, whichever lane asked for it. */
+  private branchFrom(parent: ThoughtRef): void {
+    void this.host.controller.branch(parent).then((opened) => {
+      if (!opened) return;
+      this.referenceExpanded = false;
+      this.browseExpanded = false;
+      this.render();
+      this.focusInput();
+    });
+  }
+
   private syncReferencePane(text: string, path: string): void {
     const pane = this.refPane;
     if (pane === null) return;
@@ -1474,23 +1598,6 @@ export class Loom {
     if (this.referenceKey === key && pane.text === text) return;
     this.referenceKey = key;
     pane.update(text, path, true);
-  }
-
-  /** Where the selected thought sits in the reading, in compact digits. */
-  private positionOf(model: ReferenceModel | null): string {
-    if (model === null) return "";
-    if (model.readiness.kind === "loading") return "Reading…";
-    if (model.readiness.kind !== "ready") return "";
-    const total = model.readiness.sequence.members.length;
-    if (total === 0) return "No thoughts";
-    const at =
-      model.selection === null
-        ? 0
-        : model.readiness.sequence.members.findIndex(
-            (record) => record.thought.n === model.selection?.n && record.thought.path === model.selection?.path
-          ) + 1;
-    if (at > 0) return `${at} / ${total}`;
-    return `${total} thoughts`;
   }
 
   private renderResume(invitation: LoomInvitation | null, state?: CaptureView): void {
@@ -1535,7 +1642,7 @@ export class Loom {
   private copyableProse(): string {
     const state = this.host.controller.state;
     if (this.browsingOnly(state)) {
-      const body = this.referenceExpanded && this.view === "write" ? this.host.reference?.model.body : null;
+      const body = this.referenceExpanded ? this.host.reference?.model.body : null;
       return body?.kind === "ready" ? body.snapshot.text : "";
     }
     return state.phase === "resting" ? (state.selected ?? state.root)?.prose ?? "" : state.text;
@@ -1584,18 +1691,25 @@ export class Loom {
     });
   }
 
-  private menuItems(): HTMLButtonElement[] {
-    return Array.from(this.menu.querySelectorAll<HTMLButtonElement>("button.weaver-composer-menu-item")).filter(
-      (item) => !item.disabled
-    );
+  /**
+   * The focusable actions of the one open front layer.
+   *
+   * A menu and the destination popover answer the same keys, so they share one
+   * reader: arrows, Home and End never learn which layer is open.
+   */
+  private frontItems(): HTMLButtonElement[] {
+    const layer = this.menuOpen ? this.menu : this.destOpen ? this.destPopover : null;
+    if (layer === null) return [];
+    return Array.from(layer.querySelectorAll<HTMLButtonElement>("button")).filter((item) => !item.disabled);
   }
 
   private openMenu(): void {
     this.buildMenu();
     this.menuOpen = true;
     this.shortcutsOpen = false;
+    this.destOpen = false;
     this.render();
-    this.menuItems()[0]?.focus();
+    this.frontItems()[0]?.focus();
   }
 
   private closeMenu(restoreFocus: boolean): void {
@@ -1628,10 +1742,9 @@ export class Loom {
   private discardDraft(): void {
     this.discardArmed = false;
     this.host.controller.discardDraft();
-    this.view = "write";
     this.render();
     if (this.host.controller.state.phase !== "closed") this.focusInput();
-    else if (this.referenceExpanded) this.focusReferenceTools();
+    else if (this.referenceExpanded) this.focusBrowse();
     else {
       const focus = this.returnFocus;
       if (focus !== null && focus.isConnected && !this.root.contains(focus)) focus.focus();
@@ -1676,11 +1789,12 @@ export class Loom {
     this.shortcuts.appendChild(title);
 
     const rows: [string, string][] = [
-      ["↵", "Save a draft; branch while reading; accept a search result"],
+      ["↵", "Save a draft; open or close the selected thought's reading"],
       ["⇧↵", "Start a new line while writing"],
-      ["⌘↵", "Save a draft; new Thread while reading"],
-      ["↑ / ↓", "Previous / next thought, with navigation focused"],
-      ["/", "Search, with navigation focused"],
+      ["⌘↵", "Save a draft; new Thread in the reading"],
+      ["↑ / ↓", "Walk the list, with it focused"],
+      ["Home / End", "First / last thought in the list"],
+      ["/", "Search, with the list focused"],
       ["⌘⌥← / ⌘⌥→", "Previous / next Tapestry"],
       ["⌘⌥↑ / ⌘⌥↓", "Show reading / return to writing"],
       ["Esc", "Close the menu, panel or surface"]
@@ -1709,12 +1823,12 @@ export class Loom {
   }
 
   private wirePanes(): void {
-    this.referenceSearchField.addEventListener("input", () => {
+    this.browseSearch.addEventListener("input", () => {
       const controller = this.host.reference;
       if (controller === undefined) return;
-      void controller.setSearchText(this.referenceSearchField.value);
+      void controller.setSearchText(this.browseSearch.value);
     });
-    this.referenceSearchField.addEventListener("keydown", (event) => {
+    this.browseSearch.addEventListener("keydown", (event: KeyboardEvent) => {
       const controller = this.host.reference;
       if (controller === undefined) return;
       if (event.isComposing) return;
@@ -1724,7 +1838,7 @@ export class Loom {
         if (!controller.acceptSearch()) return;
         this.searching = false;
         this.render();
-        this.focusReferenceTools();
+        this.focusBrowse();
         return;
       }
       if (event.key === "Escape") {
@@ -1733,7 +1847,7 @@ export class Loom {
         void controller.cancelSearch().then(() => {
           this.searching = false;
           this.render();
-          this.focusReferenceTools();
+          this.focusBrowse();
         });
       }
     });
@@ -1770,23 +1884,19 @@ export class Loom {
       const state = this.host.controller.state;
       if (this.browsingOnly(state) && state.phase === "editing") {
         this.referenceExpanded = false;
+        this.browseExpanded = false;
         this.host.controller.expand();
         this.render();
         this.focusInput();
         return;
       }
-      const body = this.host.reference?.model.body;
-      const saved = this.browsingOnly(state)
-        ? body?.kind === "ready" ? body.snapshot.thought : null
+      // In the reading, the footer acts on the selected row; the browser's own
+      // Branch button acts on the row it belongs to.
+      const parent = this.browsingOnly(state)
+        ? this.host.reference?.model.selection ?? null
         : state.selected ?? state.root;
-      if (saved === null) return;
-      this.view = "write";
-      void this.host.controller.branch(saved).then((opened) => {
-        if (!opened) return;
-        this.referenceExpanded = false;
-        this.render();
-        this.focusInput();
-      });
+      if (parent === null) return;
+      this.branchFrom(parent);
     });
     this.freshButton.addEventListener("click", () => {
       const state = this.host.controller.state;
@@ -1794,7 +1904,6 @@ export class Loom {
       const target = this.browsingOnly(state) ? this.host.reference?.model.selection ?? null : state.selected ?? state.root;
       const contextId = target === null ? this.host.viewing() || state.contextId
         : contextDayForPath(target.path, this.host.contexts())?.contextId ?? state.contextId;
-      this.view = "write";
       void this.host.controller.newThread(contextId).then((opened) => {
         if (!opened) return;
         this.referenceExpanded = false;
@@ -1804,34 +1913,38 @@ export class Loom {
     });
   }
 
+  /**
+   * The browser's own gestures: a click selects a row, a click on the open row
+   * closes it. The keyboard is handled once, in `handleKey`.
+   */
   private wireReference(): void {
-    this.refPrev.addEventListener("click", () => {
-      void this.host.reference?.move("previous");
-    });
-    this.refNext.addEventListener("click", () => {
-      void this.host.reference?.move("next");
-    });
-    this.refSearchButton.addEventListener("click", () => {
-      const controller = this.host.reference;
-      if (controller === undefined) return;
-      if (controller.model.search.kind === "editing") {
-        void controller.cancelSearch().then(() => {
-          this.searching = false;
-          this.render();
-          this.focusReferenceTools();
-        });
+    this.browseList.addEventListener("click", (event: Event) => {
+      const target = event.target;
+      if (!isNode(target)) return;
+      const element = elementOf(target);
+      if (element === null) return;
+      // A control inside the open row keeps its own click.
+      if (element.closest("button") !== null) return;
+      const row = element.closest(".weaver-composer-browse-row");
+      if (row === null || !within(this.browseList, row)) return;
+      const at = Array.from(this.browseList.querySelectorAll(".weaver-composer-browse-row")).indexOf(row);
+      const model = this.host.reference?.model;
+      if (model === undefined || at < 0 || model.readiness.kind !== "ready") return;
+      const record = model.readiness.sequence.members[at];
+      if (record === undefined) return;
+      if (row.hasAttribute("data-selected")) {
+        this.toggleBrowseExpansion();
         return;
       }
-      controller.beginSearch();
-      this.searching = false;
-      this.render();
+      this.browseExpanded = false;
+      void this.host.reference?.select(record.thought);
     });
   }
 
   private wireHeader(): void {
     this.destButton.addEventListener("click", () => {
-      if (this.view === "chooser") this.returnToWrite();
-      else this.beginPanel("chooser");
+      if (this.destOpen) this.closeDestPopover(true);
+      else this.openDestPopover();
     });
     this.refButton.addEventListener("click", () => this.toggleReference());
     this.moreButton.addEventListener("click", () => {
@@ -1854,7 +1967,6 @@ export class Loom {
     await this.host.controller.settle();
     if (this.host.controller.state.phase === "resting") this.referenceExpanded = false;
     this.pane?.blur();
-    this.view = "write";
     this.render();
     // Nobody else owns the keys now: hand them to the reading so Escape can
     // always close the Loom after a thought has been entered.
@@ -1867,8 +1979,8 @@ export class Loom {
   private hide(): void {
     this.menuOpen = false;
     this.shortcutsOpen = false;
+    this.destOpen = false;
     this.discardArmed = false;
-    this.view = "write";
     this.referenceExpanded = false;
     const state = this.host.controller.state;
     if (state.phase === "closed") {
@@ -1897,13 +2009,14 @@ export class Loom {
       return;
     }
 
-    if (this.menuOpen) {
+    if (this.menuOpen || this.destOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
-        this.closeMenu(true);
+        if (this.menuOpen) this.closeMenu(true);
+        else this.closeDestPopover(true);
         return;
       }
-      const items = this.menuItems();
+      const items = this.frontItems();
       if (items.length > 0) {
         const active = this.mountedIn?.document.activeElement ?? null;
         const at = items.findIndex((item) => item === active);
@@ -1935,13 +2048,8 @@ export class Loom {
         void this.host.reference.cancelSearch().then(() => {
           this.searching = false;
           this.render();
-          this.focusReferenceTools();
+          this.focusBrowse();
         });
-        return;
-      }
-      if (this.view !== "write") {
-        event.preventDefault();
-        this.returnToWrite();
         return;
       }
       if (!isField(event.target)) {
@@ -1957,16 +2065,17 @@ export class Loom {
       return;
     }
 
-    if (this.referenceExpanded && this.view === "write") {
+    if (this.referenceExpanded) {
       const controller = this.host.reference;
       const target = event.target;
       const inPane =
         (this.pane !== null && within(this.pane.dom, target)) ||
         (this.refPane !== null && within(this.refPane.dom, target));
-      const inTools = target === this.referenceEl || within(this.referenceTools, target);
-      // Arrows belong to whichever editor has focus; only the navigation toolbar
-      // turns them into reading moves.
-      if (controller !== undefined && inTools && !inPane && !isEditorSurface(target)) {
+      // The list owns the walk keys; the search field owns its own caret and
+      // both editors keep native arrows, so prose selection is never stolen.
+      const inList = controller !== undefined && !inPane && !isEditorSurface(target) &&
+        !within(this.browseSearch, target) && (target === this.browseList || within(this.browseList, target));
+      if (inList && !isControl(target)) {
         if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
           event.preventDefault();
           controller.beginSearch();
@@ -1974,10 +2083,20 @@ export class Loom {
           this.render();
           return;
         }
-        if ((event.key === "ArrowUp" || event.key === "ArrowDown") &&
+        if ((event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Home" || event.key === "End") &&
           !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
           event.preventDefault();
-          void controller.move(event.key === "ArrowUp" ? "previous" : "next");
+          const move = event.key === "ArrowUp" ? "previous"
+            : event.key === "ArrowDown" ? "next"
+              : event.key === "Home" ? "first" : "last";
+          this.walk = move === "previous" || move === "first" ? "back" : "fwd";
+          // A walk selects a thought to read next, so an open row closes.
+          this.browseExpanded = false;
+          // A refused move at either end renders nothing, so its step must not
+          // survive to be drawn over whatever paints next.
+          void controller.move(move).then((moved) => {
+            if (!moved) this.walk = null;
+          });
           return;
         }
         if (event.key === "Enter" && !isControl(target)) {
@@ -2076,7 +2195,6 @@ export class Loom {
     const split = this.referenceExpanded &&
       this.host.reference !== undefined &&
       !this.browsingOnly(this.host.controller.state) &&
-      this.view === "write" &&
       box.width >= 720;
     const layout = split ? "split" : "stacked";
     if (this.body.getAttribute("data-layout") !== layout) this.body.setAttribute("data-layout", layout);
@@ -2099,9 +2217,7 @@ export class Loom {
     // Keep the focused editor or panel reachable; the action rail lives outside
     // this body and needs no scrolling of its own. Scroll only this body: native
     // scrollIntoView could pan the whole webview.
-    const target =
-      this.pane !== null && this.pane.hasFocus ? this.proseEl
-        : this.view !== "write" ? this.chooserEl : null;
+    const target = this.pane !== null && this.pane.hasFocus ? this.proseEl : null;
     if (target !== null) {
       const body = this.body.getBoundingClientRect();
       const content = target.getBoundingClientRect();
@@ -2149,8 +2265,9 @@ export class Loom {
     return this.mountedIn?.document ?? document;
   }
 
-  private focusReferenceTools(): void {
-    this.referenceTools.focus();
+  /** Hands the keys to the browser's list: its rows are what a walk selects. */
+  private focusBrowse(): void {
+    this.browseList.focus();
   }
 
   private setVisible(element: HTMLElement, visible: boolean): void {
@@ -2158,10 +2275,15 @@ export class Loom {
     else element.setAttribute("hidden", "");
   }
 
+  /** The one path that hides the root: every exit funnels here, so every exit
+   * dissolves rather than cuts, and a re-open inside the hold cancels it. */
   private hideElement(): void {
-    this.root.setAttribute("hidden", "");
-    this.menuOpen = false;
-    this.shortcutsOpen = false;
-    this.searching = false;
+    this.motion.holdThenHide(() => {
+      this.root.setAttribute("hidden", "");
+      this.menuOpen = false;
+      this.shortcutsOpen = false;
+      this.destOpen = false;
+      this.searching = false;
+    });
   }
 }

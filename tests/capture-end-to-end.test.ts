@@ -118,9 +118,12 @@ describe("a thought begun before midnight", () => {
     expect(instance.controller.state.collapsed).toBe(false);
     expect(instance.controller.state.selection).toEqual({ from: 4, to: 12 });
 
+    // The destination popover is a front layer, never a panel: retrieving the
+    // draft closes it and hands the caret back.
     bodyQuery(".weaver-composer-dest")?.click();
+    expect(bodyQuery(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(false);
     instance.openLoom();
-    expect(bodyQuery(".weaver-composer-chooser")?.hasAttribute("hidden")).toBe(true);
+    expect(bodyQuery(".weaver-composer-dest-popover")?.hasAttribute("hidden")).toBe(true);
     expect(shimDocument.activeElement === input).toBe(true);
 
     await instance.controller.settle();

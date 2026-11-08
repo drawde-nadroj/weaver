@@ -2,10 +2,10 @@
   "generatedBy": "scripts/design-index.mjs",
   "generatedDoc": "SYSTEM-DESIGN.md",
   "counts": {
-    "modules": 63,
-    "exports": 499,
-    "classes": 100,
-    "testFiles": 53
+    "modules": 64,
+    "exports": 504,
+    "classes": 106,
+    "testFiles": 54
   },
   "modules": [
     {
@@ -636,7 +636,7 @@
             "src/main.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 95,
+          "refCount": 98,
           "testedBy": [
             "tests/capture-model-controller.test.ts",
             "tests/capture-state.test.ts",
@@ -1335,7 +1335,7 @@
             "src/editor/entry-frame.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 8,
+          "refCount": 7,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -1353,7 +1353,7 @@
             "src/reading/entry-processor.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 17,
+          "refCount": 18,
           "testedBy": [
             "tests/color.test.ts"
           ]
@@ -1548,7 +1548,7 @@
             "src/entries/engine.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 11,
+          "refCount": 12,
           "testedBy": [
             "tests/contexts.test.ts"
           ]
@@ -3321,7 +3321,7 @@
             "src/ui/loom-timing.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 272,
+          "refCount": 277,
           "testedBy": [
             "tests/alignments.test.ts",
             "tests/capture-model-controller.test.ts",
@@ -3381,16 +3381,19 @@
             "src/model/whisper-runner.ts",
             "src/notices.ts",
             "src/settings.ts",
+            "src/ui/loom-motion.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 76,
+          "refCount": 80,
           "testedBy": [
+            "tests/capture-end-to-end.test.ts",
             "tests/capture-store.test.ts",
             "tests/context-workspaces.test.ts",
             "tests/contexts.test.ts",
             "tests/day-note.test.ts",
             "tests/entry-decorations.test.ts",
             "tests/loom-surface.test.ts",
+            "tests/loom.test.ts",
             "tests/navigation.test.ts",
             "tests/plugin.test.ts",
             "tests/reference-controller.test.ts",
@@ -4079,9 +4082,10 @@
           "bytes": 255,
           "refs": [
             "src/entries/reference.ts",
-            "src/entries/thought-index.ts"
+            "src/entries/thought-index.ts",
+            "src/ui/loom.ts"
           ],
-          "refCount": 5,
+          "refCount": 7,
           "testedBy": [
             "tests/reference-controller.test.ts",
             "tests/reference.test.ts"
@@ -8543,6 +8547,91 @@
       "dataAttrs": []
     },
     {
+      "file": "src/ui/loom-motion.ts",
+      "layer": "ui",
+      "lines": 394,
+      "doc": "The Loom's one motion director: the gestures a surface change earns.\n\nThe renderer draws final states; this module reads what changed between two\npaints and names the gesture that belongs to the change. A gesture is one\ntoken on the root (`data-motion=\"rise\"`), drawn by one block of `styles.css`,\nand a token is cleared as soon as its animation ends or the next render\nbegins — so two animations never run over the same element.\n\nTwo things are deliberately outside the token vocabulary. FLIP geometry is\nmeasured per paint and animated with `Element.animate`, because it inverts an\nelement's own rect rather than naming a shape in CSS. A hidden root is held\nfor the sink's duration, then hidden — the only path to `hidden` — so an\nexit reads as a dissolve instead of a cut, and a re-open inside that window\ncancels the timer and rises instead.\n\nNothing here runs where motion is unavailable: a document without\n`Element.animate`, or a reader who asked for reduced motion, gets the final\nstate synchronously. That is also why the test shim, which defines neither,\nnever pauses or animates.",
+      "obsidian": false,
+      "imports": [],
+      "exports": [
+        {
+          "name": "MotionSurface",
+          "kind": "type",
+          "line": 24,
+          "signature": "export type MotionSurface = \"card\" | \"strip\" | \"none\"",
+          "doc": "The visible part of the surface: a full card, or the reduced strip.",
+          "hash": "0c9acfc522",
+          "bytes": 54,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "MotionLayer",
+          "kind": "type",
+          "line": 27,
+          "signature": "export type MotionLayer = \"none\" | \"menu\" | \"shortcuts\" | \"dest\"",
+          "doc": "The one front layer that can be open above the card, if any.",
+          "hash": "e3da70f1e3",
+          "bytes": 65,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "MotionGesture",
+          "kind": "type",
+          "line": 30,
+          "signature": "export type MotionGesture = | \"rise\" | \"sink\" | \"seal\" | \"pop\" | \"panel-up\" | \"panel-down\" | \"walk-fwd\" | \"walk-back\" | \"row-open\" | \"nav-fade\"",
+          "doc": "Every token the stylesheet knows, in the order the director prefers them.",
+          "hash": "147422faf3",
+          "bytes": 164,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "MotionFeatures",
+          "kind": "interface",
+          "line": 43,
+          "signature": "export interface MotionFeatures",
+          "doc": "What a paint drew, as facts rather than DOM: the diff's two halves.",
+          "hash": "abeecc69aa",
+          "bytes": 418,
+          "refs": [],
+          "refCount": 0,
+          "testedBy": []
+        },
+        {
+          "name": "LoomMotion",
+          "kind": "class",
+          "line": 98,
+          "signature": "export class LoomMotion",
+          "doc": "One surface's motion: gestures, FLIP and the exit hold.\n\nConstructed once with the elements it may move; the renderer calls\n`beforePaint` before it draws and `afterPaint` after, and never touches a\ntoken itself.",
+          "hash": "1f21ebd76c",
+          "bytes": 8070,
+          "refs": [
+            "src/ui/loom.ts"
+          ],
+          "refCount": 3,
+          "testedBy": [
+            "tests/loom-motion.test.ts"
+          ]
+        }
+      ],
+      "classes": [
+        "weaver-composer-body",
+        "weaver-composer-browse-address",
+        "weaver-composer-browse-list",
+        "weaver-composer-browse-row",
+        "weaver-composer-context",
+        "weaver-composer-dest-popover",
+        "weaver-composer-menu",
+        "weaver-composer-shortcuts"
+      ],
+      "dataAttrs": []
+    },
+    {
       "file": "src/ui/loom-timing.ts",
       "layer": "ui",
       "lines": 183,
@@ -8624,8 +8713,8 @@
     {
       "file": "src/ui/loom.ts",
       "layer": "ui",
-      "lines": 2168,
-      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header and persistent Markdown\nwriting pane. Desktop retains an identity line and footer actions; mobile\nplaces circular actions beside the content-sized prose, with duration below.\nThe destination control opens a chooser in place\nof the prose, so the writer never scrolls past destination machinery to reach\nthe words. Reference context is optional and starts collapsed; it is a second\npersistent pane, read-only, with its own navigation. A saved thought keeps the\nsame editor node, its history and its scroll, and turns read-only instead of\nbeing replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface.",
+      "lines": 2290,
+      "doc": "The Loom: the one compact surface a thought is written in, from anywhere.\n\nIt is a single non-modal dialog with a small header and persistent Markdown\nwriting pane. Desktop retains an identity line and footer actions; mobile\nplaces circular actions beside the content-sized prose, with duration below.\nThe destination pill opens an anchored popover, so the writer never scrolls\npast destination machinery to reach the words and the prose is never replaced\nby a panel.\n\nReading is optional and starts collapsed. It is the scoped Tapestry as one\nwoven list — a row per thought — walked, searched and opened into a full\nread-only reading, in a second persistent pane that keeps its own timing. A\nsaved thought keeps the same editor node, its history and its scroll, and\nturns read-only instead of being replaced by rendered HTML.\n\nThe renderer owns only presentation and ephemeral interaction: mounted DOM,\nthe composing flag, measurements and a hint overlay. Every semantic action is\na command on the controller or the reference owner, so the note is never\nwritten by opening, browsing, hiding or resizing this surface. Whatever a\nsurface change animates is decided in one place, `ui/loom-motion.ts`; this\nclass only publishes the state it drew.",
       "obsidian": true,
       "imports": [
         "src/core/capture",
@@ -8639,6 +8728,7 @@
         "src/entries/clock",
         "src/entries/reference",
         "src/ui/dcn",
+        "src/ui/loom-motion",
         "src/ui/loom-timing",
         "src/ui/markdown-pane",
         "obsidian"
@@ -8647,7 +8737,7 @@
         {
           "name": "CaptureSurface",
           "kind": "interface",
-          "line": 37,
+          "line": 43,
           "signature": "export interface CaptureSurface",
           "doc": "The lower surface the Loom reads and commands; either controller satisfies it.",
           "hash": "4ec3b34bd1",
@@ -8659,7 +8749,7 @@
         {
           "name": "LoomHost",
           "kind": "interface",
-          "line": 58,
+          "line": 64,
           "signature": "export interface LoomHost",
           "doc": "What the Loom needs from the plugin.",
           "hash": "68f7467b64",
@@ -8671,7 +8761,7 @@
         {
           "name": "LoomInvitation",
           "kind": "interface",
-          "line": 83,
+          "line": 89,
           "signature": "export interface LoomInvitation",
           "doc": "An opening offered by the scheduler: upcoming, or in its available minute.",
           "hash": "6ff4410ba1",
@@ -8685,11 +8775,11 @@
         {
           "name": "Loom",
           "kind": "class",
-          "line": 169,
+          "line": 172,
           "signature": "export class Loom",
           "doc": "The one compact Loom surface.",
-          "hash": "020f200721",
-          "bytes": 75325,
+          "hash": "f1637d95bf",
+          "bytes": 78737,
           "refs": [
             "src/core/capture-state.ts",
             "src/core/frame.ts",
@@ -8699,11 +8789,13 @@
             "src/entries/loom.ts",
             "src/entries/portals.ts",
             "src/entries/writer.ts",
-            "src/main.ts"
+            "src/main.ts",
+            "src/ui/loom-motion.ts"
           ],
-          "refCount": 27,
+          "refCount": 30,
           "testedBy": [
             "tests/frame.test.ts",
+            "tests/loom-motion.test.ts",
             "tests/loom.test.ts"
           ]
         }
@@ -8713,18 +8805,32 @@
         "weaver-composer-actions",
         "weaver-composer-body",
         "weaver-composer-branch",
+        "weaver-composer-browse-actions",
+        "weaver-composer-browse-address",
+        "weaver-composer-browse-branch",
+        "weaver-composer-browse-count",
+        "weaver-composer-browse-detail",
+        "weaver-composer-browse-head",
+        "weaver-composer-browse-list",
+        "weaver-composer-browse-open",
+        "weaver-composer-browse-reading",
+        "weaver-composer-browse-row",
+        "weaver-composer-browse-search",
+        "weaver-composer-browse-text",
+        "weaver-composer-browse-thread",
+        "weaver-composer-browse-time",
         "weaver-composer-card",
         "weaver-composer-check",
-        "weaver-composer-chooser",
-        "weaver-composer-chooser-here",
-        "weaver-composer-chooser-row",
-        "weaver-composer-chooser-title",
-        "weaver-composer-chooser-travel",
-        "weaver-composer-chooser-write",
         "weaver-composer-context",
         "weaver-composer-context-label",
         "weaver-composer-controls",
         "weaver-composer-dest",
+        "weaver-composer-dest-here",
+        "weaver-composer-dest-name",
+        "weaver-composer-dest-popover",
+        "weaver-composer-dest-row",
+        "weaver-composer-dest-travel",
+        "weaver-composer-dest-write",
         "weaver-composer-editor",
         "weaver-composer-footer",
         "weaver-composer-header",
@@ -8741,16 +8847,7 @@
         "weaver-composer-quiet-close",
         "weaver-composer-ref-toggle",
         "weaver-composer-reference",
-        "weaver-composer-reference-address",
-        "weaver-composer-reference-nav",
-        "weaver-composer-reference-next",
-        "weaver-composer-reference-notice",
-        "weaver-composer-reference-position",
-        "weaver-composer-reference-prev",
         "weaver-composer-reference-prose",
-        "weaver-composer-reference-search",
-        "weaver-composer-reference-search-toggle",
-        "weaver-composer-reference-tools",
         "weaver-composer-resume",
         "weaver-composer-resume-dismiss",
         "weaver-composer-resume-open",
@@ -8762,6 +8859,7 @@
         "weaver-composer-shortcuts-close",
         "weaver-composer-shortcuts-list",
         "weaver-composer-shortcuts-title",
+        "weaver-composer-stage",
         "weaver-composer-state",
         "weaver-composer-status",
         "weaver-composer-use",
@@ -8875,7 +8973,7 @@
             "src/main.ts",
             "src/ui/loom.ts"
           ],
-          "refCount": 10,
+          "refCount": 11,
           "testedBy": [
             "tests/platform-classes.test.ts"
           ]
@@ -9204,25 +9302,37 @@
       "weaver-composer-actions",
       "weaver-composer-body",
       "weaver-composer-branch",
+      "weaver-composer-browse-actions",
+      "weaver-composer-browse-address",
+      "weaver-composer-browse-branch",
+      "weaver-composer-browse-count",
+      "weaver-composer-browse-detail",
+      "weaver-composer-browse-head",
+      "weaver-composer-browse-list",
+      "weaver-composer-browse-open",
+      "weaver-composer-browse-reading",
+      "weaver-composer-browse-row",
+      "weaver-composer-browse-search",
+      "weaver-composer-browse-text",
+      "weaver-composer-browse-thread",
+      "weaver-composer-browse-time",
       "weaver-composer-card",
       "weaver-composer-check",
-      "weaver-composer-chooser",
-      "weaver-composer-chooser-here",
-      "weaver-composer-chooser-row",
-      "weaver-composer-chooser-title",
-      "weaver-composer-chooser-travel",
-      "weaver-composer-chooser-write",
       "weaver-composer-context",
       "weaver-composer-context-label",
       "weaver-composer-controls",
       "weaver-composer-dest",
+      "weaver-composer-dest-here",
+      "weaver-composer-dest-name",
+      "weaver-composer-dest-popover",
+      "weaver-composer-dest-row",
+      "weaver-composer-dest-travel",
+      "weaver-composer-dest-write",
       "weaver-composer-editor",
       "weaver-composer-footer",
       "weaver-composer-header",
       "weaver-composer-hide",
       "weaver-composer-identity",
-      "weaver-composer-identity-address",
-      "weaver-composer-identity-label",
       "weaver-composer-menu",
       "weaver-composer-menu-item",
       "weaver-composer-more",
@@ -9231,13 +9341,7 @@
       "weaver-composer-quiet-close",
       "weaver-composer-ref-toggle",
       "weaver-composer-reference",
-      "weaver-composer-reference-address",
-      "weaver-composer-reference-nav",
-      "weaver-composer-reference-notice",
-      "weaver-composer-reference-position",
       "weaver-composer-reference-prose",
-      "weaver-composer-reference-search",
-      "weaver-composer-reference-tools",
       "weaver-composer-resume",
       "weaver-composer-resume-dismiss",
       "weaver-composer-resume-open",
@@ -9249,6 +9353,7 @@
       "weaver-composer-shortcuts-close",
       "weaver-composer-shortcuts-list",
       "weaver-composer-shortcuts-title",
+      "weaver-composer-stage",
       "weaver-composer-state",
       "weaver-composer-status",
       "weaver-composer-timing",
@@ -9303,10 +9408,9 @@
     ],
     "unstyled": [
       "weaver-alignments",
+      "weaver-composer-identity-address",
+      "weaver-composer-identity-label",
       "weaver-composer-newline",
-      "weaver-composer-reference-next",
-      "weaver-composer-reference-prev",
-      "weaver-composer-reference-search-toggle",
       "weaver-duration-clock",
       "weaver-markdown-content",
       "weaver-style",

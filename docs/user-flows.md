@@ -9,9 +9,10 @@ there is nothing to do.
    Realm in the navigator. One surface opens at the bottom edge. The note you were
    reading does not move, and no note is created.
 2. Its header names the writing Realm once — `<name> ▾` opens the destination
-   chooser without travelling. When viewing differs from writing, a quiet line
-   says `viewing <realm>`. Choosing another destination with words present still
-   requires accepting the proposed change; it never silently retargets the draft.
+   popover without travelling, and never swaps the prose for a panel. When viewing
+   differs from writing, a quiet line says `viewing <realm>`. Choosing another
+   destination with words present still requires accepting the proposed change; it
+   never silently retargets the draft.
 3. Before typing, the clock icon shows the current time; the stopwatch shows zero.
    The first committed character freezes the local beginning the note will record
    and starts counting composing time, while the clock keeps counting the present
@@ -68,7 +69,7 @@ hidden draft offers Resume draft instead, preserving its words, selection and pa
 
 ## Flow: travel to a destination
 
-1. `Open workspace` on a destination row in the Loom's chooser.
+1. `Open workspace` on a destination row in the Loom's popover.
 2. The current layout is stored as that destination's own, the draft's clock is
    frozen and the draft stored, and the destination's last-used workspace is
    restored — panes, files, and each pane's own caret and scroll.
@@ -239,20 +240,25 @@ whole blast radius, and the list stays open on what is left.
 
 ## Flow: the navigator
 
-1. `⌘⇧P`, or the toolbar's list command, opens the Loom's reference without
-   creating a note or draft. The header names the reading's destination and position.
-2. One thought appears with its address and rendered prose. The same clock and
-   stopwatch as the composer show its recorded beginning and writing duration.
-   Unknown values remain unknown; there is no Invitations tab.
-3. Previous, Next and Search appear once in the bottom toolbar, with their shortcut
-   prefixes. Up/down and slash apply only while navigation owns focus. Text fields
-   and prose selection retain native arrows, including left/right.
-4. Enter branches from the displayed thought; modified Enter starts a new Thread
-   in its destination. Search Enter accepts the loaded match first; a fresh press
-   then branches. A hidden unfinished draft is resumed instead of replaced.
-5. More offers Open in note. Escape cancels search or returns from the chooser;
-   otherwise it hides the surface. Less-common modified arrows are documented in
-   Keyboard shortcuts rather than repeated on the main surface.
+1. `⌘⇧P`, or the toolbar's list command, opens the Loom's reading without
+   creating a note or draft. The header's pill names the reading's Realm and says
+   `Reading destination`.
+2. The scoped Tapestry appears as one list, in time order: a thread mark, an
+   address, a first line and a recorded moment per row, with the search field and a
+   live count above them. The same clock and stopwatch as the composer show the
+   selected thought's recorded beginning and writing duration. Unknown values
+   remain unknown; there is no Invitations tab.
+3. Up/down walk the list, Home and End reach its ends, and `/` starts a scoped
+   search. The keys apply only while the list has focus; the search field and both
+   editors retain native arrows, including left/right.
+4. Enter opens the selected row into its whole rendered Markdown, with Branch and
+   Open in note beside it; a second Enter closes it. Modified Enter starts a new
+   Thread in the selected thought's destination. Search Enter accepts the loaded
+   match before anything else can act. A hidden unfinished draft is resumed by its
+   own `Resume draft` control, never replaced.
+5. More offers Open in note. Escape cancels search, closes a front layer, or hides
+   the surface. Less-common modified arrows are documented in Keyboard shortcuts
+   rather than repeated on the main surface.
 
 Writes: navigation and beginning a draft write nothing. Saving that draft creates
 one entry through the ordinary writer. Leaving an active note can still pause its

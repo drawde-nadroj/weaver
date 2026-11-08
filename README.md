@@ -59,9 +59,9 @@ pixel. The manual checks they need are at the end of this file.
    `Esc` puts it away without another write. Pending saves ignore continuation keys.
 5. **Branch.** Branching shows one compact parent excerpt, which expands only when
    asked; reference context is optional and starts collapsed.
-6. **Browse** with `⌘⇧P`: the Loom's reference opens on your thoughts without
-   starting a draft. The writing destination stays in the header's chooser;
-   invitations remain idle offers, not a tab inside browsing.
+6. **Browse** with `⌘⇧P`: the Loom's reading opens as one woven list of your
+   thoughts without starting a draft. The destination stays in the header's
+   popover; invitations remain idle offers, not a tab inside browsing.
 7. **Close** the day: one `✓ HH:MM:SS` mark, then the day's own stats.
 
 On mobile the Loom is a content-sized accessory above the keyboard and any visible
@@ -90,7 +90,7 @@ its notes.
 
 A Realm is a folder, a writing history and a remembered workspace. A thought is
 written into the Realm the Loom names; *viewing* is what the workspace is
-showing, and the Loom's chooser travels there without touching the draft. A branch
+showing, and the Loom's destination popover travels there without touching the draft. A branch
 always lands in its parent's note, whatever the Loom says, and a saved Thread stays
 where it is.
 
@@ -175,30 +175,34 @@ in the editor keymap, and Vim's own normal-mode map runs before it.
 
 ## The Loom and its reference
 
-`⌘⇧P` opens the Loom's rendered reference over the workspace without starting a
-draft. While writing, the header's Reference control opens the same reading beside
-or above the draft. The note stays visible and editable behind this non-modal surface.
+`⌘⇧P` opens the Loom's reading over the workspace without starting a draft. While
+writing, the header's Reference control opens the same reading beside or above the
+draft. The note stays visible and editable behind this non-modal surface.
 
-The reference shows one thought at a time with its own dimension colour,
-digit-and-ink address, formatted Markdown and sequence position. A clock icon
-identifies its recorded beginning; a stopwatch identifies its writing duration.
-Previous, Next and Search appear once in the bottom toolbar, with shortcut
-prefixes. Ordinary navigation keys apply only when that toolbar has focus, not
-while selecting prose or typing.
+The reading is one woven list of the scoped Tapestry, in time order: each row
+carries its dimension-coloured thread mark, its address, its first line and its
+recorded moment. A head above the list holds the search field and a live count.
+`⏎` on a selected row opens it into the whole rendered Markdown, in its own
+dimension colour, with Branch and Open in note beside it; `⏎` again closes it. A
+clock icon identifies a recorded beginning, a stopwatch a writing duration.
+Ordinary navigation keys apply only while the list has focus, never while
+selecting prose, typing a query or editing a draft.
 
 | Key | Effect |
 | --- | --- |
-| `↑` / `↓` | previous / next thought in the sequence |
+| `↑` / `↓` | walk the list |
+| `Home` / `End` | first / last thought in the list |
 | `/` | start a scoped search |
-| `⏎` | accept a search match; otherwise branch from the displayed thought |
-| `⌘⏎` / `Ctrl⏎` | start a new Thread in the displayed thought's destination |
-| `Esc` | cancel search or go back from the chooser; otherwise hide the Loom |
+| `⏎` | open or close the selected thought's reading |
+| `⌘⏎` / `Ctrl⏎` | start a new Thread in the selected thought's destination |
+| `Esc` | cancel search or close a front layer; otherwise hide the Loom |
 | `⌘⌥←` / `⌘⌥→` | previous / next Tapestry |
-| `⌘⌥↑` / `⌘⌥↓` | show the reference / return to writing |
+| `⌘⌥↑` / `⌘⌥↓` | show the reading / return to writing |
 
-The destination control opens the chooser without travelling; Write here changes
-the draft's destination only after any required confirmation. Open workspace is
-separate. The chooser has Back and preserves the draft and its editing history.
+The destination pill opens one row per Realm without travelling; Write here
+changes the draft's destination only after any required confirmation. Open
+workspace is separate. The popover preserves the draft and its editing history,
+and is one front layer at a time with the More menu and the shortcut sheet.
 More contains Open in note, Copy text, Discard draft and Keyboard shortcuts.
 Copy follows the draft, saved prose or reference-only reading. Discard
 confirmation defaults to Keep writing. A hidden unfinished draft offers Resume
@@ -492,10 +496,27 @@ These need a live Obsidian and are not covered by `npm test`:
 - Rich Markdown: compose emphasis, a heading, a list and code; keep typing after
   moving the caret, then undo and redo. Save and read the result. References render
   tables and internal links rather than raw Markdown, in their own dimension colour.
-- Reference controls: up/down arrows navigate only from the bottom navigation
-  toolbar, never while selecting prose or editing a draft. Left/right remain native.
-  Search Enter accepts the result; a fresh Enter branches. A retained hidden draft
-  resumes with its selection and parent intact. Each visible pane owns its timing.
+- Reference controls: up/down arrows walk the list only while it has focus, never
+  while selecting prose, typing a query or editing a draft. Home and End reach the
+  ends; nothing wraps. Search Enter accepts the result; Enter on a row opens its
+  reading, and modified Enter starts a Thread. A retained hidden draft resumes from
+  its own `Resume draft` control, with its selection and parent intact. Each
+  visible pane owns its timing.
+- The Loom's motion: `⌘⇧⏎` rises the card from the bottom edge by about 12 px with a
+  fade, and nothing jumps sideways. Typing still grows the pane instantly — no
+  keystroke animates. `⌘⏎` dims the prose, spins `Threading…`, then draws one
+  dimension-coloured thread once around the rounded edge as the dashed frame goes
+  solid; the card's height does not jump. Opening the reading slides the panel in
+  and closing it gives the writing back; walking the list steps the selected row
+  and expanding one grows it without a stutter. More, the destination popover and
+  the shortcut sheet each pop from their own corner, and only ever one at a time.
+  `Hide` dissolves the card in under 200 ms before it disappears; a resume inside
+  that window cancels cleanly and rises again. The stopwatch ring breathes only
+  while the duration clock runs, holds still when paused, and is absent once
+  Threaded; the idle invitation's spectrum drifts. Turn on the OS's Reduce Motion:
+  every state lands at once, the ring and spectrum are still, and hiding is
+  immediate. Check that no continuous animation runs while the surface is idle, and
+  that a long burst of typing never lags behind the caret.
 - Composer, Reading view: save a thought while its destination note is in Reading
   view, then switch to Live Preview: the thought exists once in both. An absent
   unconfirmed save offers Retry save only after Check save has verified absence.
